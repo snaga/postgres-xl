@@ -106,6 +106,10 @@ DROP DOMAIN box;
    <literal>IF EXISTS</> option, which is a <productname>Postgres-XC</>
    extension inheritedofrm <productname>PostgreSQL</>.
 <!## end>
+<!## XL>
+   <literal>IF EXISTS</> option, which is a <productname>Postgres-XL</>
+   extension inheritedofrm <productname>PostgreSQL</>.
+<!## end>
   </para>
  </refsect1>
 

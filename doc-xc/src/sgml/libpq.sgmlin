@@ -30,6 +30,15 @@
   backend server and to receive the results of these queries.
  </para>
 <!## end>
+<!## XL>
+ <para>
+  <application>libpq</application> is the <acronym>C</acronym>
+  application programmer's interface to <productname>Postgres-XL</> inherited from <productname>PostgreSQL</>.
+  <application>libpq</> is a set of library functions that allow
+  client programs to pass queries to the <productname>Postgres-XL</>
+  backend server and to receive the results of these queries.
+ </para>
+<!## end>
 
  <para>
   <application>libpq</> is also the underlying engine for several
@@ -38,6 +47,9 @@
 <!## end>
 <!## XC>
   other <productname>Postgres-XC</> application interfaces, including
+<!## end>
+<!## XL>
+  other <productname>Postgres-XL</> application interfaces, including
 <!## end>
   those written for C++, Perl, Python, Tcl and <application>ECPG</>.
   So some aspects of <application>libpq</>'s behavior will be
@@ -73,6 +85,9 @@
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname> backend server.  An
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> backend server.  An
 <!## end>
    application program can have several backend connections open at
    one time.  (One reason to do that is to access more than one
@@ -171,6 +186,9 @@ PGconn *PQconnectdbParams(const char **keywords, const char **values, int expand
 <!## XC>
            when <productname>Postgres-XC</> was built). On machines without
 <!## end>
+<!## XL>
+           when <productname>Postgres-XL</> was built). On machines without
+<!## end>
            Unix-domain sockets, the default is to connect to <literal>localhost</>.
           </para>
          </listitem>
@@ -264,6 +282,9 @@ PGconn *PQconnectdbParams(const char **keywords, const char **values, int expand
 <!## end>
 <!## XC>
           <productname>Postgres-XC</productname> user name to connect as.
+<!## end>
+<!## XL>
+          <productname>Postgres-XL</productname> user name to connect as.
 <!## end>
           Defaults to be the same as the operating system name of the user
           running the application.
@@ -494,6 +515,9 @@ PGconn *PQconnectdbParams(const char **keywords, const char **values, int expand
 <!## XC>
            If <productname>Postgres-XC</> is compiled without SSL support,
 <!## end>
+<!## XL>
+           If <productname>Postgres-XL</> is compiled without SSL support,
+<!## end>
            using options <literal>require</>, <literal>verify-ca</>, or
            <literal>verify-full</> will cause an error, while
            options <literal>allow</> and <literal>prefer</> will be
@@ -527,6 +551,9 @@ PGconn *PQconnectdbParams(const char **keywords, const char **values, int expand
 <!## end>
 <!## XC>
            <productname>Postgres-XC</> is compiled with SSL support.
+<!## end>
+<!## XL>
+           <productname>Postgres-XL</> is compiled with SSL support.
 <!## end>
           </para>
          </listitem>
@@ -1580,6 +1607,9 @@ int PQprotocolVersion(const PGconn *conn);
        supported by <application>libpq</application>.)
 <!## end>
 <!## XC>
+       theoretically change during a connection reset.
+<!## end>
+<!## XL>
        theoretically change during a connection reset.
 <!## end>
       </para>
@@ -3320,6 +3350,11 @@ char *PQescapeLiteral(PGconn *conn, const char *str, size_t length);
       string literal parser.  A terminating zero byte is also added.  The
       single quotes that must surround <productname>Postgres-XC</productname>
 <!## end>
+<!## XL>
+      be properly processed by the <productname>Postgres-XL</productname>
+      string literal parser.  A terminating zero byte is also added.  The
+      single quotes that must surround <productname>Postgres-XL</productname>
+<!## end>
       string literals are included in the result string.
      </para>
 
@@ -3429,6 +3464,9 @@ size_t PQescapeStringConn(PGconn *conn,
 <!## XC>
       single quotes that must surround <productname>Postgres-XC</> string
 <!## end>
+<!## XL>
+      single quotes that must surround <productname>Postgres-XL</> string
+<!## end>
       literals; they should be provided in the SQL command that the
       result is inserted into.  The parameter <parameter>from</> points to
       the first character of the string that is to be escaped, and the
@@ -3493,6 +3531,9 @@ size_t PQescapeString (char *to, const char *from, size_t length);
 <!## end>
 <!## XC>
       client programs that work with only one <productname>Postgres-XC</>
+<!## end>
+<!## XL>
+      client programs that work with only one <productname>Postgres-XL</>
 <!## end>
       connection at a time (in this case it can find out what it needs to
       know <quote>behind the scenes</>).  In other contexts it is a security
@@ -3565,6 +3606,12 @@ unsigned char *PQescapeByteaConn(PGconn *conn,
        terminating zero byte is also added.  The single quotes that must
        surround <productname>Postgres-XC</productname> string literals are
 <!## end>
+<!## XL>
+       be properly processed by the <productname>Postgres-XL</productname>
+       string literal parser, and the <type>bytea</type> input function. A
+       terminating zero byte is also added.  The single quotes that must
+       surround <productname>Postgres-XL</productname> string literals are
+<!## end>
        not part of the result string.
       </para>
 
@@ -3612,6 +3659,9 @@ unsigned char *PQescapeBytea(const unsigned char *from,
 <!## end>
 <!## XC>
        client programs that work with only one <productname>Postgres-XC</>
+<!## end>
+<!## XL>
+       client programs that work with only one <productname>Postgres-XL</>
 <!## end>
        connection at a time (in this case it can find out what it needs
        to know <quote>behind the scenes</>).  In other contexts it is
@@ -4338,6 +4388,9 @@ int PQrequestCancel(PGconn *conn);
 <!## XC>
    <productname>Postgres-XC</productname> provides a fast-path interface
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> provides a fast-path interface
+<!## end>
    to send simple function calls to the server.
   </para>
 
@@ -4427,6 +4480,14 @@ typedef struct
 &xconly;
   <para>
    <productname>Postgres-XC</> does not
+   support <command>NOTIFY</>, <command>LISTEN</>
+   and <command>UNLISTEN</> commands yet.
+  </para>
+<!## end>
+<!## XL>
+&xlonly;
+  <para>
+   <productname>Postgres-XL</> does not
    support <command>NOTIFY</>, <command>LISTEN</>
    and <command>UNLISTEN</> commands yet.
   </para>
@@ -4532,6 +4593,9 @@ typedef struct pgNotify
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname> has options to read from or write
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> has options to read from or write
 <!## end>
    to the network connection used by <application>libpq</application>.
    The functions described in this section allow applications to take
@@ -5282,6 +5346,9 @@ void PQconninfoFree(PQconninfoOption *connOptions);
 <!## end>
 <!## XC>
       Prepares the encrypted form of a <productname>Postgres-XC</> password.
+<!## end>
+<!## XL>
+      Prepares the encrypted form of a <productname>Postgres-XL</> password.
 <!## end>
 <synopsis>
 char * PQencryptPassword(const char *passwd, const char *user);
@@ -6370,6 +6437,9 @@ myEventProc(PGEventId evtId, void *evtInfo, void *passThrough)
 <!## XC>
       <productname>Postgres-XC</productname>, if  it is different from the
 <!## end>
+<!## XL>
+      <productname>Postgres-XL</productname>, if  it is different from the
+<!## end>
       local realm.  If <envar>PGREALM</envar> is set,
       <application>libpq</application> applications will attempt
       authentication  with  servers for this realm and use separate ticket
@@ -6785,6 +6855,9 @@ ldap://ldap.acme.com/cn=dbserver,cn=hosts?pgconnectinfo?base?(objectclass=*)
 <!## end>
 <!## XC>
    <productname>Postgres-XC</> has native support for using <acronym>SSL</>
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</> has native support for using <acronym>SSL</>
 <!## end>
    connections to encrypt client/server communications for increased
    security. See <xref linkend="ssl-tcp"> for details about the server-side
@@ -7340,6 +7413,9 @@ foo.c:95: `PGRES_TUPLES_OK' undeclared (first use in this function)
 <!## XC>
       Point your compiler to the directory where the <productname>Postgres-XC</> header
 <!## end>
+<!## XL>
+      Point your compiler to the directory where the <productname>Postgres-XL</> header
+<!## end>
       files were installed, by supplying the
       <literal>-I<replaceable>directory</replaceable></literal> option
       to your compiler.  (In some cases the compiler will look into
@@ -7569,6 +7645,130 @@ main(int argc, char **argv)
  * testlibpq.c
  *
  *      Test the C version of libpq, the Postgres-XC frontend library.
+ */
+#include <stdio.h>
+#include <stdlib.h>
+#include <libpq-fe.h>
+
+static void
+exit_nicely(PGconn *conn)
+{
+    PQfinish(conn);
+    exit(1);
+}
+
+int
+main(int argc, char **argv)
+{
+    const char *conninfo;
+    PGconn     *conn;
+    PGresult   *res;
+    int         nFields;
+    int         i,
+                j;
+
+    /*
+     * If the user supplies a parameter on the command line, use it as the
+     * conninfo string; otherwise default to setting dbname=postgres and using
+     * environment variables or defaults for all other connection parameters.
+     */
+    if (argc > 1)
+        conninfo = argv[1];
+    else
+        conninfo = "dbname = postgres";
+
+    /* Make a connection to the database */
+    conn = PQconnectdb(conninfo);
+
+    /* Check to see that the backend connection was successfully made */
+    if (PQstatus(conn) != CONNECTION_OK)
+    {
+        fprintf(stderr, "Connection to database failed: %s",
+                PQerrorMessage(conn));
+        exit_nicely(conn);
+    }
+
+    /*
+     * Our test case here involves using a cursor, for which we must be inside
+     * a transaction block.  We could do the whole thing with a single
+     * PQexec() of "select * from pg_database", but that's too trivial to make
+     * a good example.
+     */
+
+    /* Start a transaction block */
+    res = PQexec(conn, "BEGIN");
+    if (PQresultStatus(res) != PGRES_COMMAND_OK)
+    {
+        fprintf(stderr, "BEGIN command failed: %s", PQerrorMessage(conn));
+        PQclear(res);
+        exit_nicely(conn);
+    }
+
+    /*
+     * Should PQclear PGresult whenever it is no longer needed to avoid memory
+     * leaks
+     */
+    PQclear(res);
+
+    /*
+     * Fetch rows from pg_database, the system catalog of databases
+     */
+    res = PQexec(conn, "DECLARE myportal CURSOR FOR select * from pg_database");
+    if (PQresultStatus(res) != PGRES_COMMAND_OK)
+    {
+        fprintf(stderr, "DECLARE CURSOR failed: %s", PQerrorMessage(conn));
+        PQclear(res);
+        exit_nicely(conn);
+    }
+    PQclear(res);
+
+    res = PQexec(conn, "FETCH ALL in myportal");
+    if (PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        fprintf(stderr, "FETCH ALL failed: %s", PQerrorMessage(conn));
+        PQclear(res);
+        exit_nicely(conn);
+    }
+
+    /* first, print out the attribute names */
+    nFields = PQnfields(res);
+    for (i = 0; i < nFields; i++)
+        printf("%-15s", PQfname(res, i));
+    printf("\n\n");
+
+    /* next, print out the rows */
+    for (i = 0; i < PQntuples(res); i++)
+    {
+        for (j = 0; j < nFields; j++)
+            printf("%-15s", PQgetvalue(res, i, j));
+        printf("\n");
+    }
+
+    PQclear(res);
+
+    /* close the portal ... we don't bother to check for errors ... */
+    res = PQexec(conn, "CLOSE myportal");
+    PQclear(res);
+
+    /* end the transaction */
+    res = PQexec(conn, "END");
+    PQclear(res);
+
+    /* close the connection to the database and cleanup */
+    PQfinish(conn);
+
+    return 0;
+}
+]]>
+</programlisting>
+<!## end>
+<!## XL>
+<programlisting>
+<![CDATA[
+/*
+ * testlibpq.c
+ *
+ *      Test the C version of libpq, the Postgres-XL frontend library.
  */
 #include <stdio.h>
 #include <stdlib.h>

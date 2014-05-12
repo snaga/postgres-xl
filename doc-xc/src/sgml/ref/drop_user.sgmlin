@@ -47,6 +47,9 @@ DROP USER [ IF EXISTS ] <replaceable class="PARAMETER">name</replaceable> [, ...
 <!## XC>
    <productname>Postgres-XC</productname> extension.  The SQL standard
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> extension.  The SQL standard
+<!## end>
    leaves the definition of users to the implementation.
   </para>
  </refsect1>

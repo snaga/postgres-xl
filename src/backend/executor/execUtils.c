@@ -3,6 +3,11 @@
  * execUtils.c
  *	  miscellaneous executor utility routines
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -117,8 +122,10 @@ CreateExecutorState(void)
 	estate->es_result_relations = NULL;
 	estate->es_num_result_relations = 0;
 	estate->es_result_relation_info = NULL;
-#ifdef PGXC	
+#ifdef PGXC
+#ifndef XCP
 	estate->es_result_remoterel = NULL;
+#endif
 #endif
 
 	estate->es_trig_target_relations = NIL;
@@ -527,8 +534,8 @@ ExecBuildProjectionInfo(List *targetList,
 	 * We separate the target list elements into simple Var references and
 	 * expressions which require the full ExecTargetList machinery.  To be a
 	 * simple Var, a Var has to be a user attribute and not mismatch the
-	 * inputDesc.  (Note: if there is a type mismatch then ExecEvalVar will
-	 * probably throw an error at runtime, but we leave that to it.)
+	 * inputDesc.  (Note: if there is a type mismatch then ExecEvalScalarVar
+	 * will probably throw an error at runtime, but we leave that to it.)
 	 */
 	exprlist = NIL;
 	numSimpleVars = 0;
@@ -909,6 +916,9 @@ ExecOpenIndices(ResultRelInfo *resultRelInfo)
 	/*
 	 * For each index, open the index relation and save pg_index info. We
 	 * acquire RowExclusiveLock, signifying we will update the index.
+	 *
+	 * Note: we do this even if the index is not IndexIsReady; it's not worth
+	 * the trouble to optimize for the case where it isn't.
 	 */
 	i = 0;
 	foreach(l, indexoidlist)

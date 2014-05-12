@@ -3,6 +3,11 @@
  * parse_relation.c
  *	  parser support routines dealing with relations
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -30,6 +35,13 @@
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
+#ifdef XCP
+#include "utils/guc.h"
+#include "catalog/pg_statistic.h"
+#include "catalog/pg_namespace.h"
+#include "pgxc/pgxc.h"
+#include "miscadmin.h"
+#endif
 
 
 static RangeTblEntry *scanNameSpaceForRefname(ParseState *pstate,
@@ -509,10 +521,17 @@ scanRTEForColumn(ParseState *pstate, RangeTblEntry *rte, char *colname,
 		attnum = specialAttNum(colname);
 		if (attnum != InvalidAttrNumber)
 		{
-			/* now check to see if column actually is defined */
+			/*
+			 * Now check to see if column actually is defined.  Because of
+			 * an ancient oversight in DefineQueryRewrite, it's possible that
+			 * pg_attribute contains entries for system columns for a view,
+			 * even though views should not have such --- so we also check
+			 * the relkind.  This kluge will not be needed in 9.3 and later.
+			 */
 			if (SearchSysCacheExists2(ATTNUM,
 									  ObjectIdGetDatum(rte->relid),
-									  Int16GetDatum(attnum)))
+									  Int16GetDatum(attnum)) &&
+				get_rel_relkind(rte->relid) != RELKIND_VIEW)
 			{
 				var = make_var(pstate, rte, attnum, location);
 				/* Require read access to the column */
@@ -591,6 +610,25 @@ markRTEForSelectPriv(ParseState *pstate, RangeTblEntry *rte,
 
 	if (rte->rtekind == RTE_RELATION)
 	{
+#ifdef XCP
+		/*
+		 * Ugly workaround against permission check error when non-privileged
+		 * user executes ANALYZE command.
+		 * To update local statistics coordinator queries pg_statistic tables on
+		 * datanodes, but these are not selectable by PUBLIC. It would be better
+		 * to define view, but pg_statistic contains fields of anyarray pseudotype
+		 * which is not allowed in view.
+		 * So we just disable check for SELECT permission if query referring the
+		 * pg_statistic table is parsed on datanodes. That might be a security hole,
+		 * but fortunately any user query against pg_statistic would be parsed on
+		 * coordinator, and permission check would take place; the only way to
+		 * have arbitrary query parsed on datanode is EXECUTE DIRECT, it is only
+		 * available for superuser.
+		 */
+		if (IS_PGXC_DATANODE && rte->relid == StatisticRelationId)
+			rte->requiredPerms = 0;
+		else
+#endif
 		/* Make sure the rel as a whole is marked for SELECT access */
 		rte->requiredPerms |= ACL_SELECT;
 		/* Must offset the attnum to fit in a bitmapset */
@@ -902,10 +940,55 @@ addRangeTableEntry(ParseState *pstate,
 	lockmode = isLockedRefname(pstate, refname) ? RowShareLock : AccessShareLock;
 	rel = parserOpenTable(pstate, relation, lockmode);
 	rte->relid = RelationGetRelid(rel);
+
+#ifdef XCP
+	if (IsUnderPostmaster && !superuser() &&
+				get_rel_namespace(rte->relid) == PG_CATALOG_NAMESPACE)
+	{
+		Oid relid = InvalidOid;
+		const char *relname = get_rel_name(rte->relid);
+		StringInfoData 	buf;
+
+		/* Check if the relname is in storm_catalog_remap_string */
+		initStringInfo(&buf);
+		appendStringInfoString(&buf, relname);
+		appendStringInfoChar(&buf, ',');
+
+		elog(DEBUG2, "the constructed name is %s", buf.data);
+
+		/*
+		 * The unqualified relation name should be satisfied from the
+		 * storm_catalog appropriately. Just provide a warning for now if
+		 * it is not..
+		 */
+		if (strstr(storm_catalog_remap_string, buf.data))
+		{
+			relid = RelnameGetRelid((const char *)relname);
+
+			if (get_rel_namespace(relid) != STORM_CATALOG_NAMESPACE)
+				ereport(WARNING,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("Entry (%s) present in storm_catalog_remap_string "
+							"but object not picked from STORM_CATALOG",relname)));
+			else
+			{
+
+				/* close the existing relation and open the new one */
+				heap_close(rel, NoLock);
+
+				rel = relation_open(relid, NoLock);
+				rte->relid = RelationGetRelid(rel);
+			}
+		}
+	}
+#endif
+
 	rte->relkind = rel->rd_rel->relkind;
 
 #ifdef PGXC
+#ifndef XCP
 	rte->relname = RelationGetRelationName(rel);
+#endif
 #endif
 
 	/*
@@ -935,6 +1018,25 @@ addRangeTableEntry(ParseState *pstate,
 	rte->inh = inh;
 	rte->inFromCl = inFromCl;
 
+#ifdef XCP
+	/*
+	 * Ugly workaround against permission check error when non-privileged
+	 * user executes ANALYZE command.
+	 * To update local statistics coordinator queries pg_statistic tables on
+	 * datanodes, but these are not selectable by PUBLIC. It would be better
+	 * to define view, but pg_statistic contains fields of anyarray pseudotype
+	 * which is not allowed in view.
+	 * So we just disable check for SELECT permission if query referring the
+	 * pg_statistic table is parsed on datanodes. That might be a security hole,
+	 * but fortunately any user query against pg_statistic would be parsed on
+	 * coordinator, and permission check would take place; the only way to
+	 * have arbitrary query parsed on datanode is EXECUTE DIRECT, it is only
+	 * available for superuser.
+	 */
+	if (IS_PGXC_DATANODE && rte->relid == StatisticRelationId)
+		rte->requiredPerms = 0;
+	else
+#endif
 	rte->requiredPerms = ACL_SELECT;
 	rte->checkAsUser = InvalidOid;		/* not set-uid by default, either */
 	rte->selectedCols = NULL;
@@ -972,7 +1074,9 @@ addRangeTableEntryForRelation(ParseState *pstate,
 	rte->relkind = rel->rd_rel->relkind;
 
 #ifdef PGXC
+#ifndef XCP
 	rte->relname = RelationGetRelationName(rel);
+#endif
 #endif
 
 	/*
@@ -1421,6 +1525,15 @@ addRangeTableEntryForCTE(ParseState *pstate,
 				 errmsg("WITH query \"%s\" does not have a RETURNING clause",
 						cte->ctename),
 					 parser_errposition(pstate, rv->location)));
+
+#ifdef PGXC
+#ifndef XCP
+		if (ctequery->returningList != NIL)
+			ereport(ERROR,
+			       (errcode(ERRCODE_STATEMENT_TOO_COMPLEX),
+			       (errmsg("RETURNING clause not yet supported"))));
+#endif
+#endif
 	}
 
 	rte->ctecoltypes = cte->ctecoltypes;

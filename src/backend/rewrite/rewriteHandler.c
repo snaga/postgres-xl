@@ -32,6 +32,7 @@
 #include "pgxc/locator.h"
 #include "pgxc/nodemgr.h"
 #include "pgxc/pgxc.h"
+#include "pgxc/postgresql_fdw.h"
 #include "nodes/nodes.h"
 #include "optimizer/planner.h"
 #include "optimizer/var.h"
@@ -1330,7 +1331,7 @@ rewriteTargetListUD(Query *parsetree, RangeTblEntry *target_rte,
 	 */
 	if (IS_PGXC_COORDINATOR &&
 		!IsConnFromCoord() &&
-		!IsLocatorReplicated(GetLocatorType(RelationGetRelid(target_relation))))
+		!IsLocatorReplicated(GetRelationLocType(RelationGetRelid(target_relation))))
 	{
 		var = makeVar(parsetree->resultRelation,
 					  XC_NodeIdAttributeNumber,
@@ -2692,7 +2693,7 @@ QueryRewriteCTAS(Query *parsetree)
 	cparsetree->utilityStmt = (Node *) create_stmt;
 
 	initStringInfo(&cquery);
-	deparse_query(cparsetree, &cquery, NIL, false, false);
+	deparse_query(cparsetree, &cquery, NIL);
 
 	/* Finally, fire off the query to run the DDL */
 	ProcessUtility(cparsetree->utilityStmt, cquery.data, NULL, true, NULL,
@@ -2707,7 +2708,7 @@ QueryRewriteCTAS(Query *parsetree)
 
 	/* Get the SELECT query string */
 	initStringInfo(&cquery);
-	deparse_query((Query *)stmt->query, &cquery, NIL, true, false);
+	deparse_query((Query *)stmt->query, &cquery, NIL);
 	selectstr = pstrdup(cquery.data);
 
 	/* Now, finally build the INSERT INTO statement */

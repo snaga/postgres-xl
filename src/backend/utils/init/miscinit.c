@@ -3,6 +3,11 @@
  * miscinit.c
  *	  miscellaneous initialization support stuff
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -29,9 +34,15 @@
 #include <utime.h>
 #endif
 
+#ifdef XCP
+#include "catalog/namespace.h"
+#endif
 #include "catalog/pg_authid.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
+#ifdef XCP
+#include "pgxc/execRemote.h"
+#endif
 #include "postmaster/autovacuum.h"
 #include "postmaster/postmaster.h"
 #include "storage/fd.h"
@@ -388,15 +399,15 @@ SetUserIdAndContext(Oid userid, bool sec_def_context)
 
 
 /*
- * Check if the authenticated user is a replication role
+ * Check whether specified role has explicit REPLICATION privilege
  */
 bool
-is_authenticated_user_replication_role(void)
+has_rolreplication(Oid roleid)
 {
 	bool		result = false;
 	HeapTuple	utup;
 
-	utup = SearchSysCache1(AUTHOID, ObjectIdGetDatum(AuthenticatedUserId));
+	utup = SearchSysCache1(AUTHOID, ObjectIdGetDatum(roleid));
 	if (HeapTupleIsValid(utup))
 	{
 		result = ((Form_pg_authid) GETSTRUCT(utup))->rolreplication;
@@ -542,6 +553,117 @@ SetSessionAuthorization(Oid userid, bool is_superuser)
 					is_superuser ? "on" : "off",
 					PGC_INTERNAL, PGC_S_OVERRIDE);
 }
+
+
+#ifdef XCP
+void
+SetGlobalSession(Oid coordid, int coordpid)
+{
+	bool 			reset = false;
+	BackendId 		firstBackend = InvalidBackendId;
+	int				bCount = 0;
+	int				bPids[MaxBackends];
+
+	/* If nothing changed do nothing */
+	if (MyCoordId == coordid && MyCoordPid == coordpid)
+		return;
+
+	/*
+	 * Need to reset pool manager agent if the backend being assigned to
+	 * different global session or assignment is canceled.
+	 */
+	if (OidIsValid(MyCoordId) &&
+			(MyCoordId != coordid || MyCoordPid != coordpid))
+		reset = true;
+
+retry:
+	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+	/* Expose distributed session id in the PGPROC structure */
+	MyProc->coordId = coordid;
+	MyProc->coordPid = coordpid;
+	/*
+	 * Determine first backend id.
+	 * If this backend is the first backend of the distributed session on the
+	 * node we should clean up the temporary namespace.
+	 * Backend is the first if no backends with such distributed session id.
+	 * If such backends are found we can copy first found valid firstBackendId.
+	 * If none of them valid that means the first is still cleaning up the
+	 * temporary namespace.
+	 */
+	if (OidIsValid(coordid))
+		firstBackend = GetFirstBackendId(&bCount, bPids);
+	else
+		firstBackend = InvalidBackendId;
+	/* If first backend id is defined set it right now */
+	if (firstBackend != InvalidBackendId)
+		MyProc->firstBackendId = firstBackend;
+	LWLockRelease(ProcArrayLock);
+
+	if (OidIsValid(coordid) && firstBackend == InvalidBackendId)
+	{
+		/*
+		 * We are the first or need to retry
+		 */
+		if (bCount > 0)
+		{
+			/* XXX sleep ? */
+			goto retry;
+		}
+		else
+		{
+			/* Set globals for this backend */
+			MyCoordId = coordid;
+			MyCoordPid = coordpid;
+			MyFirstBackendId = MyBackendId;
+			/* XXX Maybe this lock is not needed because of atomic operation? */
+			LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+			MyProc->firstBackendId = MyBackendId;
+			LWLockRelease(ProcArrayLock);
+		}
+	}
+	else
+	{
+		/* Set globals for this backend */
+		MyCoordId = coordid;
+		MyCoordPid = coordpid;
+		MyFirstBackendId = firstBackend;
+	}
+
+	if (reset)
+	{
+		/*
+		 * Next time when backend will be assigned to a global session it will
+		 * be referencing different temp namespace
+		 */
+		ForgetTempTableNamespace();
+		/*
+		 * Forget all local and session parameters cached for the Datanodes.
+		 * They do not belong to that session.
+		 */
+		PGXCNodeResetParams(false);
+		/*
+		 * Release node connections, if still held.
+		 */
+		release_handles();
+		/*
+		 * XXX Do other stuff like release secondary Datanode connections,
+		 * clean up shared queues ???
+		 */
+	}
+}
+
+
+/*
+ * Returns the name of the role that should be used to access other cluster
+ * nodes.
+ */
+char *
+GetClusterUserName(void)
+{
+	return GetUserNameFromId(AuthenticatedUserId);
+}
+#endif
+
 
 /*
  * Report current role id
@@ -881,9 +1003,9 @@ CreateLockFile(const char *filename, bool amPostmaster,
 
 	/*
 	 * Successfully created the file, now fill it.	See comment in miscadmin.h
-	 * about the contents.	Note that we write the same info into both datadir
-	 * and socket lockfiles; although more stuff may get added to the datadir
-	 * lockfile later.
+	 * about the contents.  Note that we write the same first five lines into
+	 * both datadir and socket lockfiles; although more stuff may get added to
+	 * the datadir lockfile later.
 	 */
 	snprintf(buffer, sizeof(buffer), "%d\n%s\n%ld\n%d\n%s\n",
 			 amPostmaster ? (int) my_pid : -((int) my_pid),
@@ -896,6 +1018,13 @@ CreateLockFile(const char *filename, bool amPostmaster,
 			 ""
 #endif
 		);
+
+	/*
+	 * In a standalone backend, the next line (LOCK_FILE_LINE_LISTEN_ADDR)
+	 * will never receive data, so fill it in as empty now.
+	 */
+	if (isDDLock && !amPostmaster)
+		strlcat(buffer, "\n", sizeof(buffer));
 
 	errno = 0;
 	if (write(fd, buffer, strlen(buffer)) != strlen(buffer))
@@ -1051,7 +1180,8 @@ AddToDataDirLockFile(int target_line, const char *str)
 	{
 		if ((ptr = strchr(ptr, '\n')) == NULL)
 		{
-			elog(LOG, "bogus data in \"%s\"", DIRECTORY_LOCK_FILE);
+			elog(LOG, "incomplete data in \"%s\": found only %d newlines while trying to add line %d",
+				 DIRECTORY_LOCK_FILE, lineno - 1, target_line);
 			close(fd);
 			return;
 		}

@@ -28,6 +28,9 @@
 <!## XC>
    <productname>Postgres-XC</productname> supports left unary, right
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> supports left unary, right
+<!## end>
    unary, and binary operators.  Operators can be
    overloaded;<indexterm><primary>overloading</primary><secondary>operators</secondary></indexterm>
    that is, the same operator name can be used for different operators
@@ -92,6 +95,9 @@ SELECT (a + b) AS c FROM test_complex;
 <!## XC>
     A <productname>Postgres-XC</productname> operator definition can include
 <!## end>
+<!## XL>
+    A <productname>Postgres-XL</productname> operator definition can include
+<!## end>
     several optional clauses that tell the system useful things about how
     the operator behaves.  These clauses should be provided whenever
     appropriate, because they can make for considerable speedups in execution
@@ -110,6 +116,9 @@ SELECT (a + b) AS c FROM test_complex;
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname>.  The ones described here are all
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname>.  The ones described here are all
 <!## end>
     the ones that release &version; understands.
    </para>
@@ -136,6 +145,9 @@ SELECT (a + b) AS c FROM test_complex;
 <!## XC>
      the commutator operator is all that <productname>Postgres-XC</productname>
 <!## end>
+<!## XL>
+     the commutator operator is all that <productname>Postgres-XL</productname>
+<!## end>
      needs to be given to look up the commutator, and that's all that needs to
      be provided in the <literal>COMMUTATOR</> clause.
     </para>
@@ -156,6 +168,9 @@ SELECT (a + b) AS c FROM test_complex;
 <!## end>
 <!## XC>
      <productname>Postgres-XC</productname> will <emphasis>not</> simply
+<!## end>
+<!## XL>
+     <productname>Postgres-XL</productname> will <emphasis>not</> simply
 <!## end>
      assume that this is a valid transformation &mdash; the creator of the
      <literal>=</> operator must specify that it is valid, by marking the
@@ -180,6 +195,9 @@ SELECT (a + b) AS c FROM test_complex;
 <!## XC>
         Since <productname>Postgres-XC</productname> knows that commutative
 <!## end>
+<!## XL>
+        Since <productname>Postgres-XL</productname> knows that commutative
+<!## end>
         operators come in pairs, when it sees the second definition it will
         automatically go back and fill in the missing <literal>COMMUTATOR</> clause in
         the first definition.
@@ -195,6 +213,9 @@ SELECT (a + b) AS c FROM test_complex;
 <!## XC>
         in both definitions.  When <productname>Postgres-XC</productname> processes
 <!## end>
+<!## XL>
+        in both definitions.  When <productname>Postgres-XL</productname> processes
+<!## end>
         the first definition and realizes that <literal>COMMUTATOR</> refers to a nonexistent
         operator, the system will make a dummy entry for that operator in the
         system catalog.  This dummy entry will have valid data only
@@ -204,6 +225,9 @@ SELECT (a + b) AS c FROM test_complex;
 <!## end>
 <!## XC>
         since that's all that <productname>Postgres-XC</productname> can deduce
+<!## end>
+<!## XL>
+        since that's all that <productname>Postgres-XL</productname> can deduce
 <!## end>
         at this point.  The first operator's catalog entry will link to this
         dummy entry.  Later, when you define the second operator, the system

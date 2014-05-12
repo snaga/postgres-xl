@@ -4,6 +4,11 @@
  *
  *	  Routines for aggregate-manipulation commands
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -56,6 +61,9 @@ DefineAggregate(List *name, List *args, bool oldstyle, List *parameters)
 	List	   *sortoperatorName = NIL;
 	TypeName   *baseType = NULL;
 	TypeName   *transType = NULL;
+#ifdef XCP
+	TypeName   *collectType = NULL;
+#endif
 	char	   *initval = NULL;
 #ifdef PGXC
 	List	   *collectfuncName = NIL;
@@ -64,6 +72,9 @@ DefineAggregate(List *name, List *args, bool oldstyle, List *parameters)
 	Oid		   *aggArgTypes;
 	int			numArgs;
 	Oid			transTypeId;
+#ifdef XCP
+	Oid			collectTypeId;
+#endif
 	ListCell   *pl;
 
 	/* Convert list of names to a name and namespace */
@@ -97,6 +108,10 @@ DefineAggregate(List *name, List *args, bool oldstyle, List *parameters)
 			transType = defGetTypeName(defel);
 		else if (pg_strcasecmp(defel->defname, "stype1") == 0)
 			transType = defGetTypeName(defel);
+#ifdef XCP
+		else if (pg_strcasecmp(defel->defname, "ctype") == 0)
+			collectType = defGetTypeName(defel);
+#endif
 		else if (pg_strcasecmp(defel->defname, "initcond") == 0)
 			initval = defGetString(defel);
 		else if (pg_strcasecmp(defel->defname, "initcond1") == 0)
@@ -125,6 +140,17 @@ DefineAggregate(List *name, List *args, bool oldstyle, List *parameters)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 				 errmsg("aggregate sfunc must be specified")));
+
+#ifdef XCP
+	if (collectfuncName && collectType == NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+				 errmsg("if aggregate cfunc is defined aggregate ctype must be specified")));
+	if (collectType && collectfuncName == NIL)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+				 errmsg("if aggregate ctype is defined aggregate cfunc must be specified")));
+#endif
 
 	/*
 	 * look up the aggregate's input datatype(s).
@@ -202,6 +228,31 @@ DefineAggregate(List *name, List *args, bool oldstyle, List *parameters)
 							format_type_be(transTypeId))));
 	}
 
+#ifdef XCP
+	/*
+	 * look up the aggregate's collecttype.
+	 *
+	 * to the collecttype applied all the limitations as to the transtype.
+	 */
+	if (collectType)
+	{
+		collectTypeId = typenameTypeId(NULL, collectType);
+		if (get_typtype(collectTypeId) == TYPTYPE_PSEUDO &&
+			!IsPolymorphicType(collectTypeId))
+		{
+			if (collectTypeId == INTERNALOID && superuser())
+				 /* okay */ ;
+			else
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+						 errmsg("aggregate collection data type cannot be %s",
+								format_type_be(collectTypeId))));
+		}
+	}
+	else
+		collectTypeId = InvalidOid;
+#endif
+
 	/*
 	 * Most of the argument-checking is done inside of AggregateCreate
 	 */
@@ -216,6 +267,9 @@ DefineAggregate(List *name, List *args, bool oldstyle, List *parameters)
 					finalfuncName,		/* final function name */
 					sortoperatorName,	/* sort operator name */
 					transTypeId,	/* transition data type */
+#ifdef XCP
+					collectTypeId,	/* collection data type */
+#endif
 #ifdef PGXC
 					initval,	/* initial condition */
 					initcollect);	/* initial condition for collection function */

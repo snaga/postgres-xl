@@ -4,6 +4,11 @@
  *	  Declarations for operations on built-in types.
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -541,6 +546,7 @@ extern Datum void_recv(PG_FUNCTION_ARGS);
 extern Datum void_send(PG_FUNCTION_ARGS);
 #ifdef PGXC
 extern Datum pgxc_node_str (PG_FUNCTION_ARGS);
+extern Datum pgxc_lock_for_backup (PG_FUNCTION_ARGS);
 #endif
 extern Datum trigger_in(PG_FUNCTION_ARGS);
 extern Datum trigger_out(PG_FUNCTION_ARGS);
@@ -580,6 +586,8 @@ extern Datum regexp_split_to_table(PG_FUNCTION_ARGS);
 extern Datum regexp_split_to_table_no_flags(PG_FUNCTION_ARGS);
 extern Datum regexp_split_to_array(PG_FUNCTION_ARGS);
 extern Datum regexp_split_to_array_no_flags(PG_FUNCTION_ARGS);
+extern char *regexp_fixed_prefix(text *text_re, bool case_insensitive,
+								 Oid collation, bool *exact);
 
 /* regproc.c */
 extern Datum regprocin(PG_FUNCTION_ARGS);
@@ -661,9 +669,9 @@ extern Datum pg_get_function_result(PG_FUNCTION_ARGS);
 extern char *deparse_expression(Node *expr, List *dpcontext,
 				   bool forceprefix, bool showimplicit);
 #ifdef PGXC
-extern void deparse_query(Query *query, StringInfo buf, List *parentnamespace,
-							bool finalise_aggs, bool sortgroup_colno);
-extern void deparse_targetlist(Query *query, List *targetList, StringInfo buf);
+extern List *deparse_context_for_remotequery(Alias *aliasname, Oid relid);
+extern void get_query_def_from_valuesList(Query *query, StringInfo buf);
+extern void deparse_query(Query *query, StringInfo buf, List *parentnamespace);
 #endif
 extern List *deparse_context_for(const char *aliasname, Oid relid);
 extern List *deparse_context_for_planstate(Node *planstate, List *ancestors,
@@ -809,7 +817,9 @@ extern Datum text_format_nv(PG_FUNCTION_ARGS);
 /* version.c */
 extern Datum pgsql_version(PG_FUNCTION_ARGS);
 #ifdef PGXC
+#ifndef XCP
 extern Datum pgxc_version(PG_FUNCTION_ARGS);
+#endif
 #endif
 
 /* xid.c */
@@ -1182,6 +1192,11 @@ extern Datum pg_cursor(PG_FUNCTION_ARGS);
 /* backend/pgxc/pool/poolutils.c */
 extern Datum pgxc_pool_check(PG_FUNCTION_ARGS);
 extern Datum pgxc_pool_reload(PG_FUNCTION_ARGS);
+
+#ifdef XCP
+/* backend/pgxc/cluster/stormutils.c */
+extern Datum stormdb_promote_standby(PG_FUNCTION_ARGS);
+#endif
 #endif
 
 /* backend/access/transam/transam.c */

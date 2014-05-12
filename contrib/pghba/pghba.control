@@ -1,0 +1,5 @@
+# pghba extension
+comment = 'examine and manipulate the pg_hba file'
+default_version = '1.0'
+module_pathname = '$libdir/pghba'
+relocatable = true

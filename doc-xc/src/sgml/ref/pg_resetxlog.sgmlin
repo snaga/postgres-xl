@@ -204,11 +204,19 @@ PostgreSQL documentation
    so, make doubly certain that there is no server process still alive.
   </para>
 
-&xconly;
 <!## XC>
+&xconly;
   <para>
    In <productname>Postgres-XC</>, <command>pg_resetxlog</command>
    will run only for local Coordinator or Datanode.  You should run it
+   for each Coordinator or Datanode manually.
+  </para>
+<!## end>
+<!## XL>
+&xlonly;
+  <para>
+   In <productname>Postgres-XL</>, <command>pg_resetxlog</command>
+   will only run locally for Coordinators and Datanodes.  You should run it
    for each Coordinator or Datanode manually.
   </para>
 <!## end>

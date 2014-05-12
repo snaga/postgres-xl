@@ -26,8 +26,16 @@
   </para>
  </note>
 
-&xconly;
 <!## XC>
+&xconly;
+  <para>
+   Please note that you can issue this command to each Datanode or
+   Coordinator.  The result is the information local to Datanode or
+   Coordinator specified.
+  </para>
+<!## end>
+<!## XL>
+&xlonly;
   <para>
    Please note that you can issue this command to each Datanode or
    Coordinator.  The result is the information local to Datanode or

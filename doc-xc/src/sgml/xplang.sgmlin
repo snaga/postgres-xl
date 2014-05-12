@@ -16,6 +16,9 @@
 <!## XC>
    <productname>Postgres-XC</productname> allows user-defined functions
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> allows user-defined functions
+<!## end>
    to be written in other languages besides SQL and C.  These other
    languages are generically called <firstterm>procedural
    languages</firstterm> (<acronym>PL</>s).  For a function
@@ -31,6 +34,9 @@
 <!## XC>
    <productname>Postgres-XC</productname> and an existing implementation
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> and an existing implementation
+<!## end>
    of a programming language.  The handler itself is a
    C language function compiled into a shared object and
    loaded on demand, just like any other C function.
@@ -43,6 +49,9 @@
 <!## end>
 <!## XC>
    standard <productname>Postgres-XC</productname> distribution:
+<!## end>
+<!## XL>
+   standard <productname>Postgres-XL</productname> distribution:
 <!## end>
    <application>PL/pgSQL</application> (<xref linkend="plpgsql">),
    <application>PL/Tcl</application> (<xref linkend="pltcl">),
@@ -242,6 +251,9 @@ CREATE TRUSTED PROCEDURAL LANGUAGE plperl
 <!## end>
 <!## XC>
     In a default <productname>Postgres-XC</productname> installation,
+<!## end>
+<!## XL>
+    In a default <productname>Postgres-XL</productname> installation,
 <!## end>
     the handler for the <application>PL/pgSQL</application> language
     is built and installed into the <quote>library</quote>

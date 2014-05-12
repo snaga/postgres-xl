@@ -19,6 +19,9 @@
 <!## XC>
    <productname>Postgres-XC</productname> inherits a large number of
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> inherits a large number of
+<!## end>
    functions and operators for the built-in data types.  Users can also
    define their own functions and operators, as described in
    <xref linkend="server-programming">.  The
@@ -344,6 +347,9 @@
 <!## XC>
     <productname>Postgres-XC</productname> will convert <literal>x =
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> will convert <literal>x =
+<!## end>
     NULL</literal> clauses to <literal>x IS NULL</literal>.
    </para>
   </tip>
@@ -459,6 +465,9 @@
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname> types. For types without
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> types. For types without
 <!## end>
     standard mathematical conventions
     (e.g., date/time types) we
@@ -1100,6 +1109,9 @@
 <!## end>
 <!## XC>
     <productname>Postgres-XC</> also provides versions of these functions
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</> also provides versions of these functions
 <!## end>
     that use the regular function invocation syntax
     (see <xref linkend="functions-string-other">).
@@ -2880,6 +2892,9 @@
 <!## XC>
     <productname>Postgres-XC</> also provides versions of these functions
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</> also provides versions of these functions
+<!## end>
     that use the regular function invocation syntax
     (see <xref linkend="functions-binarystring-other">).
    </para>
@@ -3329,6 +3344,9 @@ cast(-44 as bit(12))           <lineannotation>111111010100</lineannotation>
 <!## XC>
     by <productname>Postgres-XC</productname>: the traditional
 <!## end>
+<!## XL>
+    by <productname>Postgres-XL</productname>: the traditional
+<!## end>
     <acronym>SQL</acronym> <function>LIKE</function> operator, the
     more recent <function>SIMILAR TO</function> operator (added in
     SQL:1999), and <acronym>POSIX</acronym>-style regular
@@ -3433,6 +3451,9 @@ cast(-44 as bit(12))           <lineannotation>111111010100</lineannotation>
 <!## XC>
     <productname>Postgres-XC</productname> extension.
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> extension.
+<!## end>
    </para>
 
    <para>
@@ -3447,6 +3468,9 @@ cast(-44 as bit(12))           <lineannotation>111111010100</lineannotation>
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname>-specific.
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname>-specific.
 <!## end>
    </para>
   </sect2>
@@ -3926,6 +3950,9 @@ SELECT foo FROM regexp_split_to_table('the quick brown fox', E'\\s*') AS foo;
 <!## XC>
     <productname>Postgres-XC</productname>'s regular expressions are implemented
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</productname>'s regular expressions are implemented
+<!## end>
     using a software package written by Henry Spencer.  Much of
     the description of regular expressions below is copied verbatim from his
     manual.
@@ -3943,6 +3970,9 @@ SELECT foo FROM regexp_split_to_table('the quick brown fox', E'\\s*') AS foo;
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname> supports both forms, and
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> supports both forms, and
 <!## end>
     also implements some extensions
     that are not in the POSIX standard, but have become widely used
@@ -3963,6 +3993,9 @@ SELECT foo FROM regexp_split_to_table('the quick brown fox', E'\\s*') AS foo;
 <!## end>
 <!## XC>
      <productname>Postgres-XC</> always initially presumes that a regular
+<!## end>
+<!## XL>
+     <productname>Postgres-XL</> always initially presumes that a regular
 <!## end>
      expression follows the ARE rules.  However, the more limited ERE or
      BRE rules can be chosen by prepending an <firstterm>embedded option</>
@@ -4089,6 +4122,9 @@ SELECT foo FROM regexp_split_to_table('the quick brown fox', E'\\s*') AS foo;
 <!## end>
 <!## XC>
      meaning in <productname>Postgres-XC</> string literals.
+<!## end>
+<!## XL>
+     meaning in <productname>Postgres-XL</> string literals.
 <!## end>
      To write a pattern constant that contains a backslash,
      you must write two backslashes in the statement, assuming escape
@@ -4304,6 +4340,9 @@ SELECT foo FROM regexp_split_to_table('the quick brown fox', E'\\s*') AS foo;
 <!## end>
 <!## XC>
      <productname>Postgres-XC</> currently does not support multi-character collating
+<!## end>
+<!## XL>
+     <productname>Postgres-XL</> currently does not support multi-character collating
 <!## end>
      elements. This information describes possible future behavior.
     </para>
@@ -4719,6 +4758,9 @@ SELECT foo FROM regexp_split_to_table('the quick brown fox', E'\\s*') AS foo;
 <!## end>
 <!## XC>
     <productname>Postgres-XC</>, since REs are assumed to be AREs;
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</>, since REs are assumed to be AREs;
 <!## end>
     but it does have an effect if ERE or BRE mode had been specified by
     the <replaceable>flags</> parameter to a regex function.)
@@ -5163,6 +5205,9 @@ SELECT SUBSTRING('XY1234Z', 'Y*?([0-9]{1,3})');
 <!## XC>
     The <productname>Postgres-XC</productname> formatting functions
 <!## end>
+<!## XL>
+    The <productname>Postgres-XL</productname> formatting functions
+<!## end>
     provide a powerful set of tools for converting various data types
     (date/time, integer, floating point, numeric) to formatted strings
     and for converting from formatted strings to specific data types.
@@ -5569,6 +5614,9 @@ SELECT SUBSTRING('XY1234Z', 'Y*?([0-9]{1,3})');
 <!## XC>
        fixed-width.  In <productname>Postgres-XC</productname>,
 <!## end>
+<!## XL>
+       fixed-width.  In <productname>Postgres-XL</productname>,
+<!## end>
        <literal>FM</literal> modifies only the next specification, while in
        Oracle <literal>FM</literal> affects all subsequent
        specifications, and repeated <literal>FM</literal> modifiers
@@ -5847,6 +5895,9 @@ SELECT SUBSTRING('XY1234Z', 'Y*?([0-9]{1,3})');
 <!## end>
 <!## XC>
        <literal>TH</literal> are <productname>Postgres-XC</productname>
+<!## end>
+<!## XL>
+       <literal>TH</literal> are <productname>Postgres-XL</productname>
 <!## end>
        extensions.
       </para>
@@ -6625,6 +6676,9 @@ SELECT (DATE '2001-10-30', DATE '2001-10-30') OVERLAPS
 <!## XC>
    days.  <productname>Postgres-XC</>'s approach uses the month from the
 <!## end>
+<!## XL>
+   days.  <productname>Postgres-XL</>'s approach uses the month from the
+<!## end>
    earlier of the two dates when calculating partial months.  For example,
    <literal>age('2004-06-01', '2004-04-30')</> uses April to yield
    <literal>1 mon 1 day</>, while using May would yield <literal>1 mon 2
@@ -7242,6 +7296,9 @@ SELECT TIMESTAMP WITH TIME ZONE '2001-02-16 20:38:40-05' AT TIME ZONE 'MST';
 <!## XC>
     <productname>Postgres-XC</productname> provides a number of functions
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> provides a number of functions
+<!## end>
     that return values related to the current date and time.  These
     SQL-standard functions all return values based on the start time of
     the current transaction:
@@ -7320,6 +7377,9 @@ SELECT LOCALTIMESTAMP;
 <!## XC>
     <productname>Postgres-XC</productname> also provides functions that
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> also provides functions that
+<!## end>
     return the start time of the current statement, as well as the actual
     current time at the instant the function is called.  The complete list
     of non-SQL-standard time functions is:
@@ -7351,6 +7411,9 @@ now()
 <!## XC>
     <productname>Postgres-XC</productname> function.  Like
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> function.  Like
+<!## end>
     <function>clock_timestamp()</>, it returns the actual current time,
     but as a formatted <type>text</> string rather than a <type>timestamp
     with time zone</> value.
@@ -7359,6 +7422,9 @@ now()
 <!## end>
 <!## XC>
     <function>now()</> is a traditional <productname>Postgres-XC</productname>
+<!## end>
+<!## XL>
+    <function>now()</> is a traditional <productname>Postgres-XL</productname>
 <!## end>
     equivalent to <function>transaction_timestamp()</function>.
    </para>
@@ -8422,6 +8488,9 @@ CREATE TYPE rainbow AS ENUM ('red', 'orange', 'yellow', 'green', 'blue', 'purple
 <!## XC>
    explanation of <productname>Postgres-XC</productname>'s text search
 <!## end>
+<!## XL>
+   explanation of <productname>Postgres-XL</productname>'s text search
+<!## end>
    facility.
   </para>
 
@@ -9032,6 +9101,9 @@ SELECT xmlelement(name foo, xmlattributes('xyz' as bar),
 <!## XC>
      SQL and Postgres-XC data types with the XML Schema specification,
 <!## end>
+<!## XL>
+     SQL and Postgres-XL data types with the XML Schema specification,
+<!## end>
      at which point a more precise description will appear.
     </para>
    </sect3>
@@ -9382,6 +9454,9 @@ SELECT xml_is_well_formed_document('<pg:foo xmlns:pg="http://postgresql.org/stuf
 <!## end>
 <!## XC>
     To process values of data type <type>xml</type>, Postgres-XC offers
+<!## end>
+<!## XL>
+    To process values of data type <type>xml</type>, Postgres-XL offers
 <!## end>
     the functions <function>xpath</function> and
     <function>xpath_exists</function>, which evaluate XPath 1.0
@@ -9752,6 +9827,9 @@ table2-mapping
 <!## XC>
    This section describes <productname>Postgres-XC</productname>'s
 <!## end>
+<!## XL>
+   This section describes <productname>Postgres-XL</productname>'s
+<!## end>
    functions for operating on <firstterm>sequence objects</firstterm>.
    Sequence objects (also called sequence generators or just
    sequences) are special single-row tables created with <xref
@@ -9985,6 +10063,9 @@ SELECT setval('foo', 42, false);    <lineannotation>Next <function>nextval</> wi
 <!## end>
 <!## XC>
    available in <productname>Postgres-XC</productname>.
+<!## end>
+<!## XL>
+   available in <productname>Postgres-XL</productname>.
 <!## end>
   </para>
 
@@ -10894,6 +10975,9 @@ SELECT count(*) FROM sometable;
 <!## XC>
     will be executed by <productname>Postgres-XC</productname> using a
 <!## end>
+<!## XL>
+    will be executed by <productname>Postgres-XL</productname> using a
+<!## end>
     sequential scan of the entire table.
    </para>
   </note>
@@ -11595,6 +11679,9 @@ SELECT xmlagg(x) FROM (SELECT x FROM test ORDER BY y DESC) AS tab;
 <!## XC>
     <productname>Postgres-XC</productname>: the behavior is always the
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</productname>: the behavior is always the
+<!## end>
     same as the standard's default, namely <literal>RESPECT NULLS</>.
     Likewise, the standard's <literal>FROM FIRST</> or <literal>FROM LAST</>
     option for <function>nth_value</> is not implemented: only the
@@ -11644,6 +11731,9 @@ SELECT xmlagg(x) FROM (SELECT x FROM test ORDER BY y DESC) AS tab;
 <!## end>
 <!## XC>
    expressions available in <productname>Postgres-XC</productname>.
+<!## end>
+<!## XL>
+   expressions available in <productname>Postgres-XL</productname>.
 <!## end>
    All of the expression forms documented in this section return
    Boolean (true/false) results.
@@ -12014,6 +12104,9 @@ WHERE EXISTS (SELECT 1 FROM tab2 WHERE col2 = tab1.col2);
 <!## XC>
    <productname>Postgres-XC</productname> extensions; the rest are
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> extensions; the rest are
+<!## end>
    <acronym>SQL</acronym>-compliant.
    All of the expression forms documented in this section return
    Boolean (true/false) results.
@@ -12251,6 +12344,9 @@ AND
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname> does this only when comparing the
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> does this only when comparing the
 <!## end>
     results of two row constructors or comparing a row constructor to the
     output of a subquery (as in <xref linkend="functions-subquery">).
@@ -12630,6 +12726,13 @@ postgres=# SELECT * FROM unnest2(ARRAY[[1,2],[3,4]]);
        <entry><productname>Postgres-XC</> version information</entry>
       </row>
 <!## end>
+<!## XL>
+      <row>
+       <entry><literal><function>pgxc_version()</function></literal></entry>
+       <entry><type>text</type></entry>
+       <entry><productname>Postgres-XL Cluster</> version information</entry>
+      </row>
+<!## end>
      </tbody>
     </tgroup>
    </table>
@@ -12645,6 +12748,9 @@ postgres=# SELECT * FROM unnest2(ARRAY[[1,2],[3,4]]);
 <!## end>
 <!## XC>
      parentheses.  (In Postgres-XC, parentheses can optionally be used with
+<!## end>
+<!## XL>
+     parentheses.  (In Postgres-XL, parentheses can optionally be used with
 <!## end>
      <function>current_schema</function>, but not with the others.)
     </para>
@@ -12825,6 +12931,9 @@ SET search_path TO <replaceable>schema</> <optional>, <replaceable>schema</>, ..
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname> server's version.
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> server's version.
 <!## end>
    </para>
 
@@ -13392,6 +13501,15 @@ SELECT pg_type_is_visible('myschema.widget'::regtype);
     statement.
    </para>
 <!## end>
+<!## XL>
+&xlonly;
+   <para>
+    Because value of OID is enforced unique only in each Coordinator
+    or Datanode in <productname>Postgres-XL</>, you should use these
+    functions locally, typically through <type>EXECUTE DIRECT</>
+    statement.
+   </para>
+<!## end>
 
    <indexterm>
     <primary>format_type</primary>
@@ -13655,6 +13773,9 @@ SELECT pg_type_is_visible('myschema.widget'::regtype);
 <!## XC>
    <productname>Postgres-XC</>; avoid using pretty-printed output for dump
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</>; avoid using pretty-printed output for dump
+<!## end>
    purposes.  Passing <literal>false</> for the pretty-print parameter yields
    the same result as the variant that does not have the parameter at all.
   </para>
@@ -13748,7 +13869,16 @@ SELECT typlen FROM pg_type WHERE oid = pg_typeof(33);
   <para>
    Please note that OID is valid locally in each Coordinator and
    Datanode.  You should use specific OID value in statements
-   targetted to specific Coordinator or Datanode by <type>EXECUTE
+   targeted to specific Coordinator or Datanode by <type>EXECUTE
+   DIRECT</> statement.
+  </para>
+<!## end>
+<!## XL>
+&xlonly;
+  <para>
+   Please note that OID is valid locally only in each Coordinator and
+   Datanode.  You should use specific OID value in statements
+   targeted to specific Coordinator or Datanode by <type>EXECUTE
    DIRECT</> statement.
   </para>
 <!## end>
@@ -13839,8 +13969,16 @@ SELECT typlen FROM pg_type WHERE oid = pg_typeof(33);
 <!## XC>
 &xconly;
    <para>
-    In <productname>Postgres-XC</>, OID is maitain locally in each Coordinator and Datanode.
-    If you specify specific OID value, you should do it in SQL stataements targetted to specif
+    In <productname>Postgres-XC</>, OID is maintained locally in each Coordinator and Datanode.
+    If you specify specific OID value, you should do it in SQL statements targeted to specif
+    Coordinator or Datanode by <type>EXECUTE DIRECT</> statement.
+   </para>
+<!## end>
+<!## XL>
+&xlonly;
+   <para>
+    In <productname>Postgres-XL</>, OID is maintained locally in each Coordinator and Datanode.
+    If you specify specific OID value, you should do it in SQL statements targeted to a specific
     Coordinator or Datanode by <type>EXECUTE DIRECT</> statement.
    </para>
 <!## end>
@@ -13889,7 +14027,14 @@ SELECT typlen FROM pg_type WHERE oid = pg_typeof(33);
       <row>
        <entry><literal><function>pgxc_is_committed(transaction_id)</function></literal></entry>
        <entry><type>bool</type></entry>
-       <entry>If given xid (gxid) is commited or aborted.  NULL indicates the status is unknown (running, not yet started, prepared, frozen, etc).</entry>
+       <entry>If given xid (gxid) is committed or aborted.  NULL indicates the status is unknown (running, not yet started, prepared, frozen, etc).</entry>
+      </row>
+<!## end>
+<!## XL>
+      <row>
+       <entry><literal><function>pgxc_is_committed(transaction_id)</function></literal></entry>
+       <entry><type>bool</type></entry>
+       <entry>If given xid (gxid) is committed or aborted.  NULL indicates the status is unknown (running, not yet started, prepared, frozen, etc).</entry>
       </row>
 <!## end>
 
@@ -14091,6 +14236,15 @@ SELECT set_config('log_statement_stats', 'off', false);
     as part of that particular session or transaction.
    </para>
 <!## end>
+<!## XL>
+&xlonly;
+   <para>
+    Similar to the SET command, the set_config() function makes sure
+    that as long as the session/transaction is active, the new parameter
+    value is set across all the nodes on which the SQL queries are being run
+    as part of that particular session or transaction.
+   </para>
+<!## end>
 
    <indexterm>
     <primary>pg_cancel_backend</primary>
@@ -14190,6 +14344,14 @@ SELECT set_config('log_statement_stats', 'off', false);
 
 <!## XC>
 &xconly;
+   <para>
+    Please note that these functions works just locally.  To issue
+    these functions to another Coordinators or Datanodes, you should
+    issue these functions through <type>EXECUTE DIRECT</> statement.
+   </para>
+<!## end>
+<!## XL>
+&xlonly;
    <para>
     Please note that these functions works just locally.  To issue
     these functions to another Coordinators or Datanodes, you should
@@ -14401,6 +14563,14 @@ postgres=# SELECT * FROM pg_xlogfile_name_offset(pg_stop_backup());
     issue these functions through <type>EXECUTE DIRECT</> statement.
    </para>
 <!## end>
+<!## XL>
+&xlonly;
+   <para>
+    Please note that these functions works just locally.  To issue
+    these functions to another Coordinators or Datanodes, you should
+    issue these functions through <type>EXECUTE DIRECT</> statement.
+   </para>
+<!## end>
 
    <indexterm>
     <primary>pg_is_in_recovery</primary>
@@ -14540,6 +14710,14 @@ postgres=# SELECT * FROM pg_xlogfile_name_offset(pg_stop_backup());
    </table>
 <!## XC>
 &xconly;
+   <para>
+    Please note that these functions works just locally.  To issue
+    these functions to another Coordinators or Datanodes, you should
+    issue these functions through <type>EXECUTE DIRECT</> statement.
+   </para>
+<!## end>
+<!## XL>
+&xlonly;
    <para>
     Please note that these functions works just locally.  To issue
     these functions to another Coordinators or Datanodes, you should
@@ -14773,6 +14951,21 @@ postgres=# SELECT * FROM pg_xlogfile_name_offset(pg_stop_backup());
     otherwise in this document.
    </para>
 <!## end>
+<!## XL>
+&xlonly;
+   <para>
+    The object size functions pg_database_size, pg_indexes_size, pg_relation_size,
+    pg_table_size, and pg_total_relation_size return the cumulative size
+    from all the Datanodes. For e.g., pg_relation_size returns the sum of disk
+    space used up by the specified fork at all the Datanodes where the table is
+    distributed or replicated. If the table is replicated on 3 tables, the size
+    will be  3 times that of individual nodes. If you need to retrieve the local
+    results from a particular Coordinator or Datanode, you should issue these
+    function calls explicitly through <type>EXECUTE DIRECT</> statement. All other
+    system functions run locally at the Coordinator, unless explicitly specified
+    otherwise in this document.
+   </para>
+<!## end>
 
    <para>
     The functions shown in <xref linkend="functions-admin-dblocation"> assist
@@ -14838,6 +15031,14 @@ postgres=# SELECT * FROM pg_xlogfile_name_offset(pg_stop_backup());
 
 <!## XC>
 &xconly;
+   <para>
+    Please note that these functions works just locally.  To issue
+    these functions to another Coordinators or Datanodes, you should
+    issue these functions through <type>EXECUTE DIRECT</> statement.
+   </para>
+<!## end>
+<!## XL>
+&xlonly;
    <para>
     Please note that these functions works just locally.  To issue
     these functions to another Coordinators or Datanodes, you should
@@ -15238,6 +15439,17 @@ SELECT (pg_stat_file('filename')).modification;
 	This applies to both transaction and session level advisory locks.
    </para>
 <!## end>
+<!## XL>
+&xlonly;
+   <para>
+    The advisory lock functions are aware of the Postgres XL cluster. Hence,
+    if you use a function like pg_advisory_lock() from a particular Coordinator,
+	the resource will be locked across the complete cluster, so another
+	application calling the same function from a different Coordinator will see
+	this lock, and will wait on the resource until the lock is released.
+	This applies to both transaction and session level advisory locks.
+   </para>
+<!## end>
 
 <!## XC>
 &xconly;
@@ -15295,6 +15507,719 @@ SELECT (pg_stat_file('filename')).modification;
     all the temporary and prepared objects dropped on remote and local node for session.
    </para>
 
+<!## end>
+<!## XL>
+&xlonly;
+   <para>
+    The functions shown in <xref linkend="functions-pgxc-pooler"> manage
+    Postgres-XL pooler.  For details about the Postgres-XL pooler, see
+    <xref linkend="xc-overview-pooler">.
+   </para>
+   <table id="functions-pgxc-pooler">
+    <title>Postgres-XL pooler functions</title>
+    <tgroup cols="3">
+     <thead>
+      <row><entry>Name</entry> <entry>Return Type</entry> <entry>Description</entry>
+      </row>
+     </thead>
+     <tbody>
+      <row>
+       <entry>
+        <literal><function>pgxc_pool_check()</function></literal>
+       </entry>
+       <entry><type>boolean</type></entry>
+       <entry>Check if connection data cached in pooler is consistent with
+              <link linkend="catalog-pgxc-node"><structname>pgxc_node</structname></link>.
+       </entry>
+      </row>
+      <row>
+       <entry>
+        <literal><function>pgxc_pool_reload()</function></literal>
+       </entry>
+       <entry><type>boolean</type></entry>
+       <entry>Reload connection data cached in pooler and reload sessions in server</entry>
+      </row>
+     </tbody>
+    </tgroup>
+   </table>
+
+   <indexterm>
+    <primary>pgxc_pool_check</primary>
+   </indexterm>
+   <para>
+    <function>pgxc_pool_check</> verifies if connection data cached in Postgres-XL pooler
+    is consistent with <link linkend="catalog-pgxc-node"><structname>pgxc_node</structname></link>
+    catalog. Data checked for consistency is Node Oid (<literal><link linkend="catalog-pgxc-node"><structname>pgxc_node</structname></link>.oid</literal>),
+    node port (<literal><link linkend="catalog-pgxc-node"><structname>pgxc_node</structname></link>.node_port</literal>)
+    and node host (<literal><link linkend="catalog-pgxc-node"><structname>pgxc_node</structname></link>.node_host</literal>).
+   </para>
+   <indexterm>
+    <primary>pgxc_pool_reload</primary>
+   </indexterm>
+   <para>
+    <function>pgxc_pool_reload</> reloads connection data cached in pooler from
+    <link linkend="catalog-pgxc-node"><structname>pgxc_node</structname></link> catalog
+    and reloads all the information info cached in pooler. All the active transactions
+    are aborted and all existing pooler connections are dropped. This results in having
+    all the temporary and prepared objects dropped on remote and local node for session.
+   </para>
+
+<!## end>
+
+
+
+
+<!## XC>
+&xconly;
+   <para>
+    The functions shown in <xref linkend="functions-pgxc-add-new-node"> manage
+    addition of a new node to Postgres-XC cluster.
+   </para>
+   <table id="functions-pgxc-add-new-node">
+    <title>Postgres-XC functions to manage addition of a new node</title>
+    <tgroup cols="3">
+     <thead>
+      <row><entry>Name</entry> <entry>Return Type</entry> <entry>Description</entry>
+      </row>
+     </thead>
+     <tbody>
+      <row>
+       <entry>
+        <literal><function>pgxc_lock_for_backup()</function></literal>
+       </entry>
+       <entry><type>boolean</type></entry>
+       <entry>Locks the cluster for taking backup that would be restored on the new node to be added.
+       </entry>
+      </row>
+     </tbody>
+    </tgroup>
+   </table>
+
+   <indexterm>
+    <primary>pgxc_lock_for_backup</primary>
+   </indexterm>
+   <para>
+    <function>pgxc_lock_for_backup</> locks the cluster for taking backup using <application>pg_dump/pg_dumpall</application>.
+    Locking means that we disallow the statemets that change the portions of the catalog which are
+    backed up by <application>pg_dump/pg_dumpall</application>. When locked only the following utility statemets are allowed.
+    Please note that this function does not impact SELECTs or DMLs.
+   </para>
+
+   <table id="utility-statements-allowed-while-locked">
+    <title>Utility statements allowed while the cluster is locked for backup</title>
+    <tgroup cols="1">
+     <thead>
+      <row><entry>Statement</entry>
+      </row>
+     </thead>
+
+     <tbody>
+
+
+      <row>
+       <entry>
+        <literal><command>EXECUTE</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>CREATE NODE</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>START TRANSACTION</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>BEGIN</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>COMMIT</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>ROLLBACK</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>PREPARE TRANSACTION</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>COMMIT PREPARED</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>ROLLBACK PREPARED</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>DECLARE CURSOR</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>CLOSE CURSOR</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>FETCH</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>TRUNCATE</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>COPY</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>PREPARE</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>DEALLOCATE</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>DO</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>NOTIFY</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>LISTEN</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>UNLISTEN</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>LOAD</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>CLUSTER</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>VACUUM</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>EXPLAIN</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>SET</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>SHOW</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>DISCARD</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>LOCK</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>SET CONSTRAINTS</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>CHECKPOINT</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>CREATE BARRIER</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>REINDEX</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>CLEAN CONNECTION</command></literal>
+       </entry>
+      </row>
+
+
+     </tbody>
+    </tgroup>
+   </table>
+
+   <para>
+   To lock the cluster for backup while adding a new node <productname>Postgres-XC</productname> uses advisory locks.
+   Every time a disallowed statement is issued the system tries to acquire a transaction
+   level advisory lock in shared mode and the lock is released when
+   the DDL or the transaction issuing the DDL ends. The function <function>pgxc_lock_for_backup</>
+   tries to acquire the same advisory lock in exclusive mode at session level. It is therefore necessary
+   to keep the session issuing <function>pgxc_lock_for_backup</> alive as long as the issuer wants
+   the system to keep the lock.
+   <productname>Postgres-XC</productname> uses the key pair (0xFFFF, 0xFFFF) as object ID while using
+   advisory lock for backup.
+   The function fails to acquire the lock if any one of the following is true:
+
+    <itemizedlist>
+     <listitem>
+      <para>
+       The caller of the function is not a superuser.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       There are some uncommitted prepared transactions, because they might
+       contain any utility statement belonging to the disallowed group.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       The lock is already held by an uncommitted transaction that has issued
+       a utility statement belonging to the disallowed group.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       The lock is already held by a previous call to the same function
+       and current request is being issued from a different session.
+      </para>
+     </listitem>
+
+    </itemizedlist>
+
+   </para>
+<!## end>
+<!## XL>
+&xlonly;
+   <para>
+    The functions shown in <xref linkend="functions-pgxc-add-new-node"> manage
+    addition of a new node to Postgres-XL cluster.
+   </para>
+   <table id="functions-pgxc-add-new-node">
+    <title>Postgres-XL functions to manage addition of a new node</title>
+    <tgroup cols="3">
+     <thead>
+      <row><entry>Name</entry> <entry>Return Type</entry> <entry>Description</entry>
+      </row>
+     </thead>
+     <tbody>
+      <row>
+       <entry>
+        <literal><function>pgxc_lock_for_backup()</function></literal>
+       </entry>
+       <entry><type>boolean</type></entry>
+       <entry>Locks the cluster for taking backup that would be restored on the new node to be added.
+       </entry>
+      </row>
+     </tbody>
+    </tgroup>
+   </table>
+
+   <indexterm>
+    <primary>pgxc_lock_for_backup</primary>
+   </indexterm>
+   <para>
+    <function>pgxc_lock_for_backup</> locks the cluster for taking backup using <application>pg_dump/pg_dumpall</application>.
+    Locking means that we disallow the statemets that change the portions of the catalog which are
+    backed up by <application>pg_dump/pg_dumpall</application>. When locked only the following utility statemets are allowed.
+    Please note that this function does not impact SELECTs or DMLs.
+   </para>
+
+   <table id="utility-statements-allowed-while-locked">
+    <title>Utility statements allowed while the cluster is locked for backup</title>
+    <tgroup cols="1">
+     <thead>
+      <row><entry>Statement</entry>
+      </row>
+     </thead>
+
+     <tbody>
+
+
+      <row>
+       <entry>
+        <literal><command>EXECUTE</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>CREATE NODE</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>START TRANSACTION</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>BEGIN</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>COMMIT</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>ROLLBACK</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>PREPARE TRANSACTION</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>COMMIT PREPARED</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>ROLLBACK PREPARED</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>DECLARE CURSOR</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>CLOSE CURSOR</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>FETCH</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>TRUNCATE</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>COPY</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>PREPARE</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>DEALLOCATE</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>DO</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>NOTIFY</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>LISTEN</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>UNLISTEN</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>LOAD</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>CLUSTER</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>VACUUM</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>EXPLAIN</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>SET</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>SHOW</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>DISCARD</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>LOCK</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>SET CONSTRAINTS</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>CHECKPOINT</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>CREATE BARRIER</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>REINDEX</command></literal>
+       </entry>
+      </row>
+
+
+      <row>
+       <entry>
+        <literal><command>CLEAN CONNECTION</command></literal>
+       </entry>
+      </row>
+
+
+     </tbody>
+    </tgroup>
+   </table>
+
+   <para>
+   To lock the cluster for backup while adding a new node <productname>Postgres-XL</productname> uses advisory locks.
+   Every time a disallowed statement is issued the system tries to acquire a transaction
+   level advisory lock in shared mode and the lock is released when
+   the DDL or the transaction issuing the DDL ends. The function <function>pgxc_lock_for_backup</>
+   tries to acquire the same advisory lock in exclusive mode at session level. It is therefore necessary
+   to keep the session issuing <function>pgxc_lock_for_backup</> alive as long as the issuer wants
+   the system to keep the lock.
+   <productname>Postgres-XL</productname> uses the key pair (0xFFFF, 0xFFFF) as object ID while using
+   advisory lock for backup.
+   The function fails to acquire the lock if any one of the following is true:
+
+    <itemizedlist>
+     <listitem>
+      <para>
+       The caller of the function is not a superuser.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       There are some uncommitted prepared transactions, because they might
+       contain any utility statement belonging to the disallowed group.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       The lock is already held by an uncommitted transaction that has issued
+       a utility statement belonging to the disallowed group.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       The lock is already held by a previous call to the same function
+       and current request is being issued from a different session.
+      </para>
+     </listitem>
+
+    </itemizedlist>
+
+   </para>
 <!## end>
 
   </sect1>

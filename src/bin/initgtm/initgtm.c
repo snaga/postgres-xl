@@ -772,7 +772,11 @@ CreateRestrictedProcess(char *cmd, PROCESS_INFORMATION *processInfo)
 static void
 usage(const char *progname)
 {
+#ifdef XCP
+	printf(_("%s initializes GTM for a Postgres-XL database cluster.\n\n"), progname);
+#else
 	printf(_("%s initializes a GTM for Postgres-XC database cluster.\n\n"), progname);
+#endif
 	printf(_("Usage:\n"));
 	printf(_("  %s [NODE-TYPE] [OPTION]... [DATADIR]\n"), progname);
 	printf(_("\nOptions:\n"));
@@ -823,7 +827,11 @@ main(int argc, char *argv[])
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
+#ifdef XCP
+			puts("initgtm (Postgres-XL) " PGXC_VERSION);
+#else
 			puts("initgtm (Postgres-XC) " PGXC_VERSION);
+#endif
 			exit(0);
 		}
 	}

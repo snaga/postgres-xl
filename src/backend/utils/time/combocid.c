@@ -30,6 +30,11 @@
  * destroyed at the end of each transaction.
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -270,6 +275,25 @@ GetComboCommandId(CommandId cmin, CommandId cmax)
 static CommandId
 GetRealCmin(CommandId combocid)
 {
+#ifdef XCP
+	/*
+	 * Workaround against assertion failure (or segmentation fault if
+	 * assertions is disabled) in a secondary datanode session when trying
+	 * to check visibility of a tuple with ComboCID.
+	 * ComboCID is only valid in a session that did the update, that is the
+	 * primary session. 
+	 * Ideally we should have a solution, how to share ComboCIDs
+	 * between session just make tuples with ComboCIDs invisible to secondary
+	 * processes. Until then, we will have visibility issues in rare cases, 
+	 * if in the same transaction:
+	 *  1. Tuples inserted
+	 *  2. Cursor is opened
+	 *  3. Tuples inserted in step 1 are deleted
+	 * 
+	 */
+	if (combocid >= usedComboCids)
+		return FirstCommandId - 1;
+#endif
 	Assert(combocid < usedComboCids);
 	return comboCids[combocid].cmin;
 }
@@ -277,6 +301,19 @@ GetRealCmin(CommandId combocid)
 static CommandId
 GetRealCmax(CommandId combocid)
 {
+#ifdef XCP
+	/*
+	 * Ugly workaround against assertion failure (or segmentation fault if
+	 * assertions is disabled) in a secondary datanode session when trying
+	 * to check visibility of a tuple with ComboCID.
+	 * ComboCID is only valid in a session that did the update, that is the
+	 * primary session. Until we come up with a solution, how to share ComboCIDs
+	 * between session just make tuples with ComboCIDs invisible to secondary
+	 * processes.
+	 */
+	if (combocid >= usedComboCids)
+		return FirstCommandId;
+#endif
 	Assert(combocid < usedComboCids);
 	return comboCids[combocid].cmax;
 }

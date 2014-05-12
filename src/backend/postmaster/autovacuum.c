@@ -50,6 +50,11 @@
  * there is a window (caused by pgstat delay) on which a worker may choose a
  * table that was already vacuumed; this is a bug in the current design.
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -79,6 +84,10 @@
 #include "libpq/pqsignal.h"
 #include "miscadmin.h"
 #include "pgstat.h"
+#ifdef XCP
+#include "pgxc/pgxc.h"
+#include "pgxc/pgxcnode.h"
+#endif
 #include "postmaster/autovacuum.h"
 #include "postmaster/fork_process.h"
 #include "postmaster/postmaster.h"
@@ -2149,6 +2158,16 @@ do_autovacuum(void)
 
 	heap_endscan(relScan);
 	heap_close(classRel, AccessShareLock);
+
+#ifdef XCP
+	/*
+	 * Coordinator needs to access Datanodes to process distributed table.
+	 */
+	if (IS_PGXC_COORDINATOR)
+	{
+		InitMultinodeExecutor(false);
+	}
+#endif
 
 	/*
 	 * Create a buffer access strategy object for VACUUM to use.  We want to

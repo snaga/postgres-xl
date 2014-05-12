@@ -62,6 +62,20 @@ FETCH [ <replaceable class="PARAMETER">direction</replaceable> [ FROM | IN ] ] <
     FORWARD ALL
 </synopsis>
 <!## end>
+<!## XL>
+<synopsis>
+FETCH [ <replaceable class="PARAMETER">direction</replaceable> [ FROM | IN ] ] <replaceable class="PARAMETER">cursor_name</replaceable>
+
+<phrase>where <replaceable class="PARAMETER">direction</replaceable> can be empty or one of:</phrase>
+
+    NEXT
+    RELATIVE <replaceable class="PARAMETER">count</replaceable>
+    <replaceable class="PARAMETER">count</replaceable>
+    FORWARD
+    FORWARD <replaceable class="PARAMETER">count</replaceable>
+    FORWARD ALL
+</synopsis>
+<!## end>
  </refsynopsisdiv>
 
  <refsect1>
@@ -95,12 +109,20 @@ FETCH [ <replaceable class="PARAMETER">direction</replaceable> [ FROM | IN ] ] <
    appropriate.
   </para>
 
-&xconly;
 <!## XC>
+&xconly;
   <para>
    The forms <literal>PRIOR</>, <literal>FIRST</>, <literal>LAST</>
    and <literal>ABSOLUTE</> are not supported by the current release
    of <productname>Postgres-XC</>
+  </para>
+<!## end>
+<!## XL>
+&xlonly;
+  <para>
+   The forms <literal>PRIOR</>, <literal>FIRST</>, <literal>LAST</>
+   and <literal>ABSOLUTE</> are not supported by the current release
+   of <productname>Postgres-XL</>
   </para>
 <!## end>
 
@@ -112,11 +134,18 @@ FETCH [ <replaceable class="PARAMETER">direction</replaceable> [ FROM | IN ] ] <
    class="PARAMETER">count</replaceable> exceeds the number of rows
    available).
   </para>
-&xconly;
 <!## XC>
+&xconly;
   <para>
    The form using <literal>BACKWARD</> is not supported by the current
    release of <productname>Postgres-XC</>.
+  </para>
+<!## end>
+<!## XL>
+&xlonly;
+  <para>
+   The form using <literal>BACKWARD</> is not supported in the current
+   release of <productname>Postgres-XL</>.
   </para>
 <!## end>
 
@@ -127,11 +156,18 @@ FETCH [ <replaceable class="PARAMETER">direction</replaceable> [ FROM | IN ] ] <
    row.  This will succeed unless the cursor is positioned before the
    first row or after the last row; in which case, no row is returned.
   </para>
-&xconly;
 <!## XC>
+&xconly;
   <para>
    The form using <literal>BACKWARD</> is not supported by the current
    release of <productname>Postgres-XC</>.
+  </para>
+<!## end>
+<!## XL>
+&xlonly;
+  <para>
+   The form using <literal>BACKWARD</> is not supported in the current
+   release of <productname>Postgres-XL</>.
   </para>
 <!## end>
 
@@ -174,11 +210,18 @@ FETCH [ <replaceable class="PARAMETER">direction</replaceable> [ FROM | IN ] ] <
          <para>
           Fetch the prior row.
          </para>
-&xconly;
 <!## XC>
+&xconly;
         <para>
          <literal>PRIOR</literal> is not supported by the current
          release of <productname>Postgres-XC</>.
+        </para>
+<!## end>
+<!## XL>
+&xlonly;
+        <para>
+         <literal>PRIOR</literal> is not supported by the current
+         release of <productname>Postgres-XL</>.
         </para>
 <!## end>
         </listitem>
@@ -190,11 +233,18 @@ FETCH [ <replaceable class="PARAMETER">direction</replaceable> [ FROM | IN ] ] <
          <para>
           Fetch the first row of the query (same as <literal>ABSOLUTE 1</literal>).
          </para>
-&xconly;
 <!## XC>
+&xconly;
         <para>
          <literal>FIRST</literal> is not supported by the current
          release of <productname>Postgres-XC</>.
+        </para>
+<!## end>
+<!## XL>
+&xlonly;
+        <para>
+         <literal>FIRST</literal> is not supported by the current
+         release of <productname>Postgres-XL</>.
         </para>
 <!## end>
         </listitem>
@@ -206,11 +256,18 @@ FETCH [ <replaceable class="PARAMETER">direction</replaceable> [ FROM | IN ] ] <
          <para>
           Fetch the last row of the query (same as <literal>ABSOLUTE -1</literal>).
          </para>
-&xconly;
 <!## XC>
+&xconly;
         <para>
          <literal>LAST</literal> is not supported by the current
          release of <productname>Postgres-XC</>.
+        </para>
+<!## end>
+<!## XL>
+&xlonly;
+        <para>
+         <literal>LAST</literal> is not supported by the current
+         release of <productname>Postgres-XL</>.
         </para>
 <!## end>
         </listitem>
@@ -231,11 +288,18 @@ FETCH [ <replaceable class="PARAMETER">direction</replaceable> [ FROM | IN ] ] <
           particular, <literal>ABSOLUTE 0</literal> positions before
           the first row.
          </para>
-&xconly;
 <!## XC>
+&xconly;
         <para>
          <literal>ABSOLUTE</literal> is not supported by the current
          release of <productname>Postgres-XC</>.
+        </para>
+<!## end>
+<!## XL>
+&xlonly;
+        <para>
+         <literal>ABSOLUTE</literal> is not supported by the current
+         release of <productname>Postgres-XL</>.
         </para>
 <!## end>
         </listitem>
@@ -324,11 +388,18 @@ FETCH [ <replaceable class="PARAMETER">direction</replaceable> [ FROM | IN ] ] <
           backwards).  <literal>BACKWARD 0</literal> re-fetches the
           current row.
          </para>
-&xconly;
 <!## XC>
+&xconly;
         <para>
          <literal>BACKWARD</literal> is not supported by the current
          release of <productname>Postgres-XC</>.
+        </para>
+<!## end>
+<!## XL>
+&xlonly;
+        <para>
+         <literal>BACKWARD</literal> is not supported by the current
+         release of <productname>Postgres-XL</>.
         </para>
 <!## end>
         </listitem>
@@ -340,11 +411,18 @@ FETCH [ <replaceable class="PARAMETER">direction</replaceable> [ FROM | IN ] ] <
          <para>
           Fetch all prior rows (scanning backwards).
          </para>
-&xconly;
 <!## XC>
+&xconly;
         <para>
          <literal>BACKWARD ALL</literal> is not supported by the current
          release of <productname>Postgres-XC</>.
+        </para>
+<!## end>
+<!## XL>
+&xlonly;
+        <para>
+         <literal>BACKWARD ALL</literal> is not supported by the current
+         release of <productname>Postgres-XL</>.
         </para>
 <!## end>
         </listitem>

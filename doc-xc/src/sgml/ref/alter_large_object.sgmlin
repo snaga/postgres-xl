@@ -35,6 +35,14 @@ ALTER LARGE OBJECT <replaceable class="PARAMETER">large_object_oid</replaceable>
    in the future releases.
   </para>
 <!## end>
+<!## XL>
+&xlonly;
+  <para>
+   <command>LARGE OBJECT</> has not been supported
+   by <productname>Postgres-XL</> yet. This command may be supported
+   in the future releases.
+  </para>
+<!## end>
 <!## PG>
 &pgnotice;
 

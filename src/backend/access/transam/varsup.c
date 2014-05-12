@@ -3,6 +3,11 @@
  * varsup.c
  *	  postgres OID & XID variables support routines
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Copyright (c) 2000-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
  *
@@ -72,6 +77,33 @@ GetForceXidFromGTM(void)
 }
 #endif /* PGXC */
 
+
+#ifdef XCP
+/*
+ * Check if GlobalTransactionId associated with the current distributed session
+ * equals to specified xid.
+ * It is for tuple visibility checks in secondary datanode sessions, which are
+ * not associating next_xid with the current transaction.
+ */
+bool
+TransactionIdIsCurrentGlobalTransactionId(TransactionId xid)
+{
+	return TransactionIdIsValid(next_xid) && TransactionIdEquals(xid, next_xid);
+}
+
+
+/*
+ * Returns GlobalTransactionId associated with the current distributed session
+ * without assigning it to the transaction.
+ */
+TransactionId
+GetNextTransactionId(void)
+{
+	return next_xid;
+}
+#endif
+
+
 /*
  * Allocate the next XID for a new transaction or subtransaction.
  *
@@ -87,15 +119,17 @@ TransactionId
 GetNewTransactionId(bool isSubXact, bool *timestamp_received, GTM_Timestamp *timestamp)
 #else
 GetNewTransactionId(bool isSubXact)
-#endif
+#endif /* PGXC */
 {
 	TransactionId xid;
 #ifdef PGXC
 	bool increment_xid = true;
-
 	*timestamp_received = false;
+#ifdef XCP
+	/* Will be set if we obtain from GTM */
+	IsXidFromGTM = false;
 #endif
-
+#endif /* PGXC */
 	/*
 	 * During bootstrap initialization, we return the special bootstrap
 	 * transaction id.
@@ -128,7 +162,7 @@ GetNewTransactionId(bool isSubXact)
 			xid = (TransactionId) BeginTranGTM(timestamp);
 		*timestamp_received = true;
 	}
-#endif
+#endif /* PGXC */
 
 	LWLockAcquire(XidGenLock, LW_EXCLUSIVE);
 
@@ -165,8 +199,16 @@ GetNewTransactionId(bool isSubXact)
 		}
 	}
 	else if(IS_PGXC_DATANODE || IsConnFromCoord())
-	{
+ 	{
+#ifdef XCP
+		/*
+ 		 * (IS_PGXC_DATANODE && IsInitProcessingMode() && IsPostmasterEnvironment)
+		 * handles new connections, ensures XID is consumed then, but not during initdb
+		 */
+		if (IsAutoVacuumWorkerProcess() || IsAutoVacuumLauncherProcess() || (IS_PGXC_DATANODE && IsInitProcessingMode() && IsPostmasterEnvironment))
+#else
 		if (IsAutoVacuumWorkerProcess())
+#endif
 		{
 			/*
 			 * For an autovacuum worker process, get transaction ID directly from GTM.
@@ -180,7 +222,7 @@ GetNewTransactionId(bool isSubXact)
 				next_xid = (TransactionId) BeginTranGTM(timestamp);
 		}
 		else if (GetForceXidFromGTM())
-		{
+ 		{
 			elog (DEBUG1, "Force get XID from GTM");
 			/* try and get gxid directly from GTM */
 			next_xid = (TransactionId) BeginTranGTM(NULL);
@@ -204,19 +246,22 @@ GetNewTransactionId(bool isSubXact)
 			}
 			else
 				ShmemVariableCache->nextXid = xid;
-		}
-		else
+ 		}
+ 		else
 		{
-			/* Fallback to default */
-			elog(LOG, "Falling back to local Xid. Was = %d, now is = %d",
-					next_xid, ShmemVariableCache->nextXid);
+			if (IsConnFromCoord())
+			{
+				elog(ERROR, "Coordinator has not provided xid for the command");
+			}
+			/* Fallback to default, needed for initdb */
+			elog(LOG, "Falling back to local Xid. Was = %d, now is = %d. autovacLaunch = %d",
+				next_xid, ShmemVariableCache->nextXid, IsAutoVacuumLauncherProcess());
 			xid = ShmemVariableCache->nextXid;
 		}
 	}
 #else
 	xid = ShmemVariableCache->nextXid;
 #endif /* PGXC */
-
 
 	/*----------
 	 * Check to see if it's safe to assign another XID.  This protects against

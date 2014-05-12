@@ -1,7 +1,9 @@
 --
 -- INT4
 --
-CREATE TABLE INT4_TBL(f1 int4);
+--XL: because of how it is used later, make replicated to avoid failures
+--    to avoid partition column update
+CREATE TABLE INT4_TBL(f1 int4) DISTRIBUTE BY REPLICATION;
 INSERT INTO INT4_TBL(f1) VALUES ('   0  ');
 INSERT INTO INT4_TBL(f1) VALUES ('123456     ');
 INSERT INTO INT4_TBL(f1) VALUES ('    -123456');
@@ -41,14 +43,14 @@ INSERT INTO INT4_TBL(f1) VALUES ('');
 ERROR:  invalid input syntax for integer: ""
 LINE 1: INSERT INTO INT4_TBL(f1) VALUES ('');
                                          ^
-SELECT '' AS five, * FROM INT4_TBL;
+SELECT '' AS five, * FROM INT4_TBL ORDER BY f1;
  five |     f1      
 ------+-------------
+      | -2147483647
+      |     -123456
       |           0
       |      123456
-      |     -123456
       |  2147483647
-      | -2147483647
 (5 rows)
 
 SELECT '' AS four, i.* FROM INT4_TBL i WHERE i.f1 <> int2 '0' ORDER BY f1;
@@ -340,5 +342,26 @@ SELECT ((-1::int4<<31)+1)::text;
     text     
 -------------
  -2147483647
+(1 row)
+
+-- check sane handling of INT_MIN overflow cases
+SELECT (-2147483648)::int4 * (-1)::int4;
+ERROR:  integer out of range
+SELECT (-2147483648)::int4 / (-1)::int4;
+ERROR:  integer out of range
+SELECT (-2147483648)::int4 % (-1)::int4;
+ ?column? 
+----------
+        0
+(1 row)
+
+SELECT (-2147483648)::int4 * (-1)::int2;
+ERROR:  integer out of range
+SELECT (-2147483648)::int4 / (-1)::int2;
+ERROR:  integer out of range
+SELECT (-2147483648)::int4 % (-1)::int2;
+ ?column? 
+----------
+        0
 (1 row)
 

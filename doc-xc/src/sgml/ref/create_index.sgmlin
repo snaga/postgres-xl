@@ -7,6 +7,11 @@ PostgreSQL documentation
      CONCURRENTLY not supported yet.
 -->
 <!## end>
+<!## XL>
+<!-- NOTICE:
+     CONCURRENTLY not supported yet.
+-->
+<!## end>
 
 <refentry id="SQL-CREATEINDEX">
  <refmeta>
@@ -35,6 +40,15 @@ CREATE [ UNIQUE ] INDEX [ CONCURRENTLY ] [ <replaceable class="parameter">name</
 </synopsis>
 <!## end>
 <!## XC>
+<synopsis>
+CREATE [ UNIQUE ] INDEX [ <replaceable class="parameter">name</replaceable> ] ON <replaceable class="parameter">table</replaceable> [ USING <replaceable class="parameter">method</replaceable> ]
+    ( { <replaceable class="parameter">column</replaceable> | ( <replaceable class="parameter">expression</replaceable> ) } [ <replaceable class="parameter">opclass</replaceable> ] [ ASC | DESC ] [ NULLS { FIRST | LAST } ] [, ...] )
+    [ WITH ( <replaceable class="PARAMETER">storage_parameter</replaceable> = <replaceable class="PARAMETER">value</replaceable> [, ... ] ) ]
+    [ TABLESPACE <replaceable class="parameter">tablespace</replaceable> ]
+    [ WHERE <replaceable class="parameter">predicate</replaceable> ]
+</synopsis>
+<!## end>
+<!## XL>
 <synopsis>
 CREATE [ UNIQUE ] INDEX [ <replaceable class="parameter">name</replaceable> ] ON <replaceable class="parameter">table</replaceable> [ USING <replaceable class="parameter">method</replaceable> ]
     ( { <replaceable class="parameter">column</replaceable> | ( <replaceable class="parameter">expression</replaceable> ) } [ <replaceable class="parameter">opclass</replaceable> ] [ ASC | DESC ] [ NULLS { FIRST | LAST } ] [, ...] )
@@ -87,6 +101,19 @@ CREATE [ UNIQUE ] INDEX [ <replaceable class="parameter">name</replaceable> ] ON
    methods, but that is fairly complicated.
   </para>
 &xconly;
+  <para>
+   Please note that indexes are maintained only locally in each
+   Coordinator and/or Datanodes.  They do not have any information on
+   the column value outside Coordinator or Datanode.
+  </para>
+<!## end>
+<!## XL>
+  <para>
+   <productname>Postgres-XL</productname> inherits the index methods
+   B-tree, hash, GiST, and GIN from <productname>PostgreSQL</>.  Users can also define their own index
+   methods, but that is fairly complicated.
+  </para>
+&xlonly;
   <para>
    Please note that indexes are maintained only locally in each
    Coordinator and/or Datanodes.  They do not have any information on
@@ -155,6 +182,13 @@ CREATE [ UNIQUE ] INDEX [ <replaceable class="parameter">name</replaceable> ] ON
        support <literal>CONCURRENTLY</literal> in the current release.
       </para>
 <!## end>
+<!## XL>
+&xlonly;
+      <para>
+       <productname>Postgres-XL</productname> does not
+       support <literal>CONCURRENTLY</literal> in the current release.
+      </para>
+<!## end>
 <!## PG>
        <para>
         When this option is used, <productname>PostgreSQL</> will build the
@@ -180,6 +214,9 @@ CREATE [ UNIQUE ] INDEX [ <replaceable class="parameter">name</replaceable> ] ON
 <!## end>
 <!## XC>
         table.  If the name is omitted, <productname>Postgres-XC</> chooses a
+<!## end>
+<!## XL>
+        table.  If the name is omitted, <productname>Postgres-XL</> chooses a
 <!## end>
         suitable name based on the parent table's name and the indexed column
         name(s).
@@ -407,6 +444,9 @@ CREATE [ UNIQUE ] INDEX [ <replaceable class="parameter">name</replaceable> ] ON
 <!## XC>
     Normally <productname>Postgres-XC</> locks the table to be indexed against
 <!## end>
+<!## XL>
+    Normally <productname>Postgres-XL</> locks the table to be indexed against
+<!## end>
     writes and performs the entire index build with a single scan of the
     table. Other transactions can still read the table, but if they try to
     insert, update, or delete rows in the table they will block until the
@@ -423,6 +463,9 @@ CREATE [ UNIQUE ] INDEX [ <replaceable class="parameter">name</replaceable> ] ON
 <!## XC>
     <productname>Postgres-XC</> supports building indexes without locking
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</> supports building indexes without locking
+<!## end>
     out writes.  This method is invoked by specifying the
     <literal>CONCURRENTLY</> option of <command>CREATE INDEX</>.
     When this option is used,
@@ -431,6 +474,9 @@ CREATE [ UNIQUE ] INDEX [ <replaceable class="parameter">name</replaceable> ] ON
 <!## end>
 <!## XC>
     <productname>Postgres-XC</> must perform two scans of the table, and in
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</> must perform two scans of the table, and in
 <!## end>
     addition it must wait for all existing transactions that could potentially
     use the index to terminate.  Thus
@@ -516,6 +562,9 @@ Indexes:
 <!## XC>
    <productname>Postgres-XC</productname>.)  Only B-tree currently
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname>.)  Only B-tree currently
+<!## end>
    supports unique indexes.
   </para>
 
@@ -564,6 +613,9 @@ Indexes:
 <!## XC>
    index creation time: <productname>Postgres-XC</productname> will use one
 <!## end>
+<!## XL>
+   index creation time: <productname>Postgres-XL</productname> will use one
+<!## end>
    of two different hash index creation methods depending on whether the
    estimated index size is more or less than <varname>effective_cache_size</>.
    For best results, make sure that this parameter is also set to something
@@ -585,6 +637,9 @@ Indexes:
 <!## XC>
    Prior releases of <productname>Postgres-XC</productname> also had an
 <!## end>
+<!## XL>
+   Prior releases of <productname>Postgres-XL</productname> also had an
+<!## end>
    R-tree index method.  This method has been removed because
    it had no significant advantages over the GiST method.
    If <literal>USING rtree</> is specified, <command>CREATE INDEX</>
@@ -594,6 +649,15 @@ Indexes:
 
 <!## XC>
 &xconly;
+   <para>
+    With a hash or a round-robin table, it is forbidden to create an unique index.
+   </para>
+   <para>
+    It is not possible to create concurrent index.
+   </para>
+<!## end>
+<!## XL>
+&xlonly;
    <para>
     With a hash or a round-robin table, it is forbidden to create an unique index.
    </para>
@@ -692,6 +756,9 @@ CREATE INDEX CONCURRENTLY sales_quantity_index ON sales_table (quantity);
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname> language extension.  There
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> language extension.  There
 <!## end>
    are no provisions for indexes in the SQL standard.
   </para>

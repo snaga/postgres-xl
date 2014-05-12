@@ -3,6 +3,11 @@
  * planner.c
  *	  The query optimizer external interface.
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -41,7 +46,7 @@
 #ifdef PGXC
 #include "commands/prepare.h"
 #include "pgxc/pgxc.h"
-#include "optimizer/pgxcplan.h"
+#include "pgxc/planner.h"
 #endif
 
 
@@ -91,8 +96,8 @@ static void locate_grouping_columns(PlannerInfo *root,
 						AttrNumber *groupColIdx);
 static List *postprocess_setop_tlist(List *new_tlist, List *orig_tlist);
 static List *select_active_windows(PlannerInfo *root, WindowFuncLists *wflists);
-static List *add_volatile_sort_exprs(List *window_tlist, List *tlist,
-						List *activeWindows);
+static List *make_windowInputTargetList(PlannerInfo *root,
+						   List *tlist, List *activeWindows);
 static List *make_pathkeys_for_window(PlannerInfo *root, WindowClause *wc,
 						 List *tlist, bool canonicalize);
 static void get_column_info_for_window(PlannerInfo *root, WindowClause *wc,
@@ -104,8 +109,17 @@ static void get_column_info_for_window(PlannerInfo *root, WindowClause *wc,
 						   int *ordNumCols,
 						   AttrNumber **ordColIdx,
 						   Oid **ordOperators);
+#ifdef XCP
+static Plan *grouping_distribution(PlannerInfo *root, Plan *plan,
+					  int numGroupCols, AttrNumber *groupColIdx,
+					  List *current_pathkeys, Distribution **distribution);
+static bool equal_distributions(PlannerInfo *root, Distribution *dst1,
+					Distribution *dst2);
+#endif
 #ifdef PGXC
+#ifndef XCP
 static void separate_rowmarks(PlannerInfo *root);
+#endif
 #endif
 
 /*****************************************************************************
@@ -130,6 +144,7 @@ planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		result = (*planner_hook) (parse, cursorOptions, boundParams);
 	else
 #ifdef PGXC
+#ifndef XCP
 		/*
 		 * A Coordinator receiving a query from another Coordinator
 		 * is not allowed to go into PGXC planner.
@@ -137,7 +152,8 @@ planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
 			result = pgxc_planner(parse, cursorOptions, boundParams);
 		else
-#endif
+#endif /* XCP */
+#endif /* PGXC */
 			result = standard_planner(parse, cursorOptions, boundParams);
 	return result;
 }
@@ -153,6 +169,12 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	ListCell   *lp,
 			   *lr;
 
+#ifdef XCP
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord() && parse->utilityStmt &&
+			IsA(parse->utilityStmt, RemoteQuery))
+		return pgxc_direct_planner(parse, cursorOptions, boundParams);
+#endif
+
 	/* Cursor options may come from caller or from DECLARE CURSOR stmt */
 	if (parse->utilityStmt &&
 		IsA(parse->utilityStmt, DeclareCursorStmt))
@@ -167,7 +189,6 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	glob = makeNode(PlannerGlobal);
 
 	glob->boundParams = boundParams;
-	glob->paramlist = NIL;
 	glob->subplans = NIL;
 	glob->subroots = NIL;
 	glob->rewindPlanIDs = NULL;
@@ -176,6 +197,7 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	glob->resultRelations = NIL;
 	glob->relationOids = NIL;
 	glob->invalItems = NIL;
+	glob->nParamExec = 0;
 	glob->lastPHId = 0;
 	glob->lastRowMarkId = 0;
 	glob->transientPlan = false;
@@ -211,6 +233,14 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	/* primary planning entry point (may recurse for subqueries) */
 	top_plan = subquery_planner(glob, parse, NULL,
 								false, tuple_fraction, &root);
+#ifdef XCP
+	if (root->distribution)
+	{
+		top_plan = (Plan *) make_remotesubplan(root, top_plan, NULL,
+											   root->distribution,
+											   root->query_pathkeys);
+	}
+#endif
 
 	/*
 	 * If creating a plan for a scrollable cursor, make sure it can run
@@ -237,6 +267,35 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		lfirst(lp) = set_plan_references(subroot, subplan);
 	}
 
+#ifdef PGXC
+#ifndef XCP
+	/*
+	 * PGXC should apply INSERT/UPDATE/DELETE to a Datanode. We are overriding
+	 * normal Postgres behavior by modifying final plan or by adding a node on
+	 * top of it.
+	 * If the optimizer finds out that there is nothing to UPDATE/INSERT/DELETE
+	 * in the table/s (say using constraint exclusion), it does not add modify
+	 * table plan on the top. We should send queries to the remote nodes only
+	 * when there is something to modify.
+	 */
+	if (IS_PGXC_COORDINATOR && IsA(top_plan, ModifyTable))
+		switch (parse->commandType)
+		{
+			case CMD_INSERT:
+				top_plan = create_remoteinsert_plan(root, top_plan);
+				break;
+			case CMD_UPDATE:
+				top_plan = create_remoteupdate_plan(root, top_plan);
+				break;
+			case CMD_DELETE:
+				top_plan = create_remotedelete_plan(root, top_plan);
+				break;
+			default:
+				break;
+		}
+#endif /* XCP */
+#endif
+
 	/* build the PlannedStmt result */
 	result = makeNode(PlannedStmt);
 
@@ -255,7 +314,12 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	result->rowMarks = glob->finalrowmarks;
 	result->relationOids = glob->relationOids;
 	result->invalItems = glob->invalItems;
-	result->nParamExec = list_length(glob->paramlist);
+	result->nParamExec = glob->nParamExec;
+#ifdef XCP
+	result->distributionType = LOCATOR_TYPE_NONE;
+	result->distributionKey = InvalidAttrNumber;
+	result->distributionNodes = NULL;
+#endif
 
 	return result;
 }
@@ -307,6 +371,7 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 	root->glob = glob;
 	root->query_level = parent_root ? parent_root->query_level + 1 : 1;
 	root->parent_root = parent_root;
+	root->plan_params = NIL;
 	root->planner_cxt = CurrentMemoryContext;
 	root->init_plans = NIL;
 	root->cte_plan_ids = NIL;
@@ -316,8 +381,10 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 	root->hasInheritedTarget = false;
 
 #ifdef PGXC
+#ifndef XCP
 	root->rs_alias_index = 1;
-#endif
+#endif /* XCP */
+#endif /* PGXC */
 	root->hasRecursion = hasRecursion;
 	if (hasRecursion)
 		root->wt_param_id = SS_assign_special_param(root);
@@ -397,6 +464,7 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 	preprocess_rowmarks(root);
 
 #ifdef PGXC
+#ifndef XCP
 	/*
 	 * In Coordinators we separate row marks in two groups
 	 * one comprises of row marks of types ROW_MARK_EXCLUSIVE & ROW_MARK_SHARE
@@ -414,6 +482,7 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 	 * only the rows where t1.val = t2.val is met
 	 */
 	separate_rowmarks(root);
+#endif
 #endif
 	/*
 	 * Expand any rangetable entries that are inheritance sets into "append
@@ -584,6 +653,13 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 			else
 				rowMarks = root->rowMarks;
 
+#ifdef XCP
+			if (root->query_level > 1)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("INSERT/UPDATE/DELETE is not supported in subquery")));
+#endif
+
 			plan = (Plan *) make_modifytable(parse->commandType,
 											 parse->canSetTag,
 									   list_make1_int(parse->resultRelation),
@@ -591,9 +667,6 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 											 returningLists,
 											 rowMarks,
 											 SS_assign_special_param(root));
-#ifdef PGXC
-			plan = pgxc_make_modifytable(root, plan);
-#endif
 		}
 	}
 
@@ -603,13 +676,64 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 	 * and attach the initPlans to the top plan node.
 	 */
 	if (list_length(glob->subplans) != num_old_subplans ||
-		root->glob->paramlist != NIL)
+		root->glob->nParamExec > 0)
 		SS_finalize_plan(root, plan, true);
 
 	/* Return internal info if caller wants it */
 	if (subroot)
 		*subroot = root;
 
+	/* 
+	 * XCPTODO	
+	 * Temporarily block WITH RECURSIVE for most cases 
+	 * until we can fix. Allow for pg_catalog tables and replicated tables.
+	 */
+	if (root->hasRecursion)
+	{
+		int idx;
+		bool recursiveOk = true;
+
+		/* seems to start at 1... */
+		for (idx = 1; idx < root->simple_rel_array_size - 1; idx++)
+		{
+			RangeTblEntry *rte;
+
+			rte = root->simple_rte_array[idx];
+
+			if (!rte || rte->rtekind == RTE_JOIN)
+			{
+				continue;
+			}
+			else if (rte->rtekind == RTE_RELATION)
+			{
+				char loc_type;
+
+				loc_type = GetRelationLocType(rte->relid);
+
+				/* skip pg_catalog */
+				if (loc_type == LOCATOR_TYPE_NONE)
+					continue;
+
+				/* If replicated, allow */
+				if (IsLocatorReplicated(loc_type))
+				{
+					continue;
+				}
+				else
+				{
+					recursiveOk = false;
+					break;
+				}
+			} 
+			else  
+			{
+				recursiveOk = false;
+				break;
+			}
+		}
+		if (!recursiveOk)
+			elog(ERROR, "WITH RECURSIVE currently not supported on distributed tables.");
+	}
 	return plan;
 }
 
@@ -761,9 +885,6 @@ inheritance_planner(PlannerInfo *root)
 	List	   *returningLists = NIL;
 	List	   *rowMarks;
 	ListCell   *lc;
-#ifdef PGXC
-	ModifyTable *mtplan;
-#endif
 
 	/*
 	 * We generate a modified instance of the original Query for each target
@@ -882,6 +1003,39 @@ inheritance_planner(PlannerInfo *root)
 		if (is_dummy_plan(subplan))
 			continue;
 
+#ifdef XCP
+		/*
+		 * All subplans should have the same distribution, except may be
+		 * restriction. At the moment this is always the case but if this
+		 * is changed we should handle inheritance differently.
+		 * Effectively we want to push the modify table down to data nodes, if
+		 * it is running against distributed inherited tables. To achieve this
+		 * we are building up distribution of the query from distributions of
+		 * the subplans.
+		 * If subplans are restricted to different nodes we should union these
+		 * restrictions, if at least one subplan is not restricted we should
+		 * not restrict parent plan.
+		 * After returning a plan from the function valid root->distribution
+		 * value will force proper RemoteSubplan node on top of it.
+		 */
+		if (root->distribution == NULL)
+			root->distribution = subroot.distribution;
+		else if (!bms_is_empty(root->distribution->restrictNodes))
+		{
+			if (bms_is_empty(subroot.distribution->restrictNodes))
+			{
+				bms_free(root->distribution->restrictNodes);
+				root->distribution->restrictNodes = NULL;
+			}
+			else
+			{
+				root->distribution->restrictNodes = bms_join(
+						root->distribution->restrictNodes,
+						subroot.distribution->restrictNodes);
+				subroot.distribution->restrictNodes = NULL;
+			}
+		}
+#endif
 		subplans = lappend(subplans, subplan);
 
 		/*
@@ -964,20 +1118,13 @@ inheritance_planner(PlannerInfo *root)
 		rowMarks = root->rowMarks;
 
 	/* And last, tack on a ModifyTable node to do the UPDATE/DELETE work */
-#ifdef PGXC
-	mtplan = make_modifytable(parse->commandType,
-#else
 	return (Plan *) make_modifytable(parse->commandType,
-#endif
 									 parse->canSetTag,
 									 resultRelations,
 									 subplans,
 									 returningLists,
 									 rowMarks,
 									 SS_assign_special_param(root));
-#ifdef PGXC
-	return pgxc_make_modifytable(root, (Plan *)mtplan);
-#endif
 }
 
 /*--------------------
@@ -1012,6 +1159,9 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 	double		dNumGroups = 0;
 	bool		use_hashed_distinct = false;
 	bool		tested_hashed_distinct = false;
+#ifdef XCP
+	Distribution *distribution = NULL; /* distribution of the result_plan */
+#endif
 
 	/* Tweak caller-supplied tuple_fraction if have LIMIT/OFFSET */
 	if (parse->limitCount || parse->limitOffset)
@@ -1096,7 +1246,6 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		double		sub_limit_tuples;
 		AttrNumber *groupColIdx = NULL;
 		bool		need_tlist_eval = true;
-		QualCost	tlist_cost;
 		Path	   *cheapest_path;
 		Path	   *sorted_path;
 		Path	   *best_path;
@@ -1361,6 +1510,9 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 
 			result_plan = create_plan(root, best_path);
 			current_pathkeys = best_path->pathkeys;
+#ifdef XCP
+			distribution = best_path->distribution;
+#endif
 
 			/* Detect if we'll need an explicit sort for grouping */
 			if (parse->groupClause && !use_hashed_grouping &&
@@ -1402,40 +1554,21 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 					 * the desired tlist.
 					 */
 					result_plan->targetlist = sub_tlist;
-#ifdef PGXC
-					/*
-					 * If the Join tree is completely shippable, adjust the
-					 * target list of the query according to the new targetlist
-					 * set above. For now do this only for SELECT statements.
-					 */
-					if (IsA(result_plan, RemoteQuery) && parse->commandType == CMD_SELECT)
-						pgxc_rqplan_adjust_tlist((RemoteQuery *)result_plan);
-#endif /* PGXC */
 				}
+#ifdef XCP
+				/*
+				 * RemoteSubplan is conditionally projection capable - it is
+				 * pushing projection to the data nodes
+				 */
+				if (IsA(result_plan, RemoteSubplan))
+					result_plan->lefttree->targetlist = sub_tlist;
+#endif
 
 				/*
 				 * Also, account for the cost of evaluation of the sub_tlist.
-				 *
-				 * Up to now, we have only been dealing with "flat" tlists,
-				 * containing just Vars.  So their evaluation cost is zero
-				 * according to the model used by cost_qual_eval() (or if you
-				 * prefer, the cost is factored into cpu_tuple_cost).  Thus we
-				 * can avoid accounting for tlist cost throughout
-				 * query_planner() and subroutines.  But now we've inserted a
-				 * tlist that might contain actual operators, sub-selects, etc
-				 * --- so we'd better account for its cost.
-				 *
-				 * Below this point, any tlist eval cost for added-on nodes
-				 * should be accounted for as we create those nodes.
-				 * Presently, of the node types we can add on, only Agg,
-				 * WindowAgg, and Group project new tlists (the rest just copy
-				 * their input tuples) --- so make_agg(), make_windowagg() and
-				 * make_group() are responsible for computing the added cost.
+				 * See comments for add_tlist_costs_to_plan() for more info.
 				 */
-				cost_qual_eval(&tlist_cost, sub_tlist, root);
-				result_plan->startup_cost += tlist_cost.startup;
-				result_plan->total_cost += tlist_cost.startup +
-					tlist_cost.per_tuple * result_plan->plan_rows;
+				add_tlist_costs_to_plan(root, result_plan, sub_tlist);
 			}
 			else
 			{
@@ -1456,6 +1589,12 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 			 */
 			if (use_hashed_grouping)
 			{
+#ifdef XCP
+				result_plan = grouping_distribution(root, result_plan,
+													numGroupCols, groupColIdx,
+													current_pathkeys,
+													&distribution);
+#endif
 				/* Hashed aggregate plan --- no sort needed */
 				result_plan = (Plan *) make_agg(root,
 												tlist,
@@ -1467,6 +1606,18 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 									extract_grouping_ops(parse->groupClause),
 												numGroups,
 												result_plan);
+#ifdef PGXC
+#ifndef XCP
+				/*
+				 * Grouping will certainly not increase the number of rows
+				 * coordinator fetches from datanode, in fact it's expected to
+				 * reduce the number drastically. Hence, try pushing GROUP BY
+				 * clauses and aggregates to the datanode, thus saving bandwidth.
+				 */
+				if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+					result_plan = create_remoteagg_plan(root, result_plan);
+#endif /* XCP */
+#endif /* PGXC */
 				/* Hashed aggregation produces randomly-ordered results */
 				current_pathkeys = NIL;
 			}
@@ -1500,6 +1651,12 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 					current_pathkeys = NIL;
 				}
 
+#ifdef XCP
+				result_plan = grouping_distribution(root, result_plan,
+													numGroupCols, groupColIdx,
+													current_pathkeys,
+													&distribution);
+#endif
 				result_plan = (Plan *) make_agg(root,
 												tlist,
 												(List *) parse->havingQual,
@@ -1530,6 +1687,12 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 					current_pathkeys = root->group_pathkeys;
 				}
 
+#ifdef XCP
+				result_plan = grouping_distribution(root, result_plan,
+													numGroupCols, groupColIdx,
+													current_pathkeys,
+													&distribution);
+#endif
 				result_plan = (Plan *) make_group(root,
 												  tlist,
 												  (List *) parse->havingQual,
@@ -1553,12 +1716,18 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 				 * this routine to avoid having to generate the plan in the
 				 * first place.
 				 */
+#ifdef XCP
+				result_plan = grouping_distribution(root, result_plan, 0, NULL,
+													current_pathkeys,
+													&distribution);
+#endif
 				result_plan = (Plan *) make_result(root,
 												   tlist,
 												   parse->havingQual,
 												   NULL);
 			}
 #ifdef PGXC
+#ifndef XCP
 			/*
 			 * Grouping will certainly not increase the number of rows
 			 * Coordinator fetches from Datanode, in fact it's expected to
@@ -1567,6 +1736,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 			 */
 			if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
 				result_plan = create_remotegrouping_plan(root, result_plan);
+#endif /* XCP */
 #endif /* PGXC */
 
 		}						/* end of non-minmax-aggregate case */
@@ -1600,32 +1770,41 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 
 			/*
 			 * The "base" targetlist for all steps of the windowing process is
-			 * a flat tlist of all Vars and Aggs needed in the result. (In
+			 * a flat tlist of all Vars and Aggs needed in the result.  (In
 			 * some cases we wouldn't need to propagate all of these all the
 			 * way to the top, since they might only be needed as inputs to
 			 * WindowFuncs.  It's probably not worth trying to optimize that
-			 * though.)  We also need any volatile sort expressions, because
-			 * make_sort_from_pathkeys won't add those on its own, and anyway
-			 * we want them evaluated only once at the bottom of the stack. As
-			 * we climb up the stack, we add outputs for the WindowFuncs
-			 * computed at each level.	Also, each input tlist has to present
-			 * all the columns needed to sort the data for the next WindowAgg
-			 * step.  That's handled internally by make_sort_from_pathkeys,
-			 * but we need the copyObject steps here to ensure that each plan
-			 * node has a separately modifiable tlist.
-			 *
-			 * Note: it's essential here to use PVC_INCLUDE_AGGREGATES so that
-			 * Vars mentioned only in aggregate expressions aren't pulled out
-			 * as separate targetlist entries.	Otherwise we could be putting
-			 * ungrouped Vars directly into an Agg node's tlist, resulting in
-			 * undefined behavior.
+			 * though.)  We also add window partitioning and sorting
+			 * expressions to the base tlist, to ensure they're computed only
+			 * once at the bottom of the stack (that's critical for volatile
+			 * functions).  As we climb up the stack, we'll add outputs for
+			 * the WindowFuncs computed at each level.
 			 */
-			window_tlist = flatten_tlist(tlist,
-										 PVC_INCLUDE_AGGREGATES,
-										 PVC_INCLUDE_PLACEHOLDERS);
-			window_tlist = add_volatile_sort_exprs(window_tlist, tlist,
-												   activeWindows);
+			window_tlist = make_windowInputTargetList(root,
+													  tlist,
+													  activeWindows);
+
+			/*
+			 * The copyObject steps here are needed to ensure that each plan
+			 * node has a separately modifiable tlist.  (XXX wouldn't a
+			 * shallow list copy do for that?)
+			 */
 			result_plan->targetlist = (List *) copyObject(window_tlist);
+#ifdef XCP
+			/*
+			 * We can not guarantee correct result of windowing function
+			 * if aggregation is pushed down to Datanodes. So if current plan
+			 * produces a distributed result set we should bring it to
+			 * coordinator.
+			 */
+			if (distribution)
+			{
+				result_plan = (Plan *)
+						make_remotesubplan(root, result_plan, NULL,
+										   distribution, current_pathkeys);
+				distribution = NULL;
+			}
+#endif
 
 			foreach(l, activeWindows)
 			{
@@ -1648,9 +1827,11 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 				 * really have to sort.  Even when no explicit sort is needed,
 				 * we need to have suitable resjunk items added to the input
 				 * plan's tlist for any partitioning or ordering columns that
-				 * aren't plain Vars.  Furthermore, this way we can use
-				 * existing infrastructure to identify which input columns are
-				 * the interesting ones.
+				 * aren't plain Vars.  (In theory, make_windowInputTargetList
+				 * should have provided all such columns, but let's not assume
+				 * that here.)  Furthermore, this way we can use existing
+				 * infrastructure to identify which input columns are the
+				 * interesting ones.
 				 */
 				if (window_pathkeys)
 				{
@@ -1667,6 +1848,30 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 						result_plan = (Plan *) sort_plan;
 						current_pathkeys = window_pathkeys;
 					}
+#ifdef XCP
+					/*
+					 * In our code, Sort may be pushed down to the Datanodes,
+					 * and therefore we may get the sort_plan is not really a
+					 * Sort node. In this case we should get sort columns from
+					 * the top RemoteSubplan
+					 */
+					if (!IsA(sort_plan, Sort))
+					{
+						RemoteSubplan *pushdown;
+						pushdown = find_push_down_plan(sort_plan, true);
+						Assert(pushdown && pushdown->sort);
+						get_column_info_for_window(root, wc, tlist,
+												   pushdown->sort->numCols,
+												   pushdown->sort->sortColIdx,
+												   &partNumCols,
+												   &partColIdx,
+												   &partOperators,
+												   &ordNumCols,
+												   &ordColIdx,
+												   &ordOperators);
+					}
+					else
+#endif
 					/* In either case, extract the per-column information */
 					get_column_info_for_window(root, wc, tlist,
 											   sort_plan->numCols,
@@ -1766,6 +1971,14 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 
 		if (use_hashed_distinct)
 		{
+#ifdef XCP
+			result_plan = grouping_distribution(root, result_plan,
+											list_length(parse->distinctClause),
+								   extract_grouping_cols(parse->distinctClause,
+													  result_plan->targetlist),
+												current_pathkeys,
+												&distribution);
+#endif
 			/* Hashed aggregate plan --- no sort needed */
 			result_plan = (Plan *) make_agg(root,
 											result_plan->targetlist,
@@ -1822,6 +2035,14 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 															   -1.0);
 			}
 
+#ifdef XCP
+			result_plan = grouping_distribution(root, result_plan,
+											list_length(parse->distinctClause),
+								   extract_grouping_cols(parse->distinctClause,
+													  result_plan->targetlist),
+												current_pathkeys,
+												&distribution);
+#endif
 			result_plan = (Plan *) make_unique(result_plan,
 											   parse->distinctClause);
 			result_plan->plan_rows = dNumDistinctRows;
@@ -1841,11 +2062,6 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 														   result_plan,
 														 root->sort_pathkeys,
 														   limit_tuples);
-#ifdef PGXC
-			if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
-				result_plan = (Plan *) create_remotesort_plan(root,
-														result_plan);
-#endif /* PGXC */
 			current_pathkeys = root->sort_pathkeys;
 		}
 	}
@@ -1874,16 +2090,21 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 	 */
 	if (parse->limitCount || parse->limitOffset)
 	{
+#ifdef XCP
+		/* We should put Limit on top of distributed results */
+		if (distribution)
+		{
+			result_plan = (Plan *)
+					make_remotesubplan(root, result_plan, NULL,
+									   distribution, current_pathkeys);
+			distribution = NULL;
+		}
+#endif
 		result_plan = (Plan *) make_limit(result_plan,
 										  parse->limitOffset,
 										  parse->limitCount,
 										  offset_est,
 										  count_est);
-#ifdef PGXC
-		/* See if we can push LIMIT or OFFSET clauses to Datanodes */
-		if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
-			result_plan = (Plan *) create_remotelimit_plan(root, result_plan);
-#endif /* PGXC */
 	}
 
 	/*
@@ -1892,7 +2113,211 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 	 */
 	root->query_pathkeys = current_pathkeys;
 
+#ifdef XCP
+	/*
+	 * Adjust query distribution if requested
+	 */
+	if (root->distribution)
+	{
+		if (equal_distributions(root, root->distribution, distribution))
+		{
+			if (IsLocatorReplicated(distribution->distributionType) &&
+					contain_volatile_functions((Node *) result_plan->targetlist))
+				ereport(ERROR,
+						(errcode(ERRCODE_STATEMENT_TOO_COMPLEX),
+						 errmsg("can not update replicated table with result of volatile function")));
+			/*
+			 * Source tuple will be consumed on the same node where it is
+			 * produced, so if it is known that some node does not yield tuples
+			 * we do not want to send subquery for execution on these nodes
+			 * at all.
+			 * So copy the restriction to the external distribution.
+			 * XXX Is that ever possible if external restriction is already
+			 * defined? If yes we probably should use intersection of the sets,
+			 * and if resulting set is empty create dummy plan and set it as
+			 * the result_plan. Need to think this over
+			 */
+			root->distribution->restrictNodes =
+					bms_copy(distribution->restrictNodes);
+		}
+		else
+		{
+			RemoteSubplan *distributePlan;
+			/*
+			 * If the planned statement is either UPDATE or DELETE different
+			 * distributions here mean the ModifyTable node will be placed on
+			 * top of RemoteSubquery. UPDATE and DELETE versions of ModifyTable
+			 * use TID of incoming tuple to apply the changes, but the
+			 * RemoteSubquery node supplies RemoteTuples, without such field.
+			 * Therefore we can not execute such plan.
+			 * Most common case is when UPDATE statement modifies the
+			 * distribution column. Also incorrect distributed plan is possible
+			 * if planning a complex UPDATE or DELETE statement involving table
+			 * join.
+			 * We output different error messages in UPDATE and DELETE cases
+			 * mostly for compatibility with PostgresXC. It is hard to determine
+			 * here, if such plan is because updated partitioning key or poorly
+			 * planned join, so in case of UPDATE we assume the first case as
+			 * more probable, for DELETE the second case is only possible.
+			 * The error message may be misleading, if that is UPDATE and join,
+			 * but hope we will target distributed update problem soon.
+			 * There are two ways of fixing that:
+			 * 1. Improve distribution planner to never consider to redistribute
+			 * target table. So if planner finds that it has no choice, it would
+			 * throw error somewhere else. So here we only be catching cases of
+			 * updating distribution columns.
+			 * 2. Modify executor and allow distribution column updates. However
+			 * there are a lot of issues behind the scene when implementing that
+			 * approach.
+			 */
+			if (parse->commandType == CMD_UPDATE)
+				ereport(ERROR,
+						(errcode(ERRCODE_STATEMENT_TOO_COMPLEX),
+						 errmsg("could not plan this distributed update"),
+						 errdetail("correlated UPDATE or updating distribution column currently not supported in Postgres-XL.")));
+			if (parse->commandType == CMD_DELETE)
+				ereport(ERROR,
+						(errcode(ERRCODE_STATEMENT_TOO_COMPLEX),
+						 errmsg("could not plan this distributed delete"),
+						 errdetail("correlated or complex DELETE is currently not supported in Postgres-XL.")));
+
+			/*
+			 * Redistribute result according to requested distribution.
+			 */
+			if ((distributePlan = find_push_down_plan(result_plan, true)))
+			{
+				Bitmapset  *tmpset;
+				int			nodenum;
+
+				distributePlan->distributionType = root->distribution->distributionType;
+				distributePlan->distributionKey = InvalidAttrNumber;
+				if (root->distribution->distributionExpr)
+				{
+					ListCell   *lc;
+
+					/* Find distribution expression in the target list */
+					foreach(lc, distributePlan->scan.plan.targetlist)
+					{
+						TargetEntry *tle = (TargetEntry *) lfirst(lc);
+
+						if (equal(tle->expr, root->distribution->distributionExpr))
+						{
+							distributePlan->distributionKey = tle->resno;
+							break;
+						}
+					}
+
+					if (distributePlan->distributionKey == InvalidAttrNumber)
+					{
+						Plan 	   *lefttree = distributePlan->scan.plan.lefttree;
+						Plan 	   *plan;
+						TargetEntry *newtle;
+
+						/* The expression is not found, need to add junk */
+						newtle = makeTargetEntry((Expr *) root->distribution->distributionExpr,
+												 list_length(lefttree->targetlist) + 1,
+												 NULL,
+												 true);
+
+						if (is_projection_capable_plan(lefttree))
+						{
+							/* Ok to modify subplan's target list */
+							lefttree->targetlist = lappend(lefttree->targetlist,
+														   newtle);
+						}
+						else
+						{
+							/* Use Result node to calculate expression */
+							List *newtlist = list_copy(lefttree->targetlist);
+							newtlist = lappend(newtlist, newtle);
+							lefttree = (Plan *) make_result(root, newtlist, NULL, lefttree);
+							distributePlan->scan.plan.lefttree = lefttree;
+						}
+						/* Update all the hierarchy */
+						for (plan = result_plan; plan != lefttree; plan = plan->lefttree)
+							plan->targetlist = lefttree->targetlist;
+					}
+				}
+				tmpset = bms_copy(root->distribution->nodes);
+				distributePlan->distributionNodes = NIL;
+				while ((nodenum = bms_first_member(tmpset)) >= 0)
+					distributePlan->distributionNodes = lappend_int(
+							distributePlan->distributionNodes, nodenum);
+				bms_free(tmpset);
+			}
+			else
+				result_plan = (Plan *) make_remotesubplan(root,
+														  result_plan,
+														  root->distribution,
+														  distribution,
+														  NULL);
+		}
+	}
+	else
+	{
+		/*
+		 * Inform caller about distribution of the subplan
+		 */
+		root->distribution = distribution;
+	}
+#endif
+
 	return result_plan;
+}
+
+/*
+ * add_tlist_costs_to_plan
+ *
+ * Estimate the execution costs associated with evaluating the targetlist
+ * expressions, and add them to the cost estimates for the Plan node.
+ *
+ * If the tlist contains set-returning functions, also inflate the Plan's cost
+ * and plan_rows estimates accordingly.  (Hence, this must be called *after*
+ * any logic that uses plan_rows to, eg, estimate qual evaluation costs.)
+ *
+ * Note: during initial stages of planning, we mostly consider plan nodes with
+ * "flat" tlists, containing just Vars.  So their evaluation cost is zero
+ * according to the model used by cost_qual_eval() (or if you prefer, the cost
+ * is factored into cpu_tuple_cost).  Thus we can avoid accounting for tlist
+ * cost throughout query_planner() and subroutines.  But once we apply a
+ * tlist that might contain actual operators, sub-selects, etc, we'd better
+ * account for its cost.  Any set-returning functions in the tlist must also
+ * affect the estimated rowcount.
+ *
+ * Once grouping_planner() has applied a general tlist to the topmost
+ * scan/join plan node, any tlist eval cost for added-on nodes should be
+ * accounted for as we create those nodes.  Presently, of the node types we
+ * can add on later, only Agg, WindowAgg, and Group project new tlists (the
+ * rest just copy their input tuples) --- so make_agg(), make_windowagg() and
+ * make_group() are responsible for calling this function to account for their
+ * tlist costs.
+ */
+void
+add_tlist_costs_to_plan(PlannerInfo *root, Plan *plan, List *tlist)
+{
+	QualCost	tlist_cost;
+	double		tlist_rows;
+
+	cost_qual_eval(&tlist_cost, tlist, root);
+	plan->startup_cost += tlist_cost.startup;
+	plan->total_cost += tlist_cost.startup +
+		tlist_cost.per_tuple * plan->plan_rows;
+
+	tlist_rows = tlist_returns_set_rows(tlist);
+	if (tlist_rows > 1)
+	{
+		/*
+		 * We assume that execution costs of the tlist proper were all
+		 * accounted for by cost_qual_eval.  However, it still seems
+		 * appropriate to charge something more for the executor's general
+		 * costs of processing the added tuples.  The cost is probably less
+		 * than cpu_tuple_cost, though, so we arbitrarily use half of that.
+		 */
+		plan->total_cost += plan->plan_rows * (tlist_rows - 1) *
+			cpu_tuple_cost / 2;
+
+		plan->plan_rows *= tlist_rows;
+	}
 }
 
 /*
@@ -2086,6 +2511,7 @@ preprocess_rowmarks(PlannerInfo *root)
 }
 
 #ifdef PGXC
+#ifndef XCP
 /*
  * separate_rowmarks - In XC Coordinators are supposed to skip handling
  *                of type ROW_MARK_EXCLUSIVE & ROW_MARK_SHARE.
@@ -2120,7 +2546,7 @@ separate_rowmarks(PlannerInfo *root)
 	root->rowMarks = rml_2;
 	root->xc_rowMarks = rml_1;
 }
-
+#endif /*XCP*/
 #endif /*PGXC*/
 
 /*
@@ -3044,18 +3470,57 @@ select_active_windows(PlannerInfo *root, WindowFuncLists *wflists)
 }
 
 /*
- * add_volatile_sort_exprs
- *		Identify any volatile sort/group expressions used by the active
- *		windows, and add them to window_tlist if not already present.
- *		Return the modified window_tlist.
+ * make_windowInputTargetList
+ *	  Generate appropriate target list for initial input to WindowAgg nodes.
+ *
+ * When grouping_planner inserts one or more WindowAgg nodes into the plan,
+ * this function computes the initial target list to be computed by the node
+ * just below the first WindowAgg.  This list must contain all values needed
+ * to evaluate the window functions, compute the final target list, and
+ * perform any required final sort step.  If multiple WindowAggs are needed,
+ * each intermediate one adds its window function results onto this tlist;
+ * only the topmost WindowAgg computes the actual desired target list.
+ *
+ * This function is much like make_subplanTargetList, though not quite enough
+ * like it to share code.  As in that function, we flatten most expressions
+ * into their component variables.  But we do not want to flatten window
+ * PARTITION BY/ORDER BY clauses, since that might result in multiple
+ * evaluations of them, which would be bad (possibly even resulting in
+ * inconsistent answers, if they contain volatile functions).  Also, we must
+ * not flatten GROUP BY clauses that were left unflattened by
+ * make_subplanTargetList, because we may no longer have access to the
+ * individual Vars in them.
+ *
+ * Another key difference from make_subplanTargetList is that we don't flatten
+ * Aggref expressions, since those are to be computed below the window
+ * functions and just referenced like Vars above that.
+ *
+ * 'tlist' is the query's final target list.
+ * 'activeWindows' is the list of active windows previously identified by
+ *			select_active_windows.
+ *
+ * The result is the targetlist to be computed by the plan node immediately
+ * below the first WindowAgg node.
  */
 static List *
-add_volatile_sort_exprs(List *window_tlist, List *tlist, List *activeWindows)
+make_windowInputTargetList(PlannerInfo *root,
+						   List *tlist,
+						   List *activeWindows)
 {
-	Bitmapset  *sgrefs = NULL;
+	Query	   *parse = root->parse;
+	Bitmapset  *sgrefs;
+	List	   *new_tlist;
+	List	   *flattenable_cols;
+	List	   *flattenable_vars;
 	ListCell   *lc;
 
-	/* First, collect the sortgrouprefs of the windows into a bitmapset */
+	Assert(parse->hasWindowFuncs);
+
+	/*
+	 * Collect the sortgroupref numbers of window PARTITION/ORDER BY clauses
+	 * into a bitmapset for convenient reference below.
+	 */
+	sgrefs = NULL;
 	foreach(lc, activeWindows)
 	{
 		WindowClause *wc = (WindowClause *) lfirst(lc);
@@ -3075,34 +3540,74 @@ add_volatile_sort_exprs(List *window_tlist, List *tlist, List *activeWindows)
 		}
 	}
 
+	/* Add in sortgroupref numbers of GROUP BY clauses, too */
+	foreach(lc, parse->groupClause)
+	{
+		SortGroupClause *grpcl = (SortGroupClause *) lfirst(lc);
+
+		sgrefs = bms_add_member(sgrefs, grpcl->tleSortGroupRef);
+	}
+
 	/*
-	 * Now scan the original tlist to find the referenced expressions. Any
-	 * that are volatile must be added to window_tlist.
-	 *
-	 * Note: we know that the input window_tlist contains no items marked with
-	 * ressortgrouprefs, so we don't have to worry about collisions of the
-	 * reference numbers.
+	 * Construct a tlist containing all the non-flattenable tlist items, and
+	 * save aside the others for a moment.
 	 */
+	new_tlist = NIL;
+	flattenable_cols = NIL;
+
 	foreach(lc, tlist)
 	{
 		TargetEntry *tle = (TargetEntry *) lfirst(lc);
 
+		/*
+		 * Don't want to deconstruct window clauses or GROUP BY items.  (Note
+		 * that such items can't contain window functions, so it's okay to
+		 * compute them below the WindowAgg nodes.)
+		 */
 		if (tle->ressortgroupref != 0 &&
-			bms_is_member(tle->ressortgroupref, sgrefs) &&
-			contain_volatile_functions((Node *) tle->expr))
+			bms_is_member(tle->ressortgroupref, sgrefs))
 		{
+			/* Don't want to deconstruct this value, so add to new_tlist */
 			TargetEntry *newtle;
 
 			newtle = makeTargetEntry(tle->expr,
-									 list_length(window_tlist) + 1,
+									 list_length(new_tlist) + 1,
 									 NULL,
 									 false);
+			/* Preserve its sortgroupref marking, in case it's volatile */
 			newtle->ressortgroupref = tle->ressortgroupref;
-			window_tlist = lappend(window_tlist, newtle);
+			new_tlist = lappend(new_tlist, newtle);
+		}
+		else
+		{
+			/*
+			 * Column is to be flattened, so just remember the expression for
+			 * later call to pull_var_clause.  There's no need for
+			 * pull_var_clause to examine the TargetEntry node itself.
+			 */
+			flattenable_cols = lappend(flattenable_cols, tle->expr);
 		}
 	}
 
-	return window_tlist;
+	/*
+	 * Pull out all the Vars and Aggrefs mentioned in flattenable columns, and
+	 * add them to the result tlist if not already present.  (Some might be
+	 * there already because they're used directly as window/group clauses.)
+	 *
+	 * Note: it's essential to use PVC_INCLUDE_AGGREGATES here, so that the
+	 * Aggrefs are placed in the Agg node's tlist and not left to be computed
+	 * at higher levels.
+	 */
+	flattenable_vars = pull_var_clause((Node *) flattenable_cols,
+									   PVC_INCLUDE_AGGREGATES,
+									   PVC_INCLUDE_PLACEHOLDERS);
+	new_tlist = add_to_flat_tlist(new_tlist, flattenable_vars);
+
+	/* clean up cruft */
+	list_free(flattenable_vars);
+	list_free(flattenable_cols);
+
+	return new_tlist;
 }
 
 /*
@@ -3400,3 +3905,85 @@ plan_cluster_use_sort(Oid tableOid, Oid indexOid)
 
 	return (seqScanAndSortPath.total_cost < indexScanPath->path.total_cost);
 }
+
+
+#ifdef XCP
+/*
+ * Grouping preserves distribution if distribution key is the
+ * first grouping key or if distribution is replicated.
+ * In these cases aggregation is fully pushed down to nodes.
+ * Otherwise we need 2-phase aggregation so put remote subplan
+ * on top of the result_plan. When adding result agg on top of
+ * RemoteSubplan first aggregation phase will be pushed down
+ * automatically.
+ */
+static Plan *
+grouping_distribution(PlannerInfo *root, Plan *plan,
+					  int numGroupCols, AttrNumber *groupColIdx,
+					  List *current_pathkeys, Distribution **distribution)
+{
+	if (*distribution &&
+			!IsLocatorReplicated((*distribution)->distributionType) &&
+			(numGroupCols == 0 ||
+					(*distribution)->distributionExpr == NULL ||
+					!equal(((TargetEntry *)list_nth(plan->targetlist, groupColIdx[0]-1))->expr,
+						   (*distribution)->distributionExpr)))
+	{
+		Plan *result_plan;
+		result_plan = (Plan *) make_remotesubplan(root, plan, NULL,
+												  *distribution,
+												  current_pathkeys);
+		*distribution = NULL;
+		return result_plan;
+	}
+	return plan;
+}
+
+
+/*
+ * Check if two distributions are equal.
+ * Distributions are considered equal if they are of the same type, on the same
+ * nodes and if they have distribution expressions defined they are equal
+ * (either the same expressions or they are member of the same equivalence
+ * class)
+ */
+static bool
+equal_distributions(PlannerInfo *root, Distribution *dst1,
+					Distribution *dst2)
+{
+	/* fast path */
+	if (dst1 == dst2)
+		return true;
+	if (dst1 == NULL || dst2 == NULL)
+		return false;
+
+	/* Conditions that easier to check go first */
+	if (dst1->distributionType != dst2->distributionType)
+		return false;
+
+	if (!bms_equal(dst1->nodes, dst2->nodes))
+		return false;
+
+	if (equal(dst1->distributionExpr, dst2->distributionExpr))
+		return true;
+
+	/*
+	 * For more thorough expression check we need to ensure they both are
+	 * defined
+	 */
+	if (dst1->distributionExpr == NULL || dst2->distributionExpr == NULL)
+		return false;
+
+	/*
+	 * More thorough check, but allows some important cases, like if
+	 * distribution column is not updated (implicit set distcol=distcol) or
+	 * set distcol = CONST, ... WHERE distcol = CONST - pattern used by many
+	 * applications
+	 */
+	if (exprs_known_equal(root, dst1->distributionExpr, dst2->distributionExpr))
+		return true;
+
+	/* The restrictNodes field does not matter for distribution equality */
+	return false;
+}
+#endif

@@ -4,6 +4,11 @@
  *	  prototypes for costsize.c and clausesel.c.
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -26,6 +31,10 @@
 #define DEFAULT_CPU_TUPLE_COST	0.01
 #define DEFAULT_CPU_INDEX_TUPLE_COST 0.005
 #define DEFAULT_CPU_OPERATOR_COST  0.0025
+#ifdef XCP
+#define DEFAULT_NETWORK_BYTE_COST  0.001
+#define DEFAULT_REMOTE_QUERY_COST  100.0
+#endif
 
 #define DEFAULT_EFFECTIVE_CACHE_SIZE  16384		/* measured in pages */
 
@@ -48,6 +57,10 @@ extern PGDLLIMPORT double random_page_cost;
 extern PGDLLIMPORT double cpu_tuple_cost;
 extern PGDLLIMPORT double cpu_index_tuple_cost;
 extern PGDLLIMPORT double cpu_operator_cost;
+#ifdef XCP
+extern PGDLLIMPORT double network_byte_cost;
+extern PGDLLIMPORT double remote_query_cost;
+#endif
 extern PGDLLIMPORT int effective_cache_size;
 extern Cost disable_cost;
 extern bool enable_seqscan;
@@ -62,11 +75,8 @@ extern bool enable_material;
 extern bool enable_mergejoin;
 extern bool enable_hashjoin;
 #ifdef PGXC
-extern bool enable_fast_query_shipping;
 extern bool enable_remotejoin;
 extern bool enable_remotegroup;
-extern bool enable_remotesort;
-extern bool enable_remotelimit;
 #endif
 extern int	constraint_exclusion;
 
@@ -92,7 +102,7 @@ extern void cost_functionscan(Path *path, PlannerInfo *root,
 extern void cost_valuesscan(Path *path, PlannerInfo *root,
 				RelOptInfo *baserel);
 #ifdef PGXC
-extern void cost_remotequery(RemoteQueryPath *rqpath, PlannerInfo *root, RelOptInfo *rel);
+extern void cost_remotequery(Path *path, PlannerInfo *root, RelOptInfo *baserel);
 #endif
 extern void cost_ctescan(Path *path, PlannerInfo *root, RelOptInfo *baserel);
 extern void cost_recursive_union(Plan *runion, Plan *nrterm, Plan *rterm);
@@ -154,6 +164,11 @@ extern void final_cost_hashjoin(PlannerInfo *root, HashPath *path,
 extern void cost_subplan(PlannerInfo *root, SubPlan *subplan, Plan *plan);
 extern void cost_qual_eval(QualCost *cost, List *quals, PlannerInfo *root);
 extern void cost_qual_eval_node(QualCost *cost, Node *qual, PlannerInfo *root);
+#ifdef XCP
+extern void cost_remote_subplan(Path *path,
+			  Cost input_startup_cost, Cost input_total_cost,
+			  double tuples, int width, int replication);
+#endif
 extern void compute_semi_anti_join_factors(PlannerInfo *root,
 							   RelOptInfo *outerrel,
 							   RelOptInfo *innerrel,

@@ -261,6 +261,9 @@ ALTER DOMAIN zipcode SET SCHEMA customers;
 <!## XC>
    which are <productname>Postgres-XC</productname> extensions.
 <!## end>
+<!## XL>
+   which are <productname>Postgres-XL</productname> extensions.
+<!## end>
   </para>
  </refsect1>
 

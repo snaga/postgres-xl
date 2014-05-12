@@ -3,6 +3,11 @@
  * pg_proc.c
  *	  routines to support manipulation of the pg_proc relation
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -39,6 +44,7 @@
 #ifdef PGXC
 #include "pgxc/execRemote.h"
 #include "pgxc/pgxc.h"
+#include "pgxc/planner.h"
 #endif
 
 
@@ -903,6 +909,7 @@ fmgr_sql_validator(PG_FUNCTION_ARGS)
 																  pinfo);
 
 #ifdef PGXC
+#ifndef XCP
 				/* Check if the list of queries contains temporary objects */
 				if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
 				{
@@ -914,6 +921,7 @@ fmgr_sql_validator(PG_FUNCTION_ARGS)
 					if (pgxc_query_contains_temp_tables(querytree_sublist))
 						ExecSetTempObjectIncluded();
 				}
+#endif
 #endif
 
 				querytree_list = list_concat(querytree_list,

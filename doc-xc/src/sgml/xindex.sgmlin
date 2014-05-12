@@ -40,6 +40,9 @@
 <!## XC>
    <productname>Postgres-XC</productname>, but all index methods are
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname>, but all index methods are
+<!## end>
    described in <classname>pg_am</classname>.  It is possible to add a
    new index method by defining the required interface routines and
    then creating a row in <classname>pg_am</classname> &mdash; but that is
@@ -103,6 +106,10 @@
 <!## XC>
    <productname>Postgres-XC</productname> allows the user to define operators,
    <productname>Postgres-XC</productname> cannot look at the name of an operator
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> allows the user to define operators,
+   <productname>Postgres-XL</productname> cannot look at the name of an operator
 <!## end>
    (e.g., <literal>&lt;</> or <literal>&gt;=</>) and tell what kind of
    comparison it is.  Instead, the index method defines a set of
@@ -623,6 +630,9 @@ CREATE OPERATOR &lt; (
 <!## XC>
      Although <productname>Postgres-XC</productname> can cope with
 <!## end>
+<!## XL>
+     Although <productname>Postgres-XL</productname> can cope with
+<!## end>
      functions having the same SQL name as long as they have different
      argument data types, C can only cope with one global function
      having a given name.  So we shouldn't name the C function
@@ -641,6 +651,9 @@ CREATE OPERATOR &lt; (
 <!## end>
 <!## XC>
      <productname>Postgres-XC</productname> to distinguish it by
+<!## end>
+<!## XL>
+     <productname>Postgres-XL</productname> to distinguish it by
 <!## end>
      argument data types from any other SQL function of the same name.
      To keep the example simple, we make the function have the same
@@ -725,6 +738,9 @@ CREATE OPERATOR CLASS complex_abs_ops
 <!## XC>
    To handle these needs, <productname>Postgres-XC</productname>
 <!## end>
+<!## XL>
+   To handle these needs, <productname>Postgres-XL</productname>
+<!## end>
    uses the concept of an <firstterm>operator
    family</><indexterm><primary>operator family</></indexterm>.
    An operator family contains one or more operator classes, and can also
@@ -760,6 +776,9 @@ CREATE OPERATOR CLASS complex_abs_ops
 <!## end>
 <!## XC>
    As an example, <productname>Postgres-XC</productname> has a built-in
+<!## end>
+<!## XL>
+   As an example, <productname>Postgres-XL</productname> has a built-in
 <!## end>
    B-tree operator family <literal>integer_ops</>, which includes operator
    classes <literal>int8_ops</>, <literal>int4_ops</>, and
@@ -924,6 +943,9 @@ ALTER OPERATOR FAMILY integer_ops USING btree ADD
 <!## XC>
    <productname>Postgres-XC</productname> uses operator classes to infer the
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> uses operator classes to infer the
+<!## end>
    properties of operators in more ways than just whether they can be used
    with indexes.  Therefore, you might want to create operator classes
    even if you have no intention of indexing any columns of your data type.
@@ -938,6 +960,9 @@ ALTER OPERATOR FAMILY integer_ops USING btree ADD
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname> looks for the default B-tree operator
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> looks for the default B-tree operator
 <!## end>
    class for the data type.  The <quote>equals</> member of this operator
    class defines the system's notion of equality of values for

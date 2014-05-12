@@ -102,6 +102,9 @@ CREATE TYPE <replaceable class="parameter">name</replaceable>
 <!## XC>
     <productname>Postgres-XC</productname> build).
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> build).
+<!## end>
    </para>
   </refsect2>
 
@@ -219,6 +222,9 @@ CREATE TYPE <replaceable class="parameter">name</replaceable>
 <!## XC>
    <literal>numeric(30,2)</>.  <productname>Postgres-Xc</productname> allows
 <!## end>
+<!## XL>
+   <literal>numeric(30,2)</>.  <productname>Postgres-XL</productname> allows
+<!## end>
    user-defined types to take one or more simple constants or identifiers as
    modifiers.  However, this information must be capable of being packed into a
    single non-negative integer value for storage in the system catalogs.  The
@@ -262,6 +268,9 @@ CREATE TYPE <replaceable class="parameter">name</replaceable>
 <!## end>
 <!## XC>
    that must be declared to <productname>Postgres-XC</productname>.
+<!## end>
+<!## XL>
+   that must be declared to <productname>Postgres-XL</productname>.
 <!## end>
    Foremost of these is
    <replaceable class="parameter">internallength</replaceable>.
@@ -393,6 +402,9 @@ CREATE TYPE <replaceable class="parameter">name</replaceable>
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname> automatically creates an
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> automatically creates an
 <!## end>
     associated array type, whose name consists of the base type's
     name prepended with an underscore, and truncated if necessary to keep
@@ -702,6 +714,9 @@ CREATE TYPE <replaceable class="parameter">name</replaceable>
 <!## XC>
    In this approach, <productname>Postgres-XC</productname> will first see
 <!## end>
+<!## XL>
+   In this approach, <productname>Postgres-XL</productname> will first see
+<!## end>
    the name of the new data type as the return type of the input function.
    The shell type is implicitly created in this situation, and then it
    can be referenced in the definitions of the remaining I/O functions.
@@ -825,6 +840,9 @@ CREATE TABLE big_objs (
 <!## XC>
    The other forms are <productname>Postgres-XC</productname>
 <!## end>
+<!## XL>
+   The other forms are <productname>Postgres-XL</productname>
+<!## end>
    extensions.  The <command>CREATE TYPE</command> statement in
    the <acronym>SQL</> standard also defines other forms that are not
 <!## PG>
@@ -832,6 +850,9 @@ CREATE TABLE big_objs (
 <!## end>
 <!## XC>
    implemented in <productname>Postgres-XC</>.
+<!## end>
+<!## XL>
+   implemented in <productname>Postgres-XL</>.
 <!## end>
   </para>
 
@@ -843,6 +864,10 @@ CREATE TABLE big_objs (
 <!## end>
 <!## XC>
    a <productname>Postgres-XC</productname>-specific deviation from the
+   standard (analogous to <command>CREATE TABLE</command>), inherited from <productname>PostgreSQL</>.
+<!## end>
+<!## XL>
+   a <productname>Postgres-XL</productname>-specific deviation from the
    standard (analogous to <command>CREATE TABLE</command>), inherited from <productname>PostgreSQL</>.
 <!## end>
   </para>

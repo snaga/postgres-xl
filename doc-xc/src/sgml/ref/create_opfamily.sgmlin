@@ -106,6 +106,9 @@ CREATE OPERATOR FAMILY <replaceable class="parameter">name</replaceable> USING <
 <!## XC>
    <productname>Postgres-XC</productname> extension.  There is no
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> extension.  There is no
+<!## end>
    <command>CREATE OPERATOR FAMILY</command> statement in the SQL
    standard.
   </para>

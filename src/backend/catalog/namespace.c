@@ -9,6 +9,11 @@
  * and implementing search-path-controlled searches.
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -47,6 +52,9 @@
 #include "parser/parse_func.h"
 #include "storage/ipc.h"
 #include "storage/lmgr.h"
+#ifdef XCP
+#include "storage/proc.h"
+#endif
 #include "storage/sinval.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
@@ -196,6 +204,9 @@ static void RemoveTempRelationsCallback(int code, Datum arg);
 static void NamespaceCallback(Datum arg, int cacheid, uint32 hashvalue);
 static bool MatchNamedCall(HeapTuple proctup, int nargs, List *argnames,
 			   int **argnumbers);
+#ifdef XCP
+static void FindTemporaryNamespace(void);
+#endif
 
 /* These don't really need to appear in any header file */
 Datum		pg_table_is_visible(PG_FUNCTION_ARGS);
@@ -704,7 +715,11 @@ RelationIsVisible(Oid relid)
 	 * list_member_oid() for them.
 	 */
 	relnamespace = relform->relnamespace;
+#ifdef XCP
+	if (relnamespace != PG_CATALOG_NAMESPACE && relnamespace != STORM_CATALOG_NAMESPACE &&
+#else
 	if (relnamespace != PG_CATALOG_NAMESPACE &&
+#endif
 		!list_member_oid(activeSearchPath, relnamespace))
 		visible = false;
 	else
@@ -799,7 +814,11 @@ TypeIsVisible(Oid typid)
 	 * list_member_oid() for them.
 	 */
 	typnamespace = typform->typnamespace;
+#ifdef XCP
+	if (typnamespace != PG_CATALOG_NAMESPACE && typnamespace != STORM_CATALOG_NAMESPACE &&
+#else
 	if (typnamespace != PG_CATALOG_NAMESPACE &&
+#endif
 		!list_member_oid(activeSearchPath, typnamespace))
 		visible = false;
 	else
@@ -1389,7 +1408,11 @@ FunctionIsVisible(Oid funcid)
 	 * list_member_oid() for them.
 	 */
 	pronamespace = procform->pronamespace;
+#ifdef XCP
+	if (pronamespace != PG_CATALOG_NAMESPACE && pronamespace != STORM_CATALOG_NAMESPACE &&
+#else
 	if (pronamespace != PG_CATALOG_NAMESPACE &&
+#endif
 		!list_member_oid(activeSearchPath, pronamespace))
 		visible = false;
 	else
@@ -1713,7 +1736,11 @@ OperatorIsVisible(Oid oprid)
 	 * list_member_oid() for them.
 	 */
 	oprnamespace = oprform->oprnamespace;
+#ifdef XCP
+	if (oprnamespace != PG_CATALOG_NAMESPACE && oprnamespace != STORM_CATALOG_NAMESPACE &&
+#else
 	if (oprnamespace != PG_CATALOG_NAMESPACE &&
+#endif
 		!list_member_oid(activeSearchPath, oprnamespace))
 		visible = false;
 	else
@@ -1799,7 +1826,11 @@ OpclassIsVisible(Oid opcid)
 	 * list_member_oid() for them.
 	 */
 	opcnamespace = opcform->opcnamespace;
+#ifdef XCP
+	if (opcnamespace != PG_CATALOG_NAMESPACE && opcnamespace != STORM_CATALOG_NAMESPACE &&
+#else
 	if (opcnamespace != PG_CATALOG_NAMESPACE &&
+#endif
 		!list_member_oid(activeSearchPath, opcnamespace))
 		visible = false;
 	else
@@ -1882,7 +1913,11 @@ OpfamilyIsVisible(Oid opfid)
 	 * list_member_oid() for them.
 	 */
 	opfnamespace = opfform->opfnamespace;
+#ifdef XCP
+	if (opfnamespace != PG_CATALOG_NAMESPACE && opfnamespace != STORM_CATALOG_NAMESPACE &&
+#else
 	if (opfnamespace != PG_CATALOG_NAMESPACE &&
+#endif
 		!list_member_oid(activeSearchPath, opfnamespace))
 		visible = false;
 	else
@@ -1972,7 +2007,11 @@ CollationIsVisible(Oid collid)
 	 * list_member_oid() for them.
 	 */
 	collnamespace = collform->collnamespace;
+#ifdef XCP
+	if (collnamespace != PG_CATALOG_NAMESPACE && collnamespace != STORM_CATALOG_NAMESPACE &&
+#else
 	if (collnamespace != PG_CATALOG_NAMESPACE &&
+#endif
 		!list_member_oid(activeSearchPath, collnamespace))
 		visible = false;
 	else
@@ -2054,7 +2093,11 @@ ConversionIsVisible(Oid conid)
 	 * list_member_oid() for them.
 	 */
 	connamespace = conform->connamespace;
+#ifdef XCP
+	if (connamespace != PG_CATALOG_NAMESPACE && connamespace != STORM_CATALOG_NAMESPACE &&
+#else
 	if (connamespace != PG_CATALOG_NAMESPACE &&
+#endif
 		!list_member_oid(activeSearchPath, connamespace))
 		visible = false;
 	else
@@ -2156,7 +2199,11 @@ TSParserIsVisible(Oid prsId)
 	 * list_member_oid() for them.
 	 */
 	namespace = form->prsnamespace;
+#ifdef XCP
+	if (namespace != PG_CATALOG_NAMESPACE && namespace != STORM_CATALOG_NAMESPACE &&
+#else
 	if (namespace != PG_CATALOG_NAMESPACE &&
+#endif
 		!list_member_oid(activeSearchPath, namespace))
 		visible = false;
 	else
@@ -2280,7 +2327,11 @@ TSDictionaryIsVisible(Oid dictId)
 	 * list_member_oid() for them.
 	 */
 	namespace = form->dictnamespace;
+#ifdef XCP
+	if (namespace != PG_CATALOG_NAMESPACE && namespace != STORM_CATALOG_NAMESPACE &&
+#else
 	if (namespace != PG_CATALOG_NAMESPACE &&
+#endif
 		!list_member_oid(activeSearchPath, namespace))
 		visible = false;
 	else
@@ -2403,7 +2454,11 @@ TSTemplateIsVisible(Oid tmplId)
 	 * list_member_oid() for them.
 	 */
 	namespace = form->tmplnamespace;
+#ifdef XCP
+	if (namespace != PG_CATALOG_NAMESPACE && namespace != STORM_CATALOG_NAMESPACE &&
+#else
 	if (namespace != PG_CATALOG_NAMESPACE &&
+#endif
 		!list_member_oid(activeSearchPath, namespace))
 		visible = false;
 	else
@@ -2527,7 +2582,11 @@ TSConfigIsVisible(Oid cfgid)
 	 * list_member_oid() for them.
 	 */
 	namespace = form->cfgnamespace;
+#ifdef XCP
+	if (namespace != PG_CATALOG_NAMESPACE && namespace != STORM_CATALOG_NAMESPACE &&
+#else
 	if (namespace != PG_CATALOG_NAMESPACE &&
+#endif
 		!list_member_oid(activeSearchPath, namespace))
 		visible = false;
 	else
@@ -2639,13 +2698,22 @@ LookupNamespaceNoError(const char *nspname)
 	{
 		if (OidIsValid(myTempNamespace))
 			return myTempNamespace;
-
+#ifdef XCP
+		/*
+		 * Try to find temporary namespace created by other backend of
+		 * the same distributed session. If not found myTempNamespace will
+		 * be InvalidOid, that is correct result.
+		 */
+		FindTemporaryNamespace();
+		return myTempNamespace;
+#else
 		/*
 		 * Since this is used only for looking up existing objects, there is
 		 * no point in trying to initialize the temp namespace here; and doing
 		 * so might create problems for some callers. Just report "not found".
 		 */
 		return InvalidOid;
+#endif
 	}
 
 	return get_namespace_oid(nspname, true);
@@ -2669,6 +2737,16 @@ LookupExplicitNamespace(const char *nspname)
 	{
 		if (OidIsValid(myTempNamespace))
 			return myTempNamespace;
+
+#ifdef XCP
+		/*
+		 * Try to find temporary namespace created by other backend of
+		 * the same distributed session.
+		 */
+		FindTemporaryNamespace();
+		if (OidIsValid(myTempNamespace))
+			return myTempNamespace;
+#endif
 
 		/*
 		 * Since this is used only for looking up existing objects, there is
@@ -3068,7 +3146,16 @@ GetOverrideSearchPath(MemoryContext context)
 			result->addTemp = true;
 		else
 		{
+#ifdef XCP
+			/*
+			 * The while loop assumes that you can only have one catalog schema
+			 * in the namespace. Not quite..
+			 */
+			Assert(linitial_oid(schemas) == STORM_CATALOG_NAMESPACE ||
+				   linitial_oid(schemas) == PG_CATALOG_NAMESPACE);
+#else
 			Assert(linitial_oid(schemas) == PG_CATALOG_NAMESPACE);
+#endif
 			result->addCatalog = true;
 		}
 		schemas = list_delete_first(schemas);
@@ -3145,7 +3232,14 @@ PushOverrideSearchPath(OverrideSearchPath *newpath)
 	 * permissions for these.
 	 */
 	if (newpath->addCatalog)
+#ifdef XCP
+	{
 		oidlist = lcons_oid(PG_CATALOG_NAMESPACE, oidlist);
+		oidlist = lcons_oid(STORM_CATALOG_NAMESPACE, oidlist);
+	}
+#else
+		oidlist = lcons_oid(PG_CATALOG_NAMESPACE, oidlist);
+#endif
 
 	if (newpath->addTemp && OidIsValid(myTempNamespace))
 		oidlist = lcons_oid(myTempNamespace, oidlist);
@@ -3472,6 +3566,11 @@ recomputeNamespacePath(void)
 	if (!list_member_oid(oidlist, PG_CATALOG_NAMESPACE))
 		oidlist = lcons_oid(PG_CATALOG_NAMESPACE, oidlist);
 
+#ifdef XCP
+	if (!list_member_oid(oidlist, STORM_CATALOG_NAMESPACE))
+		oidlist = lcons_oid(STORM_CATALOG_NAMESPACE, oidlist);
+#endif
+
 	if (OidIsValid(myTempNamespace) &&
 		!list_member_oid(oidlist, myTempNamespace))
 		oidlist = lcons_oid(myTempNamespace, oidlist);
@@ -3550,6 +3649,16 @@ InitTempTableNamespace(void)
 				(errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION),
 				 errmsg("cannot create temporary tables during recovery")));
 
+#ifdef XCP
+	/*
+	 * In case of distributed session use MyFirstBackendId for temp objects
+	 */
+	if (OidIsValid(MyCoordId))
+		snprintf(namespaceName, sizeof(namespaceName), "pg_temp_%d",
+				 MyFirstBackendId);
+	else
+	/* fallback to default */
+#endif
 	snprintf(namespaceName, sizeof(namespaceName), "pg_temp_%d", MyBackendId);
 
 	namespaceId = get_namespace_oid(namespaceName, true);
@@ -3582,6 +3691,16 @@ InitTempTableNamespace(void)
 	 * it. (We assume there is no need to clean it out if it does exist, since
 	 * dropping a parent table should make its toast table go away.)
 	 */
+#ifdef XCP
+	/*
+	 * In case of distributed session use MyFirstBackendId for temp objects
+	 */
+	if (OidIsValid(MyCoordId))
+		snprintf(namespaceName, sizeof(namespaceName), "pg_toast_temp_%d",
+				 MyFirstBackendId);
+	else
+	/* fallback to default */
+#endif
 	snprintf(namespaceName, sizeof(namespaceName), "pg_toast_temp_%d",
 			 MyBackendId);
 
@@ -3604,6 +3723,9 @@ InitTempTableNamespace(void)
 
 	/* It should not be done already. */
 	AssertState(myTempNamespaceSubID == InvalidSubTransactionId);
+#ifdef XCP
+	if (!OidIsValid(MyCoordId))
+#endif
 	myTempNamespaceSubID = GetCurrentSubTransactionId();
 
 	baseSearchPathValid = false;	/* need to rebuild list */
@@ -3626,7 +3748,20 @@ AtEOXact_Namespace(bool isCommit)
 	if (myTempNamespaceSubID != InvalidSubTransactionId)
 	{
 		if (isCommit)
+#ifdef XCP
+		{
+			/*
+			 * During backend lifetime it may be assigned to different
+			 * distributed sessions, and each of them may create temp
+			 * namespace and set a callback. That may cause memory leak.
+			 * XXX is it ever possible to remove callbacks?
+			 */
+			if (!OidIsValid(MyCoordId))
+				on_shmem_exit(RemoveTempRelationsCallback, 0);
+		}
+#else
 			on_shmem_exit(RemoveTempRelationsCallback, 0);
+#endif
 		else
 		{
 			myTempNamespace = InvalidOid;
@@ -3783,7 +3918,44 @@ ResetTempTableNamespace(void)
 {
 	if (OidIsValid(myTempNamespace))
 		RemoveTempRelations(myTempNamespace);
+#ifdef XCP
+	else if (OidIsValid(MyCoordId))
+	{
+		char		namespaceName[NAMEDATALEN];
+		Oid			namespaceId;
+
+		snprintf(namespaceName, sizeof(namespaceName), "pg_temp_%d",
+				 MyFirstBackendId);
+
+		namespaceId = get_namespace_oid(namespaceName, true);
+		if (OidIsValid(namespaceId))
+			RemoveTempRelations(namespaceId);
+	}
+#endif
 }
+
+
+#ifdef XCP
+/*
+ * Reset myTempNamespace so it will be reinitialized after backend is assigned
+ * to a different session.
+ */
+void
+ForgetTempTableNamespace(void)
+{
+	/* If the namespace exists and need to be cleaned up do that */
+	if (OidIsValid(myTempNamespace) &&
+			myTempNamespaceSubID != InvalidSubTransactionId)
+	{
+		elog(WARNING, "leaked temp namespace clean up callback");
+		RemoveTempRelations(myTempNamespace);
+	}
+	myTempNamespace = InvalidOid;
+	myTempToastNamespace = InvalidOid;
+	baseSearchPathValid = false;		/* need to rebuild list */
+	myTempNamespaceSubID = InvalidSubTransactionId;
+}
+#endif
 
 
 /*
@@ -4121,3 +4293,43 @@ pg_is_other_temp_schema(PG_FUNCTION_ARGS)
 
 	PG_RETURN_BOOL(isOtherTempNamespace(oid));
 }
+
+
+#ifdef XCP
+/*
+ * FindTemporaryNamespace
+ * 	If this is secondary backend of distributed session check if primary backend
+ * 	of the same session created temporary namespace and wire it up if it is the
+ * 	case, instead of creating new.
+ */
+static void
+FindTemporaryNamespace(void)
+{
+	char		namespaceName[NAMEDATALEN];
+
+	Assert(!OidIsValid(myTempNamespace));
+
+	/*
+	 * We need distribution session identifier to find the namespace.
+	 */
+	if (!OidIsValid(MyCoordId))
+		return;
+
+	/*
+	 * Look up namespace by name. This code should be in synch with
+	 * InitTempTableNamespace.
+	 */
+	snprintf(namespaceName, sizeof(namespaceName), "pg_temp_%d",
+			 MyFirstBackendId);
+	myTempNamespace = get_namespace_oid(namespaceName, true);
+	/* Same for the toast namespace */
+	if (OidIsValid(myTempNamespace))
+	{
+		snprintf(namespaceName, sizeof(namespaceName), "pg_toast_temp_%d",
+				 MyFirstBackendId);
+		myTempToastNamespace = get_namespace_oid(namespaceName, true);
+		baseSearchPathValid = false;	/* need to rebuild list */
+	}
+}
+#endif
+

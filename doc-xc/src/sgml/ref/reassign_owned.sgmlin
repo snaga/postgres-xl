@@ -113,6 +113,9 @@ REASSIGN OWNED BY <replaceable class="PARAMETER">old_role</replaceable> [, ...] 
 <!## XC>
    <productname>Postgres-XC</productname> extension inherited from <productname>PostgreSQL</productname>.
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> extension inherited from <productname>PostgreSQL</productname>.
+<!## end>
   </para>
  </refsect1>
 

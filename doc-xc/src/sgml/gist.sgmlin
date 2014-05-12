@@ -41,6 +41,9 @@
 <!## XC>
     implementation in <productname>PostgreSQL</productname> is inherited from <productname>PostgreSQL</> and is primarily
 <!## end>
+<!## XL>
+    implementation in <productname>PostgreSQL</productname> is inherited from <productname>PostgreSQL</> and is primarily
+<!## end>
     maintained by Teodor Sigaev and Oleg Bartunov, and there is more
     information on their
     <ulink url="http://www.sai.msu.su/~megera/postgres/gist/">web site</ulink>.
@@ -75,6 +78,11 @@
    and hash indexes. That means that you can use
    <productname>Postgres-XC</productname> to build a B-tree or hash over any
 <!## end>
+<!## XL>
+   example, <productname>Postgres-XL</productname> supports extensible B-trees
+   and hash indexes. That means that you can use
+   <productname>Postgres-XL</productname> to build a B-tree or hash over any
+<!## end>
    data type you want. But B-trees only support range predicates
    (<literal>&lt;</literal>, <literal>=</literal>, <literal>&gt;</literal>),
    and hash indexes only support equality queries.
@@ -87,6 +95,9 @@
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname> B-tree, you can only issue queries
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> B-tree, you can only issue queries
 <!## end>
    such as <quote>is imagex equal to imagey</quote>, <quote>is imagex less
    than imagey</quote> and <quote>is imagex greater than imagey</quote>.
@@ -130,6 +141,9 @@
 <!## end>
 <!## XC>
    you still have to follow <productname>Postgres-XC</> data type rules here,
+<!## end>
+<!## XL>
+   you still have to follow <productname>Postgres-XL</> data type rules here,
 <!## end>
    see about <literal>varlena</> for variable sized data). If the tree's
    internal data type exists at the SQL level, the <literal>STORAGE</> option
@@ -679,6 +693,9 @@ my_distance(PG_FUNCTION_ARGS)
 <!## end>
 <!## XC>
   The <productname>Postgres-XC</productname> source distribution includes
+<!## end>
+<!## XL>
+  The <productname>Postgres-XL</productname> source distribution includes
 <!## end>
   several examples of index methods implemented using
   <acronym>GiST</acronym>.  The core system currently provides text search

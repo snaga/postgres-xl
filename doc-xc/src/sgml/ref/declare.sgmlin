@@ -37,6 +37,12 @@ DECLARE <replaceable class="parameter">name</replaceable> [ BINARY ] [ NO SCROLL
     CURSOR [ WITHOUT HOLD ] FOR <replaceable class="parameter">query</replaceable>
 </synopsis>
 <!## end>
+<!## XL>
+<synopsis>
+DECLARE <replaceable class="parameter">name</replaceable> [ BINARY ] [ NO SCROLL ]
+    CURSOR [ WITHOUT HOLD ] FOR <replaceable class="parameter">query</replaceable>
+</synopsis>
+<!## end>
  </refsynopsisdiv>
 
  <refsect1>
@@ -87,10 +93,17 @@ DECLARE <replaceable class="parameter">name</replaceable> [ BINARY ] [ NO SCROLL
    <varlistentry>
     <term><literal>INSENSITIVE</literal></term>
     <listitem>
-&xconly;
 <!## XC>
+&xconly;
      <para>
       Current release of <productname>Postgres-XC</> does not
+      support <literal>INSENSITIVE</literal> cursor.
+     </para>
+<!## end>
+<!## XL>
+&xlonly;
+     <para>
+      Current release of <productname>Postgres-XL</> does not
       support <literal>INSENSITIVE</literal> cursor.
      </para>
 <!## end>
@@ -122,10 +135,17 @@ DECLARE <replaceable class="parameter">name</replaceable> [ BINARY ] [ NO SCROLL
       <literal>SCROLL</literal>. See <xref linkend="sql-declare-notes"
       endterm="sql-declare-notes-title"> for details.
      </para>
-&xconly;
 <!## XC>
+&xconly;
      <para>
       Current release of <productname>Postgres-XC</> does not
+      support <literal>SCROLL</> cursor.
+     </para>
+<!## end>
+<!## XL>
+&xlonly;
+     <para>
+      The current release of <productname>Postgres-XL</> does not
       support <literal>SCROLL</> cursor.
      </para>
 <!## end>
@@ -145,10 +165,17 @@ DECLARE <replaceable class="parameter">name</replaceable> [ BINARY ] [ NO SCROLL
       <literal>WITH HOLD</literal> is specified, <literal>WITHOUT
       HOLD</literal> is the default.
      </para>
-&xconly;
 <!## XC>
+&xconly;
      <para>
       Current release of <productname>Postgres-XC</> does ot
+      support <literal>WITH HOLD</> cursor.
+     </para>
+<!## end>
+<!## XL>
+&xlonly;
+     <para>
+      Current release of <productname>Postgres-XL</> does not
       support <literal>WITH HOLD</> cursor.
      </para>
 <!## end>

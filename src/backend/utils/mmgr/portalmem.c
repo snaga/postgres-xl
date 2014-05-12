@@ -8,6 +8,11 @@
  * doesn't actually run the executor for them.
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -395,6 +400,52 @@ PortalCreateHoldStore(Portal portal)
 	MemoryContextSwitchTo(oldcxt);
 }
 
+#ifdef XCP
+void
+PortalCreateProducerStore(Portal portal)
+{
+	MemoryContext oldcxt;
+
+	Assert(portal->holdContext == NULL);
+	Assert(portal->holdStore == NULL);
+
+	/*
+	 * Create the memory context that is used for storage of the tuple set.
+	 * Note this is NOT a child of the portal's heap memory.
+	 */
+	portal->holdContext =
+		AllocSetContextCreate(PortalMemory,
+							  "PortalHoldContext",
+							  ALLOCSET_DEFAULT_MINSIZE,
+							  ALLOCSET_DEFAULT_INITSIZE,
+							  ALLOCSET_DEFAULT_MAXSIZE);
+
+	/*
+	 * Create the tuple store, selecting cross-transaction temp files, and
+	 * enabling random access only if cursor requires scrolling.
+	 *
+	 * XXX: Should maintenance_work_mem be used for the portal size?
+	 */
+	oldcxt = MemoryContextSwitchTo(portal->holdContext);
+
+	portal->tmpContext = AllocSetContextCreate(portal->holdContext,
+											   "TuplestoreTempContext",
+											   ALLOCSET_DEFAULT_MINSIZE,
+											   ALLOCSET_DEFAULT_INITSIZE,
+											   ALLOCSET_DEFAULT_MAXSIZE);
+	/*
+	 * We really do not need interXact set to true for the producer store,
+	 * but we have to set it as long as we store it in holdStore variable -
+	 * portal destroys it after the resource owner invalidating internal
+	 * temporary file if tuplestore has been ever spilled to disk
+	 */
+	portal->holdStore = tuplestore_begin_datarow(true, work_mem,
+												 portal->tmpContext);
+
+	MemoryContextSwitchTo(oldcxt);
+}
+#endif
+
 /*
  * PinPortal
  *		Protect a portal from dropping.
@@ -523,6 +574,17 @@ PortalDrop(Portal portal, bool isTopCommit)
 
 	/* drop cached plan reference, if any */
 	PortalReleaseCachedPlan(portal);
+
+#ifdef XCP
+	/*
+	 * Skip memory release if portal is still producining, means has tuples in
+	 * local memory, and has to push them to consumers. It would loose the
+	 * tuples if free the memory now.
+	 * The cleanup should be completed if the portal finished producing.
+	 */
+	if (portalIsProducing(portal))
+		return;
+#endif
 
 	/*
 	 * Release any resources still attached to the portal.	There are several
@@ -843,16 +905,16 @@ AtCleanup_Portals(void)
 		if (portal->portalPinned)
 			portal->portalPinned = false;
 
-#ifdef PGXC		
+#ifdef PGXC
 		/* XXX This is a PostgreSQL bug (already reported on the list by
 		 * Pavan). We comment out the assertion until the bug is fixed
 		 * upstream.
-		 */ 
+		 */
 
 		/* We had better not be calling any user-defined code here */
 		/* Assert(portal->cleanup == NULL); */
 #endif
-		
+
 		/* Zap it. */
 		PortalDrop(portal, false);
 	}
@@ -991,6 +1053,45 @@ AtSubCleanup_Portals(SubTransactionId mySubid)
 		PortalDrop(portal, false);
 	}
 }
+
+
+#ifdef XCP
+static List *producingPortals = NIL;
+
+List *
+getProducingPortals(void)
+{
+	return producingPortals;
+}
+
+
+void
+addProducingPortal(Portal portal)
+{
+	MemoryContext save_context;
+
+	save_context = MemoryContextSwitchTo(PortalMemory);
+
+	producingPortals = lappend(producingPortals, portal);
+
+	MemoryContextSwitchTo(save_context);
+}
+
+
+void
+removeProducingPortal(Portal portal)
+{
+	producingPortals = list_delete_ptr(producingPortals, portal);
+}
+
+
+bool
+portalIsProducing(Portal portal)
+{
+	return list_member_ptr(producingPortals, portal);
+}
+#endif
+
 
 /* Find all available cursors */
 Datum

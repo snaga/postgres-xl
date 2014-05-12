@@ -89,6 +89,9 @@ ALTER DATABASE <replaceable class="PARAMETER">name</replaceable> RESET ALL
 <!## XC>
    configuration variable for a <productname>Postgres-XC</productname>
 <!## end>
+<!## XL>
+   configuration variable for a <productname>Postgres-XL</productname>
+<!## end>
    database. Whenever a new session is subsequently started in that
    database, the specified value becomes the session default value.
    The database-specific default overrides whatever setting is present
@@ -103,6 +106,15 @@ ALTER DATABASE <replaceable class="PARAMETER">name</replaceable> RESET ALL
    <para>
     If there's any live connection to any of the template database in
     Coordinator or Datanode, you will have an error message.  In this
+    case, you should clean these connections using <command>CLEAN
+    CONNECITON</> statement.
+   </para>
+<!## end>
+<!## XL>
+&xlonly;
+   <para>
+    If there are any live connections to any of the template databases in
+    one of the Coordinators or Datanodes, you will have an error message.  In this
     case, you should clean these connections using <command>CLEAN
     CONNECITON</> statement.
    </para>
@@ -220,6 +232,9 @@ ALTER DATABASE test SET enable_indexscan TO off;
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname> extension.
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> extension.
 <!## end>
   </para>
  </refsect1>

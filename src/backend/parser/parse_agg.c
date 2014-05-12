@@ -3,6 +3,11 @@
  * parse_agg.c
  *	  handle aggregates and window functions in parser
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -79,8 +84,10 @@ transformAggregateCall(ParseState *pstate, Aggref *agg,
 	int			min_varlevel;
 	ListCell   *lc;
 #ifdef PGXC
+#ifndef XCP
 	HeapTuple	aggTuple;
 	Form_pg_aggregate aggform;
+#endif /* XCP */
 #endif /* PGXC */
 
 	/*
@@ -192,6 +199,7 @@ transformAggregateCall(ParseState *pstate, Aggref *agg,
 		pstate = pstate->parentParseState;
 	pstate->p_hasAggs = true;
 #ifdef PGXC
+#ifndef XCP
 	/*
 	 * Return data type of PGXC Datanode's aggregate should always return the
 	 * result of transition function, that is expected by collection function
@@ -212,6 +220,7 @@ transformAggregateCall(ParseState *pstate, Aggref *agg,
 		agg->aggtype = agg->aggtrantype;
 
 	ReleaseSysCache(aggTuple);
+#endif
 #endif
 }
 
@@ -751,11 +760,20 @@ void
 build_aggregate_fnexprs(Oid *agg_input_types,
 						int agg_num_inputs,
 						Oid agg_state_type,
+#ifdef XCP
+						Oid agg_collect_type,
+#endif
 						Oid agg_result_type,
 						Oid agg_input_collation,
 						Oid transfn_oid,
+#ifdef XCP
+						Oid collectfn_oid,
+#endif
 						Oid finalfn_oid,
 						Expr **transfnexpr,
+#ifdef XCP
+						Expr **collectfnexpr,
+#endif
 						Expr **finalfnexpr)
 {
 	Param	   *argp;
@@ -797,6 +815,40 @@ build_aggregate_fnexprs(Oid *agg_input_types,
 										 agg_input_collation,
 										 COERCE_DONTCARE);
 
+#ifdef XCP
+	/* see if we have a collect function */
+	if (OidIsValid(collectfn_oid))
+	{
+		Param	   *argp2;
+		/*
+		 * Build expr tree for collect function
+		 */
+		argp = makeNode(Param);
+		argp->paramkind = PARAM_EXEC;
+		argp->paramid = -1;
+		argp->paramtype = agg_collect_type;
+		argp->paramtypmod = -1;
+		argp->location = -1;
+
+		argp2 = makeNode(Param);
+		argp2->paramkind = PARAM_EXEC;
+		argp2->paramid = -1;
+		argp2->paramtype = agg_state_type;
+		argp2->paramtypmod = -1;
+		argp2->location = -1;
+		args = list_make2(argp, argp2);
+
+		*collectfnexpr = (Expr *) makeFuncExpr(collectfn_oid,
+											 agg_collect_type,
+											 args,
+											 InvalidOid,
+											 agg_input_collation,
+											 COERCE_DONTCARE);
+	}
+	else
+		*collectfnexpr = NULL;
+#endif
+
 	/* see if we have a final function */
 	if (!OidIsValid(finalfn_oid))
 	{
@@ -810,6 +862,15 @@ build_aggregate_fnexprs(Oid *agg_input_types,
 	argp = makeNode(Param);
 	argp->paramkind = PARAM_EXEC;
 	argp->paramid = -1;
+	/*
+	 * When running Phase 2 of distributed aggregation we may have only
+	 * transient and final functions defined.
+	 */
+#ifdef XCP
+	if (OidIsValid(agg_collect_type))
+		argp->paramtype = agg_collect_type;
+	else
+#endif
 	argp->paramtype = agg_state_type;
 	argp->paramtypmod = -1;
 	argp->paramcollid = agg_input_collation;

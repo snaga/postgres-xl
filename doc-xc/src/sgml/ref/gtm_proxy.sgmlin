@@ -13,7 +13,7 @@ PostgreSQL documentation
  <refnamediv>
   <refname>gtm_proxy</refname>
   <refpurpose>
-   Proxy to <command>gtm</command>, <productname>Postgres-XC</productname> Global Transaction Manager
+   Proxy to <command>gtm</command>, <productname>Postgres-XL</productname> Global Transaction Manager
   </refpurpose>
  </refnamediv>
 
@@ -32,12 +32,13 @@ PostgreSQL documentation
   <title>
    Description
   </title>
-&xconly
+&xlonly
   <para>
-   Gtm proxy provides proxy feature from Postgres-XC Coordinator and
+   The Gtm proxy provides proxy feature from Postgres-XL Coordinator and
    Datanode to gtm. Gtm proxy groups connections and interactions
-   between gtm and other Postgres-XC components to reduce both the
-   number of interactions and the size of messages.
+   between gtm and other Postgres-XL components to reduce both the
+   number of interactions and the size of messages. Performance tests
+   have shown greater performance with high concurrency workloads as a result.
   </para>
 
   <para>
@@ -45,8 +46,8 @@ PostgreSQL documentation
   </para>
 
   <para>
-   You must provide gtm configuration
-   file <filename>gtm_proxy.conf</filename> placed at gtm working directory
+   You must provide a gtm configuration
+   file <filename>gtm_proxy.conf</filename> placed at the gtm working directory
    as specified by <literal>-D</literal> command line option.  The
    configuration file specifies gtm running environment and resources.
   </para>
@@ -61,7 +62,7 @@ PostgreSQL documentation
 <refsect1>
   <title>Configuration File</title>
 
-&xconly
+&xlonly
   <para>
    <literal>GTM-Proxy</literal> configuration parameters are specified in the configuration file
    <filename>gtm_proxy.conf</filename><indexterm><primary>gtm_proxy.conf</></> placed in the working directory
@@ -71,7 +72,7 @@ PostgreSQL documentation
   </para>
 
   <para>
-   Format of the configuration file is the same as <filename>postgresql.conf</filename>.
+   The format of the configuration file is the same as <filename>postgresql.conf</filename>.
    Options are as follows.
   </para>
 
@@ -87,88 +88,8 @@ PostgreSQL documentation
    documented later.
    1. error_reporter
    2. status_reader
-   3. err_wait_opt
-   4. err_wait_count
-   5. err_wait_interval
 -->
   <variablelist>
-
-   <varlistentry id="gtm-proxy-opt-err-wait-count" xreflabel="gtm_proxy_opt_err_wait_count">
-    <term><varname>err_wait_count</varname> (<type>integer</type>)</term>
-    <indexterm>
-     <primary><varname>err_wait_count</varname> configuration parameter</primary>
-    </indexterm>
-    <listitem>
-     <para>
-      Specifies how many times GTM-Proxy detects reconnect command from <application>gtm_ctl</application>
-      when communication error with GTM is detected.
-      Default value is zero.
-      Refer to <varname>err_wait_idle</varname> and <varname>err_wait_interval</varname>.
-     </para>
-    </listitem>
-   </varlistentry>
-
-   <varlistentry id="gtm-proxy-opt-err-wait-idle" xreflabel="gtm_proxy_opt_err_wait_count">
-    <term><varname>err_wait_idle</varname> (<type>integer</type>)</term>
-    <indexterm>
-     <primary><varname>err_wait_idle</varname> configuration parameter</primary>
-    </indexterm>
-    <listitem>
-     <para>
-      Specifies how long in second GTM-Proxy waits before it begin to detect reconnect
-      from <application>gtm_ctl</application>
-      when communication error with GTM is detected.
-      Default value is zero.
-      Refer to <varname>err_wait_count</varname> and <varname>err_wait_interval</varname>.
-     </para>
-    </listitem>
-   </varlistentry>
-
-   <varlistentry id="gtm-proxy-opt-err-wait-interval" xreflabel="gtm_proxy_opt_err_wait_interval">
-    <term><varname>err_wait_interval</varname> (<type>integer</type>)</term>
-    <indexterm>
-     <primary><varname>err_wait_interval</varname> configuration parameter</primary>
-    </indexterm>
-    <listitem>
-     <para>
-      Specifies how long in second GTM-Proxy waits between each detection of reconnect
-      from <application>gtm_ctl</application>
-      when communication error with GTM is detected.
-      Default value is zero.
-      Refer to <varname>err_wait_count</varname> and <varname>err_wait_idle</varname>.
-     </para>
-    </listitem>
-   </varlistentry>
-
-   <varlistentry id="gtm-proxy-opt-gtm-connect-retry-count" xreflabel="gtm_proxy_opt_gtm_connect_retry_count">
-    <term><varname>gtm_connect_retry_count</varname> (<type>integer</type>)</term>
-    <indexterm>
-     <primary><varname>gtm_connect_retry_count</varname> configuration parameter</primary>
-    </indexterm>
-    <listitem>
-     <para>
-      Specifies how many times GTM-Proxy retries to connect to GTM
-      when communication error with GTM is detected.
-      Default value is zero.
-      Refer to <varname>gtm_connect_retry_idle</varname> and <varname>gtm_connect_retry_interval</varname>.
-     </para>
-    </listitem>
-   </varlistentry>
-
-   <varlistentry id="gtm-proxy-opt-gtm-connect-retry-idle" xreflabel="gtm_proxy_opt_gtm_connect_retry_idle">
-    <term><varname>gtm_connect_retry_idle</varname> (<type>integer</type>)</term>
-    <indexterm>
-     <primary><varname>gtm_connect_retry_idle</varname> configuration parameter</primary>
-    </indexterm>
-    <listitem>
-     <para>
-      Specifies how long in second GTM-Proxy waits before it retries to connect to GTM when
-      communication error with GTM is detected.
-      Default value is zero.
-      Refer to <varname>gtm_connect_retry_count</varname> and <varname>gtm_connect_retry_interval</varname>.
-     </para>
-    </listitem>
-   </varlistentry>
 
    <varlistentry id="gtm-proxy-opt-gtm-connect-retry-interval" xreflabel="gtm_proxy_opt_gtm_connect_retry_interval">
     <term><varname>gtm_connect_retry_interval</varname> (<type>integer</type>)</term>
@@ -177,9 +98,9 @@ PostgreSQL documentation
     </indexterm>
     <listitem>
      <para>
-      Specifies how log in second GTM-Proxy waits between each retry to connect to GTM when
+      Specifies how long in seconds GTM-Proxy waits between each retry to connect to GTM when
       communication error with GTM is detected.
-      Default value is zero.
+      Default value is 60.
       Refer to <varname>gtm_connect_retry_count</varname> and <varname>gtm_connect_retry_idle</varname>.
      </para>
     </listitem>
@@ -261,7 +182,7 @@ PostgreSQL documentation
     <listitem>
      <para>
       Specifies <filename>log</filename> file name.  This file will be
-      created at the working directory of
+      created in the working directory of
       this <application>gtm_proxy</application> as specified
       by <literal>-D</literal> command line option.
       The default is <filename>gtm_proxy.log</filename>.
@@ -324,7 +245,7 @@ PostgreSQL documentation
     <listitem>
      <para>
       Specifies the port number of this <application>gtm_proxy</application>.
-      Default port value is 6666.
+      The default port value is 6666.
      </para>
     </listitem>
    </varlistentry>
@@ -337,7 +258,7 @@ PostgreSQL documentation
     <listitem>
      <para>
       Specifies the number of worker threads for this <literal>gtm_proxy</literal>.
-      Default value is 1.
+      The default value is 1.
      </para>
     </listitem>
    </varlistentry>
@@ -392,7 +313,7 @@ PostgreSQL documentation
      <term><option>p</option></term>
      <listitem>
       <para>
-       Specify port number to listen.
+       Specify port number to listen on.
       </para>
      </listitem>
     </varlistentry>

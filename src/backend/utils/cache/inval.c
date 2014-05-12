@@ -85,6 +85,11 @@
  *	problems can be overcome cheaply.
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -98,6 +103,9 @@
 #include "access/xact.h"
 #include "catalog/catalog.h"
 #include "miscadmin.h"
+#ifdef XCP
+#include "pgxc/pgxc.h"
+#endif
 #include "storage/sinval.h"
 #include "storage/smgr.h"
 #include "utils/inval.h"
@@ -831,7 +839,18 @@ ProcessCommittedInvalidationMessages(SharedInvalidationMessage *msgs,
 void
 AtEOXact_Inval(bool isCommit)
 {
+#ifdef XCP
+	/*
+	 * In our code, the distributed session may run on multiple backends, 
+	 * and we need to broadcast invalidation messages so they reach other 
+	 * backends even * in case of rollback. If the session runs on single 
+	 * backend the invalidation messages may be still applied locally. 
+	 * So the criteria may be more complex.
+	 */
+	if (isCommit || IS_PGXC_DATANODE)
+#else
 	if (isCommit)
+#endif
 	{
 		/* Must be at top of stack */
 		Assert(transInvalInfo != NULL && transInvalInfo->parent == NULL);

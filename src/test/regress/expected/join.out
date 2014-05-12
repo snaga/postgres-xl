@@ -2036,7 +2036,6 @@ NATURAL FULL JOIN
 (4 rows)
 
 -- Test for propagation of nullability constraints into sub-joins
-SET enforce_two_phase_commit TO off;
 create temp table x (x1 int, x2 int);
 insert into x values (1,11);
 insert into x values (2,22);
@@ -2875,6 +2874,77 @@ select b.unique1 from
 (5 rows)
 
 --
+-- test handling of potential equivalence clauses above outer joins
+--
+explain (costs off)
+select q1, unique2, thousand, hundred
+  from int8_tbl a left join tenk1 b on q1 = unique2
+  where coalesce(thousand,123) = q1 and q1 = coalesce(hundred,123);
+                                      QUERY PLAN                                      
+--------------------------------------------------------------------------------------
+ Nested Loop Left Join
+   Filter: ((COALESCE(b.thousand, 123) = a.q1) AND (a.q1 = COALESCE(b.hundred, 123)))
+   ->  Seq Scan on int8_tbl a
+   ->  Index Scan using tenk1_unique2 on tenk1 b
+         Index Cond: (a.q1 = unique2)
+(5 rows)
+
+select q1, unique2, thousand, hundred
+  from int8_tbl a left join tenk1 b on q1 = unique2
+  where coalesce(thousand,123) = q1 and q1 = coalesce(hundred,123);
+ q1 | unique2 | thousand | hundred 
+----+---------+----------+---------
+(0 rows)
+
+explain (costs off)
+select f1, unique2, case when unique2 is null then f1 else 0 end
+  from int4_tbl a left join tenk1 b on f1 = unique2
+  where (case when unique2 is null then f1 else 0 end) = 0;
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Nested Loop Left Join
+   Filter: (CASE WHEN (b.unique2 IS NULL) THEN a.f1 ELSE 0 END = 0)
+   ->  Seq Scan on int4_tbl a
+   ->  Index Only Scan using tenk1_unique2 on tenk1 b
+         Index Cond: (unique2 = a.f1)
+(5 rows)
+
+select f1, unique2, case when unique2 is null then f1 else 0 end
+  from int4_tbl a left join tenk1 b on f1 = unique2
+  where (case when unique2 is null then f1 else 0 end) = 0;
+ f1 | unique2 | case 
+----+---------+------
+  0 |       0 |    0
+(1 row)
+
+--
+-- test ability to push constants through outer join clauses
+--
+explain (costs off)
+  select * from int4_tbl a left join tenk1 b on f1 = unique2 where f1 = 0;
+                   QUERY PLAN                    
+-------------------------------------------------
+ Nested Loop Left Join
+   Join Filter: (a.f1 = b.unique2)
+   ->  Seq Scan on int4_tbl a
+         Filter: (f1 = 0)
+   ->  Index Scan using tenk1_unique2 on tenk1 b
+         Index Cond: (unique2 = 0)
+(6 rows)
+
+explain (costs off)
+  select * from tenk1 a full join tenk1 b using(unique2) where unique2 = 42;
+                   QUERY PLAN                    
+-------------------------------------------------
+ Merge Full Join
+   Merge Cond: (a.unique2 = b.unique2)
+   ->  Index Scan using tenk1_unique2 on tenk1 a
+         Index Cond: (unique2 = 42)
+   ->  Index Scan using tenk1_unique2 on tenk1 b
+         Index Cond: (unique2 = 42)
+(6 rows)
+
+--
 -- test join removal
 --
 begin;
@@ -2952,14 +3022,14 @@ select p.* from parent p left join child c on (p.k = c.k) order by 1,2;
 
 explain (verbose true, costs false, nodes false)
   select p.* from parent p left join child c on (p.k = c.k) order by 1,2;
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
+                            QUERY PLAN                            
+------------------------------------------------------------------
  Sort
    Output: p.k, p.pd
    Sort Key: p.k, p.pd
-   ->  Data Node Scan on "__REMOTE_SORT_QUERY__"
+   ->  Data Node Scan on parent "_REMOTE_TABLE_QUERY_"
          Output: p.k, p.pd
-         Remote query: SELECT k, pd FROM ONLY parent p WHERE true ORDER BY 1, 2
+         Remote query: SELECT k, pd FROM ONLY parent p WHERE true
 (6 rows)
 
 -- this case is not
@@ -2977,15 +3047,23 @@ explain (verbose true, costs false, nodes false)
   select p.*, linked from parent p
     left join (select c.*, true as linked from child c) as ss
     on (p.k = ss.k) order by p.k;
-                                                                                                     QUERY PLAN                                                                                                      
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
  Sort
    Output: p.k, p.pd, (true)
    Sort Key: p.k
-   ->  Data Node Scan on "__REMOTE_SORT_QUERY__"
-         Output: p.k, p.pd, true
-         Remote query: SELECT l.a_1, l.a_2 FROM ((SELECT p.k, p.pd FROM ONLY parent p WHERE true) l(a_1, a_2) LEFT JOIN (SELECT c.k FROM ONLY child c WHERE true) r(a_1) ON ((l.a_1 = r.a_1))) WHERE true ORDER BY 1
-(6 rows)
+   ->  Hash Left Join
+         Output: p.k, p.pd, (true)
+         Hash Cond: (p.k = c.k)
+         ->  Data Node Scan on parent "_REMOTE_TABLE_QUERY_"
+               Output: p.k, p.pd
+               Remote query: SELECT k, pd FROM ONLY parent p WHERE true
+         ->  Hash
+               Output: c.k, (true)
+               ->  Data Node Scan on child "_REMOTE_TABLE_QUERY_"
+                     Output: c.k, true
+                     Remote query: SELECT k FROM ONLY child c WHERE true
+(14 rows)
 
 -- check for a 9.0rc1 bug: join removal breaks pseudoconstant qual handling
 select p.* from
@@ -2999,12 +3077,15 @@ explain (verbose true, costs false, nodes false)
 select p.* from
   parent p left join child c on (p.k = c.k)
   where p.k = 1 and p.k = 2;
-                                                     QUERY PLAN                                                      
----------------------------------------------------------------------------------------------------------------------
- Data Node Scan on "__REMOTE_FQS_QUERY__"
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ Result
    Output: p.k, p.pd
-   Remote query: SELECT p.k, p.pd FROM (parent p LEFT JOIN child c ON ((p.k = c.k))) WHERE ((p.k = 1) AND (p.k = 2))
-(3 rows)
+   One-Time Filter: false
+   ->  Data Node Scan on parent "_REMOTE_TABLE_QUERY_"
+         Output: p.k, p.pd
+         Remote query: SELECT k, pd FROM ONLY parent p WHERE ((k = 1) AND false)
+(6 rows)
 
 select p.* from
   (parent p left join child c on (p.k = c.k)) join parent x on p.k = x.k
@@ -3017,11 +3098,11 @@ explain (verbose true, costs false, nodes false)
 select p.* from
   (parent p left join child c on (p.k = c.k)) join parent x on p.k = x.k
   where p.k = 1 and p.k = 2;
-                                                                      QUERY PLAN                                                                      
-------------------------------------------------------------------------------------------------------------------------------------------------------
- Data Node Scan on "__REMOTE_FQS_QUERY__"
+        QUERY PLAN        
+--------------------------
+ Result
    Output: p.k, p.pd
-   Remote query: SELECT p.k, p.pd FROM ((parent p LEFT JOIN child c ON ((p.k = c.k))) JOIN parent x ON ((p.k = x.k))) WHERE ((p.k = 1) AND (p.k = 2))
+   One-Time Filter: false
 (3 rows)
 
 -- bug 5255: this is not optimizable by join removal

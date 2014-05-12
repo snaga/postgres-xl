@@ -18,6 +18,9 @@ PostgreSQL documentation
 <!## XC>
   <refpurpose>remove a <productname>Postgres-XC</productname> procedural language</refpurpose>
 <!## end>
+<!## XL>
+  <refpurpose>remove a <productname>Postgres-XL</productname> procedural language</refpurpose>
+<!## end>
  </refnamediv>
 
  <indexterm zone="app-droplang">
@@ -54,6 +57,9 @@ PostgreSQL documentation
 <!## XC>
    <productname>Postgres-XC</productname> database.
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> database.
+<!## end>
   </para>
 
   <para>
@@ -69,6 +75,9 @@ PostgreSQL documentation
 <!## end>
 <!## XC>
     in a future <productname>Postgres-XC</productname> release.  Direct use
+<!## end>
+<!## XL>
+    in a future <productname>Postgres-XL</productname> release.  Direct use
 <!## end>
     of the <command>DROP EXTENSION</> command is recommended instead.
    </para>
@@ -253,6 +262,9 @@ PostgreSQL documentation
 <!## end>
 <!## XC>
    This utility, like most other <productname>Postgres-XC</> utilities,
+<!## end>
+<!## XL>
+   This utility, like most other <productname>Postgres-XL</> utilities,
 <!## end>
    also uses the environment variables supported by <application>libpq</>
    (see <xref linkend="libpq-envars">).

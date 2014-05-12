@@ -14,8 +14,8 @@
   locking information for a specified table.
  </para>
 
-&xconly; 
 <!## XC>
+&xconly; 
  <para>
   Functions of this module returns information about connecting
   Coordinators locally.  To get information of a Datanode, you can
@@ -23,6 +23,15 @@
   statements will be handled by local transaction control without GTM,
   you will have warnings and the visibility could be somewhat
   inconsistent.
+ </para>
+<!## end>
+<!## XL>
+&xlonly; 
+ <para>
+  Functions of this module return information from the 
+  Coordinator that the session is currently connect to.  
+  To get information about a Datanode, you can
+  use <command>EXECUTE DIRECT</command>.
  </para>
 <!## end>
 

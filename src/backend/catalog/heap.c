@@ -77,6 +77,7 @@
 #include "pgxc/nodemgr.h"
 #include "pgxc/pgxc.h"
 #include "pgxc/pgxcnode.h"
+#include "pgxc/postgresql_fdw.h"
 #endif
 
 
@@ -1033,7 +1034,7 @@ GetRelationDistributionItems(Oid relid,
 		for (i = 0; i < descriptor->natts; i++)
 		{
 			attr = descriptor->attrs[i];
-			if (IsTypeDistributable(attr->atttypid))
+			if (IsTypeHashDistributable(attr->atttypid))
 			{
 				/* distribute on this column */
 				local_attnum = i + 1;
@@ -1065,7 +1066,7 @@ GetRelationDistributionItems(Oid relid,
 						 errmsg("Invalid distribution column specified")));
 				}
 
-				if (!IsTypeDistributable(descriptor->attrs[local_attnum - 1]->atttypid))
+				if (!IsTypeHashDistributable(descriptor->attrs[local_attnum - 1]->atttypid))
 				{
 					ereport(ERROR,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
@@ -1088,7 +1089,7 @@ GetRelationDistributionItems(Oid relid,
 						 errmsg("Invalid distribution column specified")));
 				}
 
-				if (!IsTypeDistributable(descriptor->attrs[local_attnum - 1]->atttypid))
+				if (!IsTypeModuloDistributable(descriptor->attrs[local_attnum - 1]->atttypid))
 				{
 					ereport(ERROR,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),

@@ -87,6 +87,18 @@ ROLLBACK PREPARED <replaceable class="PARAMETER">transaction_id</replaceable>
    If <literal>xc_maintenance_mode</literal> GUC parameter is set to <literal>ON</literal>, <command>ROLLBACK PREPARED</command> will not propagate to other nodes.   It just runs locally and report the result to <literal>GTM</literal>.
   </para>
 <!## end>
+<!## XL>
+&xlonly;
+  <para>
+   If more than one Datanode and/or Coordinator are involved in the
+   transaction, the <command>ROLLBACK PREPARED</> command will propagate to
+   all the nodes involved.
+  </para>
+&xlonly;
+  <para>
+   If <literal>xc_maintenance_mode</literal> GUC parameter is set to <literal>ON</literal>, <command>ROLLBACK PREPARED</command> will not propagate to other nodes.   It just runs locally and report the result to <literal>GTM</literal>.
+  </para>
+<!## end>
  </refsect1>
 
  <refsect1 id="sql-rollback-prepared-examples">
@@ -109,6 +121,9 @@ ROLLBACK PREPARED 'foobar';
    <member><xref linkend="sql-prepare-transaction"></member>
    <member><xref linkend="sql-commit-prepared"></member>
 <!## XC>
+   <member><xref linkend="guc-xc-maintenance-mode"></member>
+<!## end>
+<!## XL>
    <member><xref linkend="guc-xc-maintenance-mode"></member>
 <!## end>
   </simplelist>

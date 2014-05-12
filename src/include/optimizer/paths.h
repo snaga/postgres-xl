@@ -85,19 +85,6 @@ extern void add_paths_to_joinrel(PlannerInfo *root, RelOptInfo *joinrel,
 					 JoinType jointype, SpecialJoinInfo *sjinfo,
 					 List *restrictlist);
 
-#ifdef PGXC
-/*
- * rquerypath.c
- * 		routines to create RemoteQuery paths
- */
-extern bool create_plainrel_rqpath(PlannerInfo *root, RelOptInfo *rel,
-									RangeTblEntry *rte);
-extern void create_joinrel_rqpath(PlannerInfo *root, RelOptInfo *joinrel,
-						RelOptInfo *outerrel, RelOptInfo *innerrel,
-						List *restrictlist, JoinType jointype,
-						SpecialJoinInfo *sjinfo);
-#endif /* PGXC */
-
 /*
  * joinrels.c
  *	  routines to determine which relations to join
@@ -137,7 +124,8 @@ extern void add_child_rel_equivalences(PlannerInfo *root,
 						   RelOptInfo *child_rel);
 extern void mutate_eclass_expressions(PlannerInfo *root,
 						  Node *(*mutator) (),
-						  void *context);
+						  void *context,
+						  bool include_child_exprs);
 extern List *generate_implied_equalities_for_indexcol(PlannerInfo *root,
 										 IndexOptInfo *index,
 										 int indexcol);

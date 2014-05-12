@@ -3,6 +3,11 @@
  * fe-connect.c
  *	  functions related to setting up a connection to the backend
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
@@ -889,6 +894,39 @@ freeGTM_Conn(GTM_Conn *conn)
 		free(conn->outBuffer);
 	termGTMPQExpBuffer(&conn->errorMessage);
 	termGTMPQExpBuffer(&conn->workBuffer);
+#ifdef XCP
+	if (conn->result)
+	{
+		/* Free last snapshot if defined */
+		if (conn->result->gr_snapshot.sn_xip)
+			free(conn->result->gr_snapshot.sn_xip);
+
+		/* Depending on result type there could be allocated data */
+		switch (conn->result->gr_type)
+		{
+			case SEQUENCE_INIT_RESULT:
+			case SEQUENCE_RESET_RESULT:
+			case SEQUENCE_CLOSE_RESULT:
+			case SEQUENCE_RENAME_RESULT:
+			case SEQUENCE_ALTER_RESULT:
+			case SEQUENCE_SET_VAL_RESULT:
+				if (conn->result->gr_resdata.grd_seqkey.gsk_key)
+					free(conn->result->gr_resdata.grd_seqkey.gsk_key);
+				break;
+
+			case SEQUENCE_GET_NEXT_RESULT:
+			case SEQUENCE_GET_LAST_RESULT:
+				if (conn->result->gr_resdata.grd_seq.seqkey.gsk_key)
+					free(conn->result->gr_resdata.grd_seq.seqkey.gsk_key);
+				break;
+
+			default:
+				break;
+		}
+
+		free(conn->result);
+	}
+#endif
 
 	free(conn);
 }

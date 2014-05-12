@@ -26,6 +26,15 @@
    and will be supplied in the future.
   </para>
 <!## end>
+<!## XL>
+&xlonly;
+  <para>
+   Query performance can be affected by many things. Some of these can
+   be controlled by the user, while others are fundamental to the underlying
+   design of the system.  This chapter's goal is to provide some hints about understanding
+   and tuning <productname>Postgres-XL</productname> performance.
+  </para>
+<!## end>
 
   <sect1 id="using-explain">
    <title>Using <command>EXPLAIN</command></title>
@@ -44,7 +53,13 @@
     This section will be supplied in the future version.
    </para>
 <!## end>
-<!## PG>
+<!## XL>
+&xlonly;
+   <para>
+    <productname>Postgres-XL</productname> specific information will supplied in a future version.
+    For this version we include general <productname>PostgreSQL</productname> information.
+   </para>
+
    <para>
     <productname>PostgreSQL</productname> devises a <firstterm>query
     plan</firstterm> for each query it receives.  Choosing the right
@@ -488,7 +503,6 @@ WHERE t1.unique1 &lt; 100 AND t1.unique2 = t2.unique2;
     process the table in any case, so there's no value in expending additional
     page reads to look at an index.
    </para>
-<!## end>
 
   </sect1>
 
@@ -506,7 +520,20 @@ WHERE t1.unique1 &lt; 100 AND t1.unique2 = t2.unique2;
    This section will be supplied in the future version.
   </para>
 <!## end>
-<!## PG>
+<!## XL>
+&xlonly;
+  <para>
+    <productname>Postgres-XL</productname> pulls up statistics 
+   from the Datanodes and stores it in each of the Coordinator's catalog
+   table to help make query planning decisions.
+  </para>
+  <para>
+   Traditional PostgreSQL costing applies, but <productname>Postgres-XL</productname>
+   also tries to take into consideration the cost of shipping rows around the
+   network for internode joins, which is an expensive operation.
+   Below general PostgreSQL handling is described.
+  </para>
+<!## end>
   <para>
    As we saw in the previous section, the query planner needs to estimate
    the number of rows retrieved by a query in order to make good choices
@@ -643,7 +670,6 @@ WHERE tablename = 'road';
    <xref linkend="planner-stats-details">.
   </para>
 
-<!## end>
  </sect1>
 
  <sect1 id="explicit-joins">
@@ -680,6 +706,9 @@ SELECT * FROM a, b, c WHERE a.id = b.id AND b.ref = c.id;
 <!## XC>
    joins in the <productname>Postgres-XC</productname> executor happen
 <!## end>
+<!## XL>
+   joins in the <productname>Postgres-XL</productname> executor happen
+<!## end>
    between two input tables, so it's necessary to build up the result
    in one or another of these fashions.)  The important point is that
    these different join possibilities give semantically equivalent
@@ -700,6 +729,18 @@ SELECT * FROM a, b, c WHERE a.id = b.id AND b.ref = c.id;
    to the Datanode to reduce the amount of rows to receive.
   </para>
 <!## end>
+<!## XL>
+  <para>
+   <productname>Postgres-XL</> stores table data in a distributed or
+   replicated fashion.  To leverage this, the planner tries to find
+   the best way to use as much of Datanode power as possible.  If the
+   equi-join is done by distribution columns and they share the
+   distribution method (hash/modulo), the Coordinator can tell
+   the Datanode to perform join.  
+   If not, it may tell Datanodes to ship rows to other Datanodes
+   and expect rows from other Datanodes to be shipped to it.
+  </para>
+<!## end>
 &common;
   <para>
    When a query only involves two or three tables, there aren't many join
@@ -713,6 +754,9 @@ SELECT * FROM a, b, c WHERE a.id = b.id AND b.ref = c.id;
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname> planner will switch from exhaustive
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> planner will switch from exhaustive
 <!## end>
    search to a <firstterm>genetic</firstterm> probabilistic search
    through a limited number of possibilities.  (The switch-over threshold is
@@ -760,6 +804,9 @@ SELECT * FROM a LEFT JOIN b ON (a.bid = b.id) LEFT JOIN c ON (a.cid = c.id);
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname> query planner to treat all
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> query planner to treat all
 <!## end>
    <literal>JOIN</> clauses as constraining the join order anyway.
    For example, these three queries are logically equivalent:
@@ -878,6 +925,9 @@ SELECT * FROM x, y, a, b, c WHERE something AND somethingelse;
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname> is doing a lot of work for
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> is doing a lot of work for
 <!## end>
     each row that is added.  An additional benefit of doing all
     insertions in one transaction is that if the insertion of one row
@@ -1001,6 +1051,13 @@ SELECT * FROM x, y, a, b, c WHERE something AND somethingelse;
     constraint.
    </para>
 <!## end>
+<!## XL>
+&xlonly;
+   <para>
+    In <productname>Postgres-XL</>, only the distribution column can have foreign key
+    constraint.
+   </para>
+<!## end>
   </sect2>
 
   <sect2 id="populate-checkpoint-segments">
@@ -1016,6 +1073,9 @@ SELECT * FROM x, y, a, b, c WHERE something AND somethingelse;
 <!## end>
 <!## XC>
     amount of data into <productname>Postgres-XC</productname> will
+<!## end>
+<!## XL>
+    amount of data into <productname>Postgres-XL</productname> will
 <!## end>
     cause checkpoints to occur more often than the normal checkpoint
     frequency (specified by the <varname>checkpoint_timeout</varname>
@@ -1034,6 +1094,15 @@ SELECT * FROM x, y, a, b, c WHERE something AND somethingelse;
     by <acronym>DDL</>s.
    </para>
 <!## end>
+<!## XL>
+&xlonly;
+   <para>
+    Please note that you should tune the configuration variables in
+    all the nodes involved.  Keep in mind that the Datanodes
+    are more important and will need more resources than Coordinators.
+    by <acronym>DDL</>s.
+   </para>
+<!## end>
   </sect2>
 
   <sect2 id="populate-pitr">
@@ -1043,6 +1112,11 @@ SELECT * FROM x, y, a, b, c WHERE something AND somethingelse;
 &xconly;
    <para>
     Use of streaming replication will be added in the future release of <productname>Postgres-XC</>;
+   </para>
+<!## end>
+<!## XL>
+&xlonly;
+   <para>
    </para>
 <!## end>
 <!## PG>
@@ -1124,6 +1198,15 @@ SELECT * FROM x, y, a, b, c WHERE something AND somethingelse;
     In <productname>Postgres-XC</>, manual <command>VACUUM</> will be
     populated to all the Datanodes as well.  However, you should
     configure autovacuum for each Coordinator and Datanodes.
+   </para>
+<!## end>
+<!## XL>
+&xlonly;
+   <para>
+    In <productname>Postgres-XL</>, a manual <command>VACUUM</> will be
+    pushed down to all the Datanodes as well.  
+    Depending on your workload, if you have a highly loaded cluster,
+    you may wish to disable autovacuum and vacuum at specific times.
    </para>
 <!## end>
   </sect2>
@@ -1241,6 +1324,9 @@ SELECT * FROM x, y, a, b, c WHERE something AND somethingelse;
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname> can be configured to run
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> can be configured to run
 <!## end>
     much faster.  The following are configuration changes you can make
     to improve performance in such cases.  Except as noted below, durability

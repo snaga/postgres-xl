@@ -3,6 +3,11 @@
  * lsyscache.h
  *	  Convenience routines for common queries in the system catalog cache.
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -69,6 +74,11 @@ extern int32 get_atttypmod(Oid relid, AttrNumber attnum);
 extern void get_atttypetypmodcoll(Oid relid, AttrNumber attnum,
 					  Oid *typid, int32 *typmod, Oid *collid);
 extern char *get_collation_name(Oid colloid);
+#ifdef XCP
+extern Oid 	get_collation_namespace(Oid colloid);
+extern int32 get_collation_encoding(Oid colloid);
+extern Oid 	get_collid(const char *collname, int32 collencoding, Oid collnsp);
+#endif
 extern char *get_constraint_name(Oid conoid);
 extern Oid	get_opclass_family(Oid opclass);
 extern Oid	get_opclass_input_type(Oid opclass);
@@ -166,6 +176,15 @@ extern void free_attstatsslot(Oid atttype,
 				  Datum *values, int nvalues,
 				  float4 *numbers, int nnumbers);
 extern char *get_namespace_name(Oid nspid);
+#ifdef XCP
+extern Oid	get_namespaceid(const char *nspname);
+extern char *get_typ_name(Oid typid);
+extern Oid	get_typ_namespace(Oid typid);
+extern Oid	get_typname_typid(const char *typname, Oid typnamespace);
+extern Oid	get_funcid(const char *funcname, oidvector *argtypes, Oid funcnsp);
+extern Oid	get_opnamespace(Oid opno);
+extern Oid	get_operid(const char *oprname, Oid oprleft, Oid oprright, Oid oprnsp);
+#endif
 extern Oid	get_range_subtype(Oid rangeOid);
 
 #define type_is_array(typid)  (get_element_type(typid) != InvalidOid)

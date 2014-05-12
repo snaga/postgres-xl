@@ -43,6 +43,9 @@ can be created without links to the main documentation.  Don't use <xref>.
 <!## XC>
    <productname>Postgres-XC</> release, with major features and migration
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</> release, with major features and migration
+<!## end>
 <!## PG>
    <productname>PostgreSQL</> release, with major features and migration
 <!## end>
@@ -65,14 +68,26 @@ can be created without links to the main documentation.  Don't use <xref>.
    interface</ulink> that shows changes to specific files.
   </para>
 <!## end>
+<!## XL>
+  <para>
+   A complete list of changes for each release can be obtained by
+   viewing the <link linkend="git">Git</link> logs for each release.
+   The <ulink
+   url="https://sourceforge.net/mailarchive/forum.php?forum_name=postgres-xl-committers">
+   <literal>postgres-xl-committers</literal>
+   email list</ulink> records all of the source code changes as well.  There is also
+   a <ulink url="http://postgres-xl.git.sourceforge.net/git/gitweb.cgi?p=postgres-xl/postgres-xl;a=summary">web
+   interface</ulink> that shows changes to specific files.
+  </para>
+<!## end>
 <!## PG>
   <para>
    A complete list of changes for each release can be obtained by
    viewing the <link linkend="git">Git</link> logs for each release.
    The <ulink
-   url="http://archives.postgresql.org/pgsql-committers/"><literal>pgsql-committers</literal>
+   url="http://archives.postgres-xl.org/pgxl-committers/"><literal>pgxl-committers</literal>
    email list</ulink> records all source code changes as well.  There is also
-   a <ulink url="http://git.postgresql.org/gitweb?p=postgresql.git;a=summary">web
+   a <ulink url="http://git.postgres-xl.org/gitweb?p=postgres-xl;a=summary">web
    interface</ulink> that shows changes to specific files.
   </para>
 <!## end>
@@ -83,12 +98,16 @@ can be created without links to the main documentation.  Don't use <xref>.
    review, so each item is truly a community effort.
   </para>
 
+&release-xl-9.2;
 <!--
   To add a new major-release series, add an entry here and in filelist.sgml.
   Follow the naming convention, or you'll confuse generate_history.pl.
 
   The reason for splitting the release notes this way is so that appropriate
   subsets can easily be copied into back branches.
+<!## XL>
+&release-xl-9.2;
+<!## end>
 -->
 <!## XC>
 &release-xc-1.0;

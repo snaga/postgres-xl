@@ -207,6 +207,9 @@ REINDEX INDEX distributors;
 <!## XC>
    <command>ALTER INDEX</> is a <productname>Postgres-XC</productname>
 <!## end>
+<!## XL>
+   <command>ALTER INDEX</> is a <productname>Postgres-XL</productname>
+<!## end>
    extension.
   </para>
  </refsect1>

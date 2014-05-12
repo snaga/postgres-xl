@@ -3,6 +3,11 @@
  * sequence.h
  *	  prototypes for sequence.c.
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -83,6 +88,10 @@ extern void ResetSequence(Oid seq_relid);
 extern void seq_redo(XLogRecPtr lsn, XLogRecord *rptr);
 extern void seq_desc(StringInfo buf, uint8 xl_info, char *rec);
 
+#ifdef XCP
+#define DEFAULT_CACHEVAL	1
+extern int SequenceRangeVal;
+#endif
 #ifdef PGXC
 /*
  * List of actions that registered the callback.

@@ -41,6 +41,14 @@ RELEASE [ SAVEPOINT ] <replaceable>savepoint_name</replaceable>
   </para>
  </refsect1>
 <!## end>
+<!## XL>
+&xlonly;
+  <para>
+   <command>RELEASE SAVEPOINT</command> is not supported by the
+   current release of <productname>Postgres-XL</productname>.
+  </para>
+ </refsect1>
+<!## end>
 
 <!## PG>
   <para>

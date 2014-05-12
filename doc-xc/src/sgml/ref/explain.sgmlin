@@ -83,13 +83,21 @@ EXPLAIN [ ANALYZE ] [ VERBOSE ] <replaceable class="parameter">statement</replac
    are close to reality.
   </para>
 
-&xconly;
 <!## XC>
+&xconly;
   <para>
    Please note that <command>explain</command> explains local plan at
    the Coordinator only.  If you'd like to see remote plan at
    Datanodes, use <filename>auto_explain</filename> package
    at <xref linkend="auto-explain">
+  </para>
+<!## end>
+<!## XL>
+&xlonly;
+  <para>
+   In <productname>Postgres-XL</productname>, EXPLAIN provides the cluster-wide 
+   execution plan that will be executed, and provides insight into the inner
+   workings of how queries are processed in parallel.
   </para>
 <!## end>
 
@@ -180,6 +188,7 @@ ROLLBACK;
     </listitem>
    </varlistentry>
 
+<!## XC>
    <varlistentry>
     <term><literal>NODES</literal></term>
     <listitem>
@@ -201,6 +210,30 @@ ROLLBACK;
      </para>
     </listitem>
    </varlistentry>
+<!## end>
+<!## XL>
+   <varlistentry>
+    <term><literal>NODES</literal></term>
+    <listitem>
+     <para>
+      Include information on the Datanodes involved in the execution of Data
+	  Scan Node. This parameter defaults to <literal>TRUE</literal>. This option
+	  is available in <productname>Postgres-XL</productname>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>NUM_NODES</literal></term>
+    <listitem>
+     <para>
+      Include information on the number of nodes involved in the execution of
+	  Data Node Scan node.  This parameter defaults to <literal>FALSE</literal>.
+	  This option is available in <productname>Postgres-XL</productname>.
+     </para>
+    </listitem>
+   </varlistentry>
+<!## end>
 
    <varlistentry>
     <term><literal>FORMAT</literal></term>

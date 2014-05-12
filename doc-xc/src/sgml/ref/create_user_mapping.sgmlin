@@ -37,6 +37,14 @@ CREATE USER MAPPING FOR { <replaceable class="parameter">user_name</replaceable>
    in the future releases.
   </para>
 <!## end>
+<!## XL>
+&xlonly;
+  <para>
+   <command>USER MAPPING</> is not yet supported
+   in <productname>Postgres-XL</>.  This command may be supported
+   in the future releases.
+  </para>
+<!## end>
 <!## PG>
 &pgonly;
 

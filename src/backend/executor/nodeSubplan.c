@@ -3,6 +3,11 @@
  * nodeSubplan.c
  *	  routines to support subselects
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -44,7 +49,8 @@ static Datum ExecScanSubPlan(SubPlanState *node,
 				ExprContext *econtext,
 				bool *isNull);
 static void buildSubPlanHash(SubPlanState *node, ExprContext *econtext);
-static bool findPartialMatch(TupleHashTable hashtable, TupleTableSlot *slot);
+static bool findPartialMatch(TupleHashTable hashtable, TupleTableSlot *slot,
+				 FmgrInfo *eqfunctions);
 static bool slotAllNulls(TupleTableSlot *slot);
 static bool slotNoNulls(TupleTableSlot *slot);
 
@@ -151,7 +157,7 @@ ExecHashSubPlan(SubPlanState *node,
 			return BoolGetDatum(true);
 		}
 		if (node->havenullrows &&
-			findPartialMatch(node->hashnulls, slot))
+			findPartialMatch(node->hashnulls, slot, node->cur_eq_funcs))
 		{
 			ExecClearTuple(slot);
 			*isNull = true;
@@ -184,14 +190,14 @@ ExecHashSubPlan(SubPlanState *node,
 	}
 	/* Scan partly-null table first, since more likely to get a match */
 	if (node->havenullrows &&
-		findPartialMatch(node->hashnulls, slot))
+		findPartialMatch(node->hashnulls, slot, node->cur_eq_funcs))
 	{
 		ExecClearTuple(slot);
 		*isNull = true;
 		return BoolGetDatum(false);
 	}
 	if (node->havehashrows &&
-		findPartialMatch(node->hashtable, slot))
+		findPartialMatch(node->hashtable, slot, node->cur_eq_funcs))
 	{
 		ExecClearTuple(slot);
 		*isNull = true;
@@ -571,9 +577,13 @@ buildSubPlanHash(SubPlanState *node, ExprContext *econtext)
  * We have to scan the whole hashtable; we can't usefully use hashkeys
  * to guide probing, since we might get partial matches on tuples with
  * hashkeys quite unrelated to what we'd get from the given tuple.
+ *
+ * Caller must provide the equality functions to use, since in cross-type
+ * cases these are different from the hashtable's internal functions.
  */
 static bool
-findPartialMatch(TupleHashTable hashtable, TupleTableSlot *slot)
+findPartialMatch(TupleHashTable hashtable, TupleTableSlot *slot,
+				 FmgrInfo *eqfunctions)
 {
 	int			numCols = hashtable->numCols;
 	AttrNumber *keyColIdx = hashtable->keyColIdx;
@@ -586,7 +596,7 @@ findPartialMatch(TupleHashTable hashtable, TupleTableSlot *slot)
 		ExecStoreMinimalTuple(entry->firstTuple, hashtable->tableslot, false);
 		if (!execTuplesUnequal(slot, hashtable->tableslot,
 							   numCols, keyColIdx,
-							   hashtable->cur_eq_funcs,
+							   eqfunctions,
 							   hashtable->tempcxt))
 		{
 			TermTupleHashIterator(&hashiter);
@@ -660,6 +670,11 @@ ExecInitSubPlan(SubPlan *subplan, PlanState *parent)
 	sstate->planstate = (PlanState *) list_nth(estate->es_subplanstates,
 											   subplan->plan_id - 1);
 
+#ifdef XCP
+	/* subplan is referenced on local node, finish initialization */
+	ExecFinishInitProcNode(sstate->planstate);
+#endif
+
 	/* Initialize subexpressions */
 	sstate->testexpr = ExecInitExpr((Expr *) subplan->testexpr, parent);
 	sstate->args = (List *) ExecInitExpr((Expr *) subplan->args, parent);
@@ -668,6 +683,7 @@ ExecInitSubPlan(SubPlan *subplan, PlanState *parent)
 	 * initialize my state
 	 */
 	sstate->curTuple = NULL;
+	sstate->curArray = PointerGetDatum(NULL);
 	sstate->projLeft = NULL;
 	sstate->projRight = NULL;
 	sstate->hashtable = NULL;
@@ -994,16 +1010,23 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext)
 		int			paramid = linitial_int(subplan->setParam);
 		ParamExecData *prm = &(econtext->ecxt_param_exec_vals[paramid]);
 
-		prm->execPlan = NULL;
-		/* We build the result in query context so it won't disappear */
+		/*
+		 * We build the result array in query context so it won't disappear;
+		 * to avoid leaking memory across repeated calls, we have to remember
+		 * the latest value, much as for curTuple above.
+		 */
+		if (node->curArray != PointerGetDatum(NULL))
+			pfree(DatumGetPointer(node->curArray));
 		if (astate != NULL)
-			prm->value = makeArrayResult(astate,
-										 econtext->ecxt_per_query_memory);
+			node->curArray = makeArrayResult(astate,
+											 econtext->ecxt_per_query_memory);
 		else
 		{
 			MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
-			prm->value = PointerGetDatum(construct_empty_array(subplan->firstColType));
+			node->curArray = PointerGetDatum(construct_empty_array(subplan->firstColType));
 		}
+		prm->execPlan = NULL;
+		prm->value = node->curArray;
 		prm->isnull = false;
 	}
 	else if (!found)

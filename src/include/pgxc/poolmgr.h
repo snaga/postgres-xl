@@ -5,6 +5,11 @@
  *	  Definitions for the Datanode connection pool.
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2011, PostgreSQL Global Development Group
  * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
  *
@@ -24,6 +29,7 @@
 
 #define MAX_IDLE_TIME 60
 
+#ifndef XCP
 /*
  * List of flags related to pooler connection clean up when disconnecting
  * a session or relaeasing handles.
@@ -57,11 +63,16 @@ typedef enum
 	POOL_CMD_LOCAL_SET,	/* Local SET flag, current transaction block only */
 	POOL_CMD_GLOBAL_SET	/* Global SET flag */
 } PoolCommandType;
+#endif
 
 /* Connection pool entry */
 typedef struct
 {
+#ifdef XCP
+	time_t		released;
+#else
 	struct timeval released;
+#endif
 	NODE_CONNECTION *conn;
 	NODE_CANCEL	*xc_cancelConn;
 } PGXCNodePoolSlot;
@@ -81,11 +92,16 @@ typedef struct databasepool
 {
 	char	   *database;
 	char	   *user_name;
+#ifndef XCP
 	char	   *pgoptions;		/* Connection options */
+#endif
 	HTAB	   *nodePools; 		/* Hashtable of PGXCNodePool, one entry for each
 								 * Coordinator or DataNode */
 	MemoryContext mcxt;
 	struct databasepool *next; 	/* Reference to next to organize linked list */
+#ifdef XCP
+	time_t		oldest_idle;
+#endif
 } DatabasePool;
 
 /*
@@ -107,19 +123,28 @@ typedef struct
 	Oid		   	   *coord_conn_oids;	/* one for each Coordinator */
 	PGXCNodePoolSlot **dn_connections; /* one for each Datanode */
 	PGXCNodePoolSlot **coord_connections; /* one for each Coordinator */
+#ifndef XCP
 	char		   *session_params;
 	char		   *local_params;
 	bool			is_temp; /* Temporary objects used for this pool session? */
+#endif
 } PoolAgent;
 
+#ifndef XCP
 /* Handle to the pool manager (Session's side) */
 typedef struct
 {
 	/* communication channel */
 	PoolPort	port;
 } PoolHandle;
+#endif
 
+#ifdef XCP
+extern int	PoolConnKeepAlive;
+extern int	PoolMaintenanceTimeout;
+#else
 extern int	MinPoolSize;
+#endif
 extern int	MaxPoolSize;
 extern int	PoolerPort;
 
@@ -135,6 +160,7 @@ extern int	PoolManagerInit(void);
 /* Destroy internal structures */
 extern int	PoolManagerDestroy(void);
 
+#ifndef XCP
 /*
  * Get handle to pool manager. This function should be called just before
  * forking off new session. It creates PoolHandle, PoolAgent and a pipe between
@@ -150,12 +176,14 @@ extern PoolHandle *GetPoolManagerHandle(void);
  * free memory occupied by PoolHandler
  */
 extern void PoolManagerCloseHandle(PoolHandle *handle);
+#endif
 
 /*
  * Gracefully close connection to the PoolManager
  */
 extern void PoolManagerDisconnect(void);
 
+#ifndef XCP
 extern char *session_options(void);
 
 /*
@@ -166,6 +194,7 @@ extern char *session_options(void);
 extern void PoolManagerConnect(PoolHandle *handle,
 	                           const char *database, const char *user_name,
 	                           char *pgoptions);
+#endif
 
 /*
  * Reconnect to pool manager
@@ -173,6 +202,8 @@ extern void PoolManagerConnect(PoolHandle *handle,
  */
 extern void PoolManagerReconnect(void);
 
+
+#ifndef XCP
 /*
  * Save a SET command in Pooler.
  * This command is run on existent agent connections
@@ -180,6 +211,7 @@ extern void PoolManagerReconnect(void);
  * are requested.
  */
 extern int PoolManagerSetCommand(PoolCommandType command_type, const char *set_command);
+#endif
 
 /* Get pooled connections */
 extern int *PoolManagerGetConnections(List *datanodelist, List *coordlist);
@@ -197,7 +229,11 @@ extern void PoolManagerReloadConnectionInfo(void);
 extern int	PoolManagerAbortTransactions(char *dbname, char *username, int **proc_pids);
 
 /* Return connections back to the pool, for both Coordinator and Datanode connections */
+#ifdef XCP
+extern void PoolManagerReleaseConnections(bool destroy);
+#else
 extern void PoolManagerReleaseConnections(void);
+#endif
 
 /* Cancel a running query on Datanodes as well as on other Coordinators */
 extern void PoolManagerCancelQuery(int dn_count, int* dn_list, int co_count, int* co_list);
@@ -205,10 +241,12 @@ extern void PoolManagerCancelQuery(int dn_count, int* dn_list, int co_count, int
 /* Lock/unlock pool manager */
 extern void PoolManagerLock(bool is_lock);
 
+#ifndef XCP
 /* Check if pool has a handle */
 extern bool IsPoolHandle(void);
 
 /* Send commands to alter the behavior of current transaction */
 extern int PoolManagerSendLocalCommand(int dn_count, int* dn_list, int co_count, int* co_list);
+#endif
 
 #endif

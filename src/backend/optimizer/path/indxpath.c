@@ -309,26 +309,92 @@ create_index_paths(PlannerInfo *root, RelOptInfo *rel)
 	}
 
 	/*
-	 * Likewise, if we found anything usable, generate a BitmapHeapPath for
-	 * the most promising combination of join bitmap index paths.  Note there
-	 * will be only one such path no matter how many join clauses are
-	 * available.  (XXX is that good enough, or do we need to consider even
-	 * more paths for different subsets of possible join partners?	Also,
-	 * should we add in restriction bitmap paths as well?)
+	 * Likewise, if we found anything usable, generate BitmapHeapPaths for the
+	 * most promising combinations of join bitmap index paths.	Our strategy
+	 * is to generate one such path for each distinct parameterization seen
+	 * among the available bitmap index paths.	This may look pretty
+	 * expensive, but usually there won't be very many distinct
+	 * parameterizations.
 	 */
 	if (bitjoinpaths != NIL)
 	{
-		Path	   *bitmapqual;
-		Relids		required_outer;
-		double		loop_count;
-		BitmapHeapPath *bpath;
+		List	   *path_outer;
+		List	   *all_path_outers;
+		ListCell   *lc;
 
-		bitmapqual = choose_bitmap_and(root, rel, bitjoinpaths);
-		required_outer = get_bitmap_tree_required_outer(bitmapqual);
-		loop_count = get_loop_count(root, required_outer);
-		bpath = create_bitmap_heap_path(root, rel, bitmapqual,
-										required_outer, loop_count);
-		add_path(rel, (Path *) bpath);
+		/*
+		 * path_outer holds the parameterization of each path in bitjoinpaths
+		 * (to save recalculating that several times), while all_path_outers
+		 * holds all distinct parameterization sets.
+		 */
+		path_outer = all_path_outers = NIL;
+		foreach(lc, bitjoinpaths)
+		{
+			Path	   *path = (Path *) lfirst(lc);
+			Relids		required_outer;
+			bool		found = false;
+			ListCell   *lco;
+
+			required_outer = get_bitmap_tree_required_outer(path);
+			path_outer = lappend(path_outer, required_outer);
+
+			/* Have we already seen this param set? */
+			foreach(lco, all_path_outers)
+			{
+				Relids		existing_outers = (Relids) lfirst(lco);
+
+				if (bms_equal(existing_outers, required_outer))
+				{
+					found = true;
+					break;
+				}
+			}
+			if (!found)
+			{
+				/* No, so add it to all_path_outers */
+				all_path_outers = lappend(all_path_outers, required_outer);
+			}
+		}
+
+		/* Now, for each distinct parameterization set ... */
+		foreach(lc, all_path_outers)
+		{
+			Relids		max_outers = (Relids) lfirst(lc);
+			List	   *this_path_set;
+			Path	   *bitmapqual;
+			Relids		required_outer;
+			double		loop_count;
+			BitmapHeapPath *bpath;
+			ListCell   *lcp;
+			ListCell   *lco;
+
+			/* Identify all the bitmap join paths needing no more than that */
+			this_path_set = NIL;
+			forboth(lcp, bitjoinpaths, lco, path_outer)
+			{
+				Path	   *path = (Path *) lfirst(lcp);
+				Relids		p_outers = (Relids) lfirst(lco);
+
+				if (bms_is_subset(p_outers, max_outers))
+					this_path_set = lappend(this_path_set, path);
+			}
+
+			/*
+			 * Add in restriction bitmap paths, since they can be used
+			 * together with any join paths.
+			 */
+			this_path_set = list_concat(this_path_set, bitindexpaths);
+
+			/* Select best AND combination for this parameterization */
+			bitmapqual = choose_bitmap_and(root, rel, this_path_set);
+
+			/* And push that path into the mix */
+			required_outer = get_bitmap_tree_required_outer(bitmapqual);
+			loop_count = get_loop_count(root, required_outer);
+			bpath = create_bitmap_heap_path(root, rel, bitmapqual,
+											required_outer, loop_count);
+			add_path(rel, (Path *) bpath);
+		}
 	}
 }
 
@@ -631,6 +697,7 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	List	   *index_pathkeys;
 	List	   *useful_pathkeys;
 	bool		found_clause;
+	bool		found_lower_saop_clause;
 	bool		pathkeys_possibly_useful;
 	bool		index_is_ordered;
 	bool		index_only_scan;
@@ -668,12 +735,20 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	 * if saop_control is SAOP_REQUIRE, it has to be a ScalarArrayOpExpr
 	 * clause.
 	 *
+	 * found_lower_saop_clause is set true if there's a ScalarArrayOpExpr
+	 * index clause for a non-first index column.  This prevents us from
+	 * assuming that the scan result is ordered.  (Actually, the result is
+	 * still ordered if there are equality constraints for all earlier
+	 * columns, but it seems too expensive and non-modular for this code to be
+	 * aware of that refinement.)
+	 *
 	 * We also build a Relids set showing which outer rels are required by the
 	 * selected clauses.
 	 */
 	index_clauses = NIL;
 	clause_columns = NIL;
 	found_clause = false;
+	found_lower_saop_clause = false;
 	outer_relids = NULL;
 	for (indexcol = 0; indexcol < index->ncolumns; indexcol++)
 	{
@@ -689,6 +764,8 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 				if (saop_control == SAOP_PER_AM && !index->amsearcharray)
 					continue;
 				found_clause = true;
+				if (indexcol > 0)
+					found_lower_saop_clause = true;
 			}
 			else
 			{
@@ -725,9 +802,11 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	/*
 	 * 2. Compute pathkeys describing index's ordering, if any, then see how
 	 * many of them are actually useful for this query.  This is not relevant
-	 * if we are only trying to build bitmap indexscans.
+	 * if we are only trying to build bitmap indexscans, nor if we have to
+	 * assume the scan is unordered.
 	 */
 	pathkeys_possibly_useful = (scantype != ST_BITMAPSCAN &&
+								!found_lower_saop_clause &&
 								has_useful_pathkeys(root, rel));
 	index_is_ordered = (index->sortopfamily != NULL);
 	if (index_is_ordered && pathkeys_possibly_useful)
@@ -2353,12 +2432,19 @@ match_clause_to_ordering_op(IndexOptInfo *index,
 void
 check_partial_indexes(PlannerInfo *root, RelOptInfo *rel)
 {
-	List	   *restrictinfo_list = rel->baserestrictinfo;
-	ListCell   *ilist;
+	List	   *clauselist;
+	bool		have_partial;
+	Relids		otherrels;
+	ListCell   *lc;
 
-	foreach(ilist, rel->indexlist)
+	/*
+	 * Frequently, there will be no partial indexes, so first check to make
+	 * sure there's something useful to do here.
+	 */
+	have_partial = false;
+	foreach(lc, rel->indexlist)
 	{
-		IndexOptInfo *index = (IndexOptInfo *) lfirst(ilist);
+		IndexOptInfo *index = (IndexOptInfo *) lfirst(lc);
 
 		if (index->indpred == NIL)
 			continue;			/* ignore non-partial indexes */
@@ -2366,8 +2452,71 @@ check_partial_indexes(PlannerInfo *root, RelOptInfo *rel)
 		if (index->predOK)
 			continue;			/* don't repeat work if already proven OK */
 
-		index->predOK = predicate_implied_by(index->indpred,
-											 restrictinfo_list);
+		have_partial = true;
+		break;
+	}
+	if (!have_partial)
+		return;
+
+	/*
+	 * Construct a list of clauses that we can assume true for the purpose
+	 * of proving the index(es) usable.  Restriction clauses for the rel are
+	 * always usable, and so are any join clauses that are "movable to" this
+	 * rel.  Also, we can consider any EC-derivable join clauses (which must
+	 * be "movable to" this rel, by definition).
+	 */
+	clauselist = list_copy(rel->baserestrictinfo);
+
+	/* Scan the rel's join clauses */
+	foreach(lc, rel->joininfo)
+	{
+		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+
+		/* Check if clause can be moved to this rel */
+		if (!join_clause_is_movable_to(rinfo, rel->relid))
+			continue;
+
+		clauselist = lappend(clauselist, rinfo);
+	}
+
+	/*
+	 * Add on any equivalence-derivable join clauses.  Computing the correct
+	 * relid sets for generate_join_implied_equalities is slightly tricky
+	 * because the rel could be a child rel rather than a true baserel, and
+	 * in that case we must remove its parent's relid from all_baserels.
+	 */
+	if (rel->reloptkind == RELOPT_OTHER_MEMBER_REL)
+	{
+		/* Lookup parent->child translation data */
+		AppendRelInfo *appinfo = find_childrel_appendrelinfo(root, rel);
+
+		otherrels = bms_difference(root->all_baserels,
+								   bms_make_singleton(appinfo->parent_relid));
+	}
+	else
+		otherrels = bms_difference(root->all_baserels, rel->relids);
+
+	if (!bms_is_empty(otherrels))
+		clauselist =
+			list_concat(clauselist,
+						generate_join_implied_equalities(root,
+														 bms_union(rel->relids,
+																   otherrels),
+														 otherrels,
+														 rel));
+
+	/* Now try to prove each index predicate true */
+	foreach(lc, rel->indexlist)
+	{
+		IndexOptInfo *index = (IndexOptInfo *) lfirst(lc);
+
+		if (index->indpred == NIL)
+			continue;			/* ignore non-partial indexes */
+
+		if (index->predOK)
+			continue;			/* don't repeat work if already proven OK */
+
+		index->predOK = predicate_implied_by(index->indpred, clauselist);
 	}
 }
 
@@ -2785,7 +2934,6 @@ match_special_index_operator(Expr *clause, Oid opfamily, Oid idxcollation,
 	Oid			expr_coll;
 	Const	   *patt;
 	Const	   *prefix = NULL;
-	Const	   *rest = NULL;
 	Pattern_Prefix_Status pstatus = Pattern_Prefix_None;
 
 	/*
@@ -2814,13 +2962,13 @@ match_special_index_operator(Expr *clause, Oid opfamily, Oid idxcollation,
 		case OID_NAME_LIKE_OP:
 			/* the right-hand const is type text for all of these */
 			pstatus = pattern_fixed_prefix(patt, Pattern_Type_Like, expr_coll,
-										   &prefix, &rest);
+										   &prefix, NULL);
 			isIndexable = (pstatus != Pattern_Prefix_None);
 			break;
 
 		case OID_BYTEA_LIKE_OP:
 			pstatus = pattern_fixed_prefix(patt, Pattern_Type_Like, expr_coll,
-										   &prefix, &rest);
+										   &prefix, NULL);
 			isIndexable = (pstatus != Pattern_Prefix_None);
 			break;
 
@@ -2829,7 +2977,7 @@ match_special_index_operator(Expr *clause, Oid opfamily, Oid idxcollation,
 		case OID_NAME_ICLIKE_OP:
 			/* the right-hand const is type text for all of these */
 			pstatus = pattern_fixed_prefix(patt, Pattern_Type_Like_IC, expr_coll,
-										   &prefix, &rest);
+										   &prefix, NULL);
 			isIndexable = (pstatus != Pattern_Prefix_None);
 			break;
 
@@ -2838,7 +2986,7 @@ match_special_index_operator(Expr *clause, Oid opfamily, Oid idxcollation,
 		case OID_NAME_REGEXEQ_OP:
 			/* the right-hand const is type text for all of these */
 			pstatus = pattern_fixed_prefix(patt, Pattern_Type_Regex, expr_coll,
-										   &prefix, &rest);
+										   &prefix, NULL);
 			isIndexable = (pstatus != Pattern_Prefix_None);
 			break;
 
@@ -2847,7 +2995,7 @@ match_special_index_operator(Expr *clause, Oid opfamily, Oid idxcollation,
 		case OID_NAME_ICREGEXEQ_OP:
 			/* the right-hand const is type text for all of these */
 			pstatus = pattern_fixed_prefix(patt, Pattern_Type_Regex_IC, expr_coll,
-										   &prefix, &rest);
+										   &prefix, NULL);
 			isIndexable = (pstatus != Pattern_Prefix_None);
 			break;
 
@@ -3115,7 +3263,6 @@ expand_indexqual_opclause(RestrictInfo *rinfo, Oid opfamily, Oid idxcollation)
 	Oid			expr_coll = ((OpExpr *) clause)->inputcollid;
 	Const	   *patt = (Const *) rightop;
 	Const	   *prefix = NULL;
-	Const	   *rest = NULL;
 	Pattern_Prefix_Status pstatus;
 
 	/*
@@ -3135,7 +3282,7 @@ expand_indexqual_opclause(RestrictInfo *rinfo, Oid opfamily, Oid idxcollation)
 			if (!op_in_opfamily(expr_op, opfamily))
 			{
 				pstatus = pattern_fixed_prefix(patt, Pattern_Type_Like, expr_coll,
-											   &prefix, &rest);
+											   &prefix, NULL);
 				return prefix_quals(leftop, opfamily, idxcollation, prefix, pstatus);
 			}
 			break;
@@ -3147,7 +3294,7 @@ expand_indexqual_opclause(RestrictInfo *rinfo, Oid opfamily, Oid idxcollation)
 			{
 				/* the right-hand const is type text for all of these */
 				pstatus = pattern_fixed_prefix(patt, Pattern_Type_Like_IC, expr_coll,
-											   &prefix, &rest);
+											   &prefix, NULL);
 				return prefix_quals(leftop, opfamily, idxcollation, prefix, pstatus);
 			}
 			break;
@@ -3159,7 +3306,7 @@ expand_indexqual_opclause(RestrictInfo *rinfo, Oid opfamily, Oid idxcollation)
 			{
 				/* the right-hand const is type text for all of these */
 				pstatus = pattern_fixed_prefix(patt, Pattern_Type_Regex, expr_coll,
-											   &prefix, &rest);
+											   &prefix, NULL);
 				return prefix_quals(leftop, opfamily, idxcollation, prefix, pstatus);
 			}
 			break;
@@ -3171,7 +3318,7 @@ expand_indexqual_opclause(RestrictInfo *rinfo, Oid opfamily, Oid idxcollation)
 			{
 				/* the right-hand const is type text for all of these */
 				pstatus = pattern_fixed_prefix(patt, Pattern_Type_Regex_IC, expr_coll,
-											   &prefix, &rest);
+											   &prefix, NULL);
 				return prefix_quals(leftop, opfamily, idxcollation, prefix, pstatus);
 			}
 			break;

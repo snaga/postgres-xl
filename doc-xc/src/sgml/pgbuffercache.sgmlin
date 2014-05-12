@@ -26,8 +26,16 @@
   are security issues lurking.
  </para>
 
-&xconly;
 <!## XC>
+&xconly;
+ <para>
+  <filename>pg_buffercache</filename> returns information local to the
+  connecting Coordinator.  To inquire information local to other node,
+  use <command>EXECUTE DIRECT</command>.
+ </para>
+<!## end>
+<!## XL>
+&xlonly;
  <para>
   <filename>pg_buffercache</filename> returns information local to the
   connecting Coordinator.  To inquire information local to other node,

@@ -11,6 +11,11 @@
  * be handled easily in a simple depth-first traversal.
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
@@ -28,7 +33,10 @@
 #include "nodes/relation.h"
 #ifdef PGXC
 #include "pgxc/locator.h"
-#include "optimizer/pgxcplan.h"
+#include "pgxc/planner.h"
+#endif
+#ifdef XCP
+#include "pgxc/execRemote.h"
 #endif
 #include "utils/datum.h"
 
@@ -98,7 +106,16 @@ _copyPlannedStmt(const PlannedStmt *from)
 	COPY_NODE_FIELD(relationOids);
 	COPY_NODE_FIELD(invalItems);
 	COPY_SCALAR_FIELD(nParamExec);
-
+#ifdef XCP
+	COPY_SCALAR_FIELD(nParamRemote);
+	COPY_POINTER_FIELD(remoteparams,
+					   newnode->nParamRemote * sizeof(RemoteParam));
+	COPY_STRING_FIELD(pname);
+	COPY_SCALAR_FIELD(distributionType);
+	COPY_SCALAR_FIELD(distributionKey);
+	COPY_NODE_FIELD(distributionNodes);
+	COPY_NODE_FIELD(distributionRestrict);
+#endif
 	return newnode;
 }
 
@@ -187,7 +204,9 @@ _copyModifyTable(const ModifyTable *from)
 	COPY_NODE_FIELD(rowMarks);
 	COPY_SCALAR_FIELD(epqParam);
 #ifdef PGXC
+#ifndef XCP
 	COPY_NODE_FIELD(remote_plans);
+#endif
 #endif
 
 	return newnode;
@@ -781,6 +800,9 @@ _copyAgg(const Agg *from)
 	CopyPlanFields((const Plan *) from, (Plan *) newnode);
 
 	COPY_SCALAR_FIELD(aggstrategy);
+#ifdef XCP
+	COPY_SCALAR_FIELD(aggdistribution);
+#endif
 	COPY_SCALAR_FIELD(numCols);
 	if (from->numCols > 0)
 	{
@@ -1023,27 +1045,32 @@ _copyRemoteQuery(const RemoteQuery *from)
 	COPY_STRING_FIELD(sql_statement);
 	COPY_NODE_FIELD(exec_nodes);
 	COPY_SCALAR_FIELD(combine_type);
+	COPY_NODE_FIELD(sort);
 	COPY_SCALAR_FIELD(read_only);
 	COPY_SCALAR_FIELD(force_autocommit);
 	COPY_STRING_FIELD(statement);
 	COPY_STRING_FIELD(cursor);
-	COPY_SCALAR_FIELD(rq_num_params);
-	if (from->rq_param_types)
-		COPY_POINTER_FIELD(rq_param_types,
-			sizeof(from->rq_param_types[0]) * from->rq_num_params);
-	else
-		newnode->rq_param_types = NULL;
+	COPY_SCALAR_FIELD(remote_num_params);
+	COPY_POINTER_FIELD(remote_param_types,
+	   sizeof(from->remote_param_types[0]) * from->remote_num_params);
 	COPY_SCALAR_FIELD(exec_type);
+#ifndef XCP
 	COPY_SCALAR_FIELD(is_temp);
-	COPY_SCALAR_FIELD(rq_finalise_aggs);
-	COPY_SCALAR_FIELD(rq_sortgroup_colno);
-	COPY_NODE_FIELD(remote_query);
+#endif
+
+	COPY_SCALAR_FIELD(reduce_level);
 	COPY_NODE_FIELD(base_tlist);
-	COPY_NODE_FIELD(coord_var_tlist);
-	COPY_NODE_FIELD(query_var_tlist);
+	COPY_STRING_FIELD(outer_alias);
+	COPY_STRING_FIELD(inner_alias);
+	COPY_SCALAR_FIELD(outer_reduce_level);
+	COPY_SCALAR_FIELD(inner_reduce_level);
+	COPY_BITMAPSET_FIELD(outer_relids);
+	COPY_BITMAPSET_FIELD(inner_relids);
+	COPY_STRING_FIELD(inner_statement);
+	COPY_STRING_FIELD(outer_statement);
+	COPY_STRING_FIELD(join_condition);
 	COPY_SCALAR_FIELD(has_row_marks);
 	COPY_SCALAR_FIELD(has_ins_child_sel_parent);
-	COPY_SCALAR_FIELD(rq_params_internal);
 
 	return newnode;
 }
@@ -1079,12 +1106,62 @@ _copySimpleSort(const SimpleSort *from)
 	{
 		COPY_POINTER_FIELD(sortColIdx, from->numCols * sizeof(AttrNumber));
 		COPY_POINTER_FIELD(sortOperators, from->numCols * sizeof(Oid));
+		COPY_POINTER_FIELD(sortCollations, from->numCols * sizeof(Oid));
 		COPY_POINTER_FIELD(nullsFirst, from->numCols * sizeof(bool));
 	}
 
 	return newnode;
 }
 #endif
+
+
+#ifdef XCP
+/*
+ * _copyRemoteSubplan
+ */
+static RemoteSubplan *
+_copyRemoteSubplan(const RemoteSubplan *from)
+{
+	RemoteSubplan *newnode = makeNode(RemoteSubplan);
+
+	/*
+	 * copy node superclass fields
+	 */
+	CopyScanFields((Scan *) from, (Scan *) newnode);
+
+	/*
+	 * copy remainder of node
+	 */
+	COPY_SCALAR_FIELD(distributionType);
+	COPY_SCALAR_FIELD(distributionKey);
+	COPY_NODE_FIELD(distributionNodes);
+	COPY_NODE_FIELD(distributionRestrict);
+	COPY_NODE_FIELD(nodeList);
+	COPY_SCALAR_FIELD(execOnAll);
+	COPY_NODE_FIELD(sort);
+	COPY_STRING_FIELD(cursor);
+	COPY_SCALAR_FIELD(unique);
+
+	return newnode;
+}
+
+/*
+ * _copyDistribution
+ */
+static Distribution *
+_copyDistribution(const Distribution *from)
+{
+	Distribution *newnode = makeNode(Distribution);
+
+	COPY_SCALAR_FIELD(distributionType);
+	COPY_NODE_FIELD(distributionExpr);
+	COPY_BITMAPSET_FIELD(nodes);
+	COPY_BITMAPSET_FIELD(restrictNodes);
+
+	return newnode;
+}
+#endif
+
 
 /* ****************************************************************
  *					   primnodes.h copy functions
@@ -1241,8 +1318,10 @@ _copyAggref(const Aggref *from)
 	COPY_SCALAR_FIELD(aggfnoid);
 	COPY_SCALAR_FIELD(aggtype);
 #ifdef PGXC
+#ifndef XCP
 	COPY_SCALAR_FIELD(aggtrantype);
 	COPY_SCALAR_FIELD(agghas_collectfn);
+#endif /* XCP */
 #endif /* PGXC */
 	COPY_SCALAR_FIELD(aggcollid);
 	COPY_SCALAR_FIELD(inputcollid);
@@ -2069,7 +2148,9 @@ _copyRangeTblEntry(const RangeTblEntry *from)
 	COPY_SCALAR_FIELD(rtekind);
 
 #ifdef PGXC
+#ifndef XCP
 	COPY_STRING_FIELD(relname);
+#endif
 #endif
 
 	COPY_SCALAR_FIELD(relid);
@@ -2554,8 +2635,10 @@ _copyQuery(const Query *from)
 	COPY_NODE_FIELD(setOperations);
 	COPY_NODE_FIELD(constraintDeps);
 #ifdef PGXC
+#ifndef XCP
 	COPY_STRING_FIELD(sql_statement);
 	COPY_SCALAR_FIELD(is_ins_child_sel_parent);
+#endif
 #endif
 
 	return newnode;
@@ -2977,6 +3060,7 @@ _copyIndexStmt(const IndexStmt *from)
 	COPY_NODE_FIELD(options);
 	COPY_NODE_FIELD(whereClause);
 	COPY_NODE_FIELD(excludeOpNames);
+	COPY_STRING_FIELD(idxcomment);
 	COPY_SCALAR_FIELD(indexOid);
 	COPY_SCALAR_FIELD(oldNode);
 	COPY_SCALAR_FIELD(unique);
@@ -3926,6 +4010,17 @@ _copyBarrierStmt(const BarrierStmt *from)
 	return newnode;
 }
 
+#ifdef XCP
+static PauseClusterStmt *
+_copyPauseClusterStmt(const PauseClusterStmt *from)
+{
+	PauseClusterStmt *newnode = makeNode(PauseClusterStmt);
+
+	COPY_SCALAR_FIELD(pause);
+
+	return newnode;
+}
+#endif
 /* ****************************************************************
  *					nodemgr.h copy functions
  * ****************************************************************
@@ -4160,6 +4255,14 @@ copyObject(const void *from)
 			break;
 		case T_SimpleSort:
 			retval = _copySimpleSort(from);
+			break;
+#endif
+#ifdef XCP
+		case T_RemoteSubplan:
+			retval = _copyRemoteSubplan(from);
+			break;
+		case T_Distribution:
+			retval = _copyDistribution(from);
 			break;
 #endif
 			/*
@@ -4609,6 +4712,11 @@ copyObject(const void *from)
 		case T_BarrierStmt:
 			retval = _copyBarrierStmt(from);
 			break;
+#ifdef XCP
+		case T_PauseClusterStmt:
+			retval = _copyPauseClusterStmt(from);
+			break;
+#endif
 		case T_AlterNodeStmt:
 			retval = _copyAlterNodeStmt(from);
 			break;

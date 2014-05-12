@@ -12,11 +12,11 @@
   <title>
    Overview
   </title>
-&xconly
+&xlonly
 
   <para>
-   pgxc_ddl is a module for Coordinator catalog table synchronization and DDL treatment module.
-   It has the following synopsis.
+   pgxc_ddl is a module for Coordinator catalog table synchronization.
+   It has the following syntax.
 
 <programlisting>
 pgxc_ddl <optional> <replaceable>option</> </optional>
@@ -28,21 +28,14 @@ pgxc_ddl <optional> <replaceable>option</> </optional>
    one chosen by a user. It is also possible to launch a DDL on one
    Coordinator, and then to synchronize all the Coordinator catalog
    tables from the catalog table of the Coordinator having received the
-   DDL. Copy method is cold. All the Coordinators are stopped,
+   DDL. The copy method is "cold". All the Coordinators are stopped,
    catalog files are copied, then all the Coordinators are restarted.
   </para>
 
   <para>
-   Since <productname>Postgres-XC</productname> 0.9.3, DDL are
+   This utility is not really needed in  <productname>Postgres-XL</productname>; DDL is
    synchronized automatically on all the nodes of the
-   cluster, <command>pgxc_ddl</command> is let on purpose of future
-   feature development.
-  </para>
-
-  <para>
-   Since <productname>Postgres-XC</productname> 0.9.4, pgxc_ddl and
-   pgxc.conf are not anymore installed by default.  Scripts are saved
-   in the folder <filename>contrib/pgxc_ddl</filename>.
+   cluster. 
   </para>
 
  </sect2>

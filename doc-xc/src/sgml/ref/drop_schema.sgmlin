@@ -114,6 +114,10 @@ DROP SCHEMA mystuff CASCADE;
    <literal>IF EXISTS</> option, which is a <productname>Postgres-XC</>
    extension inherited from <productname>PostgreSQL</>.
 <!## end>
+<!## XL>
+   <literal>IF EXISTS</> option, which is a <productname>Postgres-XL</>
+   extension inherited from <productname>PostgreSQL</>.
+<!## end>
   </para>
  </refsect1>
 

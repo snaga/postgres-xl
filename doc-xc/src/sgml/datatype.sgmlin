@@ -26,6 +26,12 @@
    <productname>Postgres-XC</productname> using the <xref
    linkend="sql-createtype"> command.
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> inherits from a rich set of native data
+   types available to users.  Users can add new types to
+   <productname>Postgres-XL</productname> using the <xref
+   linkend="sql-createtype"> command.
+<!## end>
   </para>
 
   <para>
@@ -37,6 +43,9 @@
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname> for historical reasons.  In
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> for historical reasons.  In
 <!## end>
    addition, some internally used or deprecated types are available,
    but are not listed here.
@@ -306,6 +315,9 @@
 <!## end>
 <!## XC>
    to <productname>Postgres-XC</productname>, such as geometric
+<!## end>
+<!## XL>
+   to <productname>Postgres-XL</productname>, such as geometric
 <!## end>
    paths, or have several possible formats, such as the date
    and time types.
@@ -603,6 +615,9 @@ NUMERIC
 <!## XC>
       indexes, <productname>Postgres-XC</> treats <literal>NaN</>
 <!## end>
+<!## XL>
+      indexes, <productname>Postgres-XL</> treats <literal>NaN</>
+<!## end>
       values as equal, and greater than all non-<literal>NaN</>
       values.
      </para>
@@ -730,6 +745,9 @@ NUMERIC
 <!## XC>
       in tree-based indexes, <productname>Postgres-XC</> treats
 <!## end>
+<!## XL>
+      in tree-based indexes, <productname>Postgres-XL</> treats
+<!## end>
       <literal>NaN</> values as equal, and greater than all
       non-<literal>NaN</> values.
      </para>
@@ -742,6 +760,9 @@ NUMERIC
 <!## XC>
      <productname>Postgres-XC</productname> also supports the SQL-standard
 <!## end>
+<!## XL>
+     <productname>Postgres-XL</productname> also supports the SQL-standard
+<!## end>
      notations <type>float</type> and
      <type>float(<replaceable>p</replaceable>)</type> for specifying
      inexact numeric types.  Here, <replaceable>p</replaceable> specifies
@@ -751,6 +772,9 @@ NUMERIC
 <!## end>
 <!## XC>
      <productname>Postgres-XC</productname> accepts 
+<!## end>
+<!## XL>
+     <productname>Postgres-XL</productname> accepts 
 <!## end>
      <type>float(1)</type> to <type>float(24)</type> as selecting the
      <type>real</type> type, while
@@ -1024,6 +1048,9 @@ SELECT '52093.89'::money::numeric::float8;
 <!## XC>
     <productname>Postgres-XC</productname>.
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</productname>.
+<!## end>
    </para>
 
    <para>
@@ -1066,6 +1093,9 @@ SELECT '52093.89'::money::numeric::float8;
 <!## XC>
     latter is a <productname>Postgres-XC</>, as well as <productname>PostgreSQL</> extension.
 <!## end>
+<!## XL>
+    latter is a <productname>Postgres-XL</>, as well as <productname>PostgreSQL</> extension.
+<!## end>
    </para>
 
    <para>
@@ -1074,6 +1104,9 @@ SELECT '52093.89'::money::numeric::float8;
 <!## end>
 <!## XC>
     In addition, <productname>Postgres-XC</productname> provides the
+<!## end>
+<!## XL>
+    In addition, <productname>Postgres-XL</productname> provides the
 <!## end>
     <type>text</type> type, which stores strings of any length.
     Although the type <type>text</type> is not in the
@@ -1126,6 +1159,9 @@ SELECT '52093.89'::money::numeric::float8;
 <!## end>
 <!## XC>
      <productname>Postgres-XC</productname>; in fact
+<!## end>
+<!## XL>
+     <productname>Postgres-XL</productname>; in fact
 <!## end>
      <type>character(<replaceable>n</>)</type> is usually the slowest of
      the three because of its additional storage costs.  In most situations
@@ -1188,6 +1224,9 @@ SELECT b, char_length(b) FROM test2;
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname>, shown in <xref
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname>, shown in <xref
 <!## end>
     linkend="datatype-character-special-table">. The <type>name</type>
     type exists <emphasis>only</emphasis> for the storage of identifiers
@@ -1290,6 +1329,9 @@ SELECT b, char_length(b) FROM test2;
 <!## XC>
     input and output: <productname>Postgres-XC</productname>'s historical
 <!## end>
+<!## XL>
+    input and output: <productname>Postgres-XL</productname>'s historical
+<!## end>
     <quote>escape</quote> format, and <quote>hex</quote> format.  Both
     of these are always accepted on input.  The output format depends
     on the configuration parameter <xref linkend="guc-bytea-output">;
@@ -1345,6 +1387,9 @@ SELECT E'\\xDEADBEEF';
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname> format for the <type>bytea</type>
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> format for the <type>bytea</type>
 <!## end>
     type.  It
     takes the approach of representing a binary string as a sequence
@@ -1444,6 +1489,9 @@ SELECT E'\\xDEADBEEF';
 <!## XC>
     phases in the <productname>Postgres-XC</productname> server.
 <!## end>
+<!## XL>
+    phases in the <productname>Postgres-XL</productname> server.
+<!## end>
     The first backslash of each pair is interpreted as an escape
     character by the string-literal parser (assuming escape string
     syntax is used) and is therefore consumed, leaving the second backslash of the
@@ -1521,6 +1569,9 @@ SELECT E'\\xDEADBEEF';
 <!## XC>
     Depending on the front end to <productname>Postgres-XC</> you use,
 <!## end>
+<!## XL>
+    Depending on the front end to <productname>Postgres-XL</> you use,
+<!## end>
     you might have additional work to do in terms of escaping and
     unescaping <type>bytea</type> strings. For example, you might also
     have to escape line feeds and carriage returns if your interface
@@ -1570,6 +1621,9 @@ SELECT E'\\xDEADBEEF';
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname> supports the full set of
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> supports the full set of
 <!## end>
     <acronym>SQL</acronym> date and time types, shown in <xref
     linkend="datatype-datetime-table">.  The operations available
@@ -1652,6 +1706,9 @@ SELECT E'\\xDEADBEEF';
 <!## end>
 <!## XC>
      zone</type>, and <productname>Postgres-XC</productname> honors that
+<!## end>
+<!## XL>
+     zone</type>, and <productname>Postgres-XL</productname> honors that
 <!## end>
      behavior.  (Releases prior to 7.3 treated it as <type>timestamp
      with time zone</type>.)  <type>timestamptz</type> is accepted as an
@@ -1765,6 +1822,9 @@ MINUTE TO SECOND
 <!## end>
 <!## XC>
      <productname>Postgres-XC</productname> is more flexible in
+<!## end>
+<!## XL>
+     <productname>Postgres-XL</productname> is more flexible in
 <!## end>
      handling date/time input than the
      <acronym>SQL</acronym> standard requires.
@@ -2099,6 +2159,9 @@ January 8 04:05:06 1999 PST
 <!## XC>
       <productname>Postgres-XC</productname> never examines the content of a
 <!## end>
+<!## XL>
+      <productname>Postgres-XL</productname> never examines the content of a
+<!## end>
       literal string before determining its type, and therefore will treat
       both of the above as <type>timestamp without time zone</type>.  To
       ensure that a literal is treated as <type>timestamp with time
@@ -2112,6 +2175,9 @@ January 8 04:05:06 1999 PST
 <!## end>
 <!## XC>
       zone</type>, <productname>Postgres-XC</productname> will silently ignore
+<!## end>
+<!## XL>
+      zone</type>, <productname>Postgres-XL</productname> will silently ignore
 <!## end>
       any time zone indication.
       That is, the resulting value is derived from the date/time
@@ -2167,6 +2233,9 @@ January 8 04:05:06 1999 PST
 <!## end>
 <!## XC>
       <productname>Postgres-XC</productname> supports several
+<!## end>
+<!## XL>
+      <productname>Postgres-XL</productname> supports several
 <!## end>
       special date/time input values for convenience, as shown in <xref
       linkend="datatype-datetime-special-table">.  The values
@@ -2387,6 +2456,9 @@ January 8 04:05:06 1999 PST
 <!## XC>
     <productname>Postgres-XC</productname> uses the widely-used
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> uses the widely-used
+<!## end>
     <literal>zoneinfo</> time zone database for information about
     historical time zone rules.  For times in the future, the assumption
     is that the latest known rules for a given time zone will
@@ -2399,6 +2471,9 @@ January 8 04:05:06 1999 PST
 <!## end>
 <!## XC>
      <productname>Postgres-XC</productname> endeavors to be compatible with
+<!## end>
+<!## XL>
+     <productname>Postgres-XL</productname> endeavors to be compatible with
 <!## end>
      the <acronym>SQL</acronym> standard definitions for typical usage.
      However, the <acronym>SQL</acronym> standard has an odd mix of date and
@@ -2444,6 +2519,11 @@ January 8 04:05:06 1999 PST
      for compliance with the <acronym>SQL</acronym> standard).
      <productname>Postgres-XC</productname> assumes
 <!## end>
+<!## XL>
+     <productname>Postgres-XL</productname> for legacy applications and
+     for compliance with the <acronym>SQL</acronym> standard).
+     <productname>Postgres-XL</productname> assumes
+<!## end>
      your local time zone for any type containing only date or time.
     </para>
 
@@ -2461,6 +2541,9 @@ January 8 04:05:06 1999 PST
 <!## XC>
      <productname>Postgres-XC</productname> allows you to specify time zones in
 <!## end>
+<!## XL>
+     <productname>Postgres-XL</productname> allows you to specify time zones in
+<!## end>
      three different forms:
      <itemizedlist>
       <listitem>
@@ -2474,6 +2557,9 @@ January 8 04:05:06 1999 PST
 <!## end>
 <!## XC>
         <productname>Postgres-XC</productname> uses the widely-used
+<!## end>
+<!## XL>
+        <productname>Postgres-XL</productname> uses the widely-used
 <!## end>
         <literal>zoneinfo</> time zone data for this purpose, so the same
         names are also recognized by much other software.
@@ -2503,6 +2589,9 @@ January 8 04:05:06 1999 PST
 <!## XC>
         <productname>Postgres-XC</productname> will accept POSIX-style time zone
 <!## end>
+<!## XL>
+        <productname>Postgres-XL</productname> will accept POSIX-style time zone
+<!## end>
         specifications of the form <replaceable>STD</><replaceable>offset</> or
         <replaceable>STD</><replaceable>offset</><replaceable>DST</>, where
         <replaceable>STD</> is a zone abbreviation, <replaceable>offset</> is a
@@ -2519,6 +2608,9 @@ January 8 04:05:06 1999 PST
 <!## end>
 <!## XC>
         In a standard <productname>Postgres-XC</productname> installation,
+<!## end>
+<!## XL>
+        In a standard <productname>Postgres-XL</productname> installation,
 <!## end>
         <filename>posixrules</> is the same as <literal>US/Eastern</>, so
         that POSIX-style time zone specifications follow USA daylight-savings
@@ -2547,6 +2639,9 @@ January 8 04:05:06 1999 PST
 <!## end>
 <!## XC>
      Everywhere else, <productname>Postgres-XC</productname> follows the
+<!## end>
+<!## XL>
+     Everywhere else, <productname>Postgres-XL</productname> follows the
 <!## end>
      ISO-8601 convention that positive timezone offsets are <emphasis>east</>
      of Greenwich.
@@ -2586,6 +2681,9 @@ January 8 04:05:06 1999 PST
 <!## XC>
         <productname>Postgres-XC</productname>, the server attempts to
 <!## end>
+<!## XL>
+        <productname>Postgres-XL</productname>, the server attempts to
+<!## end>
         determine the operating system's default time zone by checking the
         behavior of the C library function <literal>localtime()</>.  The
         default time zone is selected as the closest match among
@@ -2594,6 +2692,9 @@ January 8 04:05:06 1999 PST
 <!## end>
 <!## XC>
         <productname>Postgres-XC</productname>'s known time zones.
+<!## end>
+<!## XL>
+        <productname>Postgres-XL</productname>'s known time zones.
 <!## end>
         (These rules are also used to choose the default value of
         <xref linkend="guc-log-timezone">, if not specified.)
@@ -2756,6 +2857,9 @@ P <optional> <replaceable>years</>-<replaceable>months</>-<replaceable>days</> <
 <!## XC>
      parts.  <productname>Postgres-XC</> allows the fields to have different
 <!## end>
+<!## XL>
+     parts.  <productname>Postgres-XL</> allows the fields to have different
+<!## end>
      signs, and traditionally treats each field in the textual representation
      as independently signed, so that the hour/minute/second part is
      considered positive in this example.  If <varname>IntervalStyle</> is
@@ -2766,6 +2870,9 @@ P <optional> <replaceable>years</>-<replaceable>months</>-<replaceable>days</> <
 <!## end>
 <!## XC>
      Otherwise the traditional <productname>Postgres-XC</> interpretation is
+<!## end>
+<!## XL>
+     Otherwise the traditional <productname>Postgres-XL</> interpretation is
 <!## end>
      used.  To avoid ambiguity, it's recommended to attach an explicit sign
      to each field if any field is negative.
@@ -2944,6 +3051,13 @@ P <optional> <replaceable>years</>-<replaceable>months</>-<replaceable>days</> <
      to far into the future, using the assumption that the length of the
      year is 365.2425 days.
 <!## end>
+<!## XL>
+     <productname>Postgres-XL</>, as <productname>PostgreSQL</productname>, uses Julian dates
+     for all date/time calculations. This has the useful property of correctly
+     calculating dates from 4713 BC
+     to far into the future, using the assumption that the length of the
+     year is 365.2425 days.
+<!## end>
     </para>
 
     <para>
@@ -2976,6 +3090,9 @@ P <optional> <replaceable>years</>-<replaceable>months</>-<replaceable>days</> <
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname> provides the
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> provides the
 <!## end>
     standard <acronym>SQL</acronym> type <type>boolean</type>;
     see <xref linkend="datatype-boolean-table">.
@@ -3201,6 +3318,9 @@ SELECT person.name, holidays.num_weeks FROM person, holidays
 <!## XC>
      setting compiled into <productname>Postgres-XC</productname>; in standard
 <!## end>
+<!## XL>
+     setting compiled into <productname>Postgres-XL</productname>; in standard
+<!## end>
      builds this means at most 63 bytes.
     </para>
 
@@ -3231,6 +3351,9 @@ SELECT person.name, holidays.num_weeks FROM person, holidays
 <!## end>
 <!## XC>
     types available in <productname>Postgres-XC</productname>.  The
+<!## end>
+<!## XL>
+    types available in <productname>Postgres-XL</productname>.  The
 <!## end>
     most fundamental type, the point, forms the basis for all of the
     other types.
@@ -3527,6 +3650,9 @@ SELECT person.name, holidays.num_weeks FROM person, holidays
 <!## XC>
     <productname>PostgreSQL</> inherits data types to store IPv4, IPv6, and MAC
 <!## end>
+<!## XL>
+    <productname>PostgreSQL</> inherits data types to store IPv4, IPv6, and MAC
+<!## end>
     addresses, as shown in <xref linkend="datatype-net-types-table">.  It
     is better to use these types instead of plain text types to store
     network addresses, because
@@ -3798,6 +3924,9 @@ SELECT person.name, holidays.num_weeks FROM person, holidays
 <!## end>
 <!## XC>
      protocols (such as Token Ring).  Postgres-XC makes no provisions
+<!## end>
+<!## XL>
+     protocols (such as Token Ring).  Postgres-XL makes no provisions
 <!## end>
      for bit reversal, and all accepted formats use the canonical LSB
      order.
@@ -4161,6 +4290,9 @@ a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11
 <!## XC>
     <productname>Postgres-XC</productname> also accepts the following
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> also accepts the following
+<!## end>
     alternative forms for input:
     use of upper-case digits, the standard format surrounded by
     braces, omitting some or all hyphens, adding a hyphen after any
@@ -4181,6 +4313,9 @@ a0ee-bc99-9c0b-4ef8-bb6d-6bb9-bd38-0a11
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname> provides storage and comparison
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> provides storage and comparison
 <!## end>
     functions for UUIDs, but the core database does not include any
     function for generating UUIDs, because no single algorithm is well
@@ -4243,6 +4378,9 @@ XMLPARSE (CONTENT 'abc<foo>bar</foo><bar>foo</bar>')
 <!## XC>
     values according to the SQL standard, the Postgres-XC-specific
 <!## end>
+<!## XL>
+    values according to the SQL standard, the Postgres-XL-specific
+<!## end>
     syntaxes:
 <programlisting><![CDATA[
 xml '<foo>bar</foo>'
@@ -4277,6 +4415,9 @@ XMLSERIALIZE ( { DOCUMENT | CONTENT } <replaceable>value</replaceable> AS <repla
 <!## XC>
     <type>xml</type> and character types, but Postgres-XC also allows
 <!## end>
+<!## XL>
+    <type>xml</type> and character types, but Postgres-XL also allows
+<!## end>
     you to simply cast the value.
    </para>
 
@@ -4297,6 +4438,9 @@ SET XML OPTION { DOCUMENT | CONTENT };
 <!## end>
 <!## XC>
     or the more Postgres-XC-like syntax
+<!## end>
+<!## XL>
+    or the more Postgres-XL-like syntax
 <!## end>
 <synopsis>
 SET xmloption TO { DOCUMENT | CONTENT };
@@ -4329,6 +4473,9 @@ SET xmloption TO { DOCUMENT | CONTENT };
 <!## end>
 <!## XC>
     results to the client (which is the normal mode), Postgres-XC
+<!## end>
+<!## XL>
+    results to the client (which is the normal mode), Postgres-XL
 <!## end>
     converts all character data passed between the client and the
     server and vice versa to the character encoding of the respective
@@ -4364,6 +4511,9 @@ SET xmloption TO { DOCUMENT | CONTENT };
 <!## XC>
     the XML standard; note that Postgres-XC does not support UTF-16).
 <!## end>
+<!## XL>
+    the XML standard; note that Postgres-XL does not support UTF-16).
+<!## end>
     On output, data will have an encoding declaration
     specifying the client encoding, unless the client encoding is
     UTF-8, in which case it will be omitted.
@@ -4375,6 +4525,9 @@ SET xmloption TO { DOCUMENT | CONTENT };
 <!## end>
 <!## XC>
     Needless to say, processing XML data with Postgres-XC will be less
+<!## end>
+<!## XL>
+    Needless to say, processing XML data with Postgres-XL will be less
 <!## end>
     error-prone and more efficient if the XML data encoding, client encoding,
     and server encoding are the same.  Since XML data is internally
@@ -4424,12 +4577,18 @@ SET xmloption TO { DOCUMENT | CONTENT };
 <!## XC>
     The text-search functionality in Postgres-XC can also be used to speed
 <!## end>
+<!## XL>
+    The text-search functionality in Postgres-XL can also be used to speed
+<!## end>
     up full-document searches of XML data.  The necessary
 <!## PG>
     preprocessing support is, however, not yet available in the PostgreSQL
 <!## end>
 <!## XC>
     preprocessing support is, however, not yet available in the Postgres-XC
+<!## end>
+<!## XL>
+    preprocessing support is, however, not yet available in the Postgres-XL
 <!## end>
     distribution.
    </para>
@@ -4503,6 +4662,9 @@ SET xmloption TO { DOCUMENT | CONTENT };
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname> as primary keys for various
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> as primary keys for various
 <!## end>
     system tables.  OIDs are not added to user-created tables, unless
     <literal>WITH OIDS</literal> is specified when the table is
@@ -4662,6 +4824,9 @@ SELECT * FROM pg_attribute
 <!## XC>
     <productname>Postgres-XC</productname>
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</productname>
+<!## end>
     understands that the default expression depends on the sequence
     <literal>my_seq</>; the system will not let the sequence be dropped
     without first removing the default expression.
@@ -4694,6 +4859,13 @@ SELECT * FROM pg_attribute
 <!## XC>
    <para>
     Please note that <productname>Postgres-XC</> enforces OID identity only locally.
+    Different object at different Coordinator or Datanode may be assigned the same
+    OID value.
+   </para>
+<!## end>
+<!## XL>
+   <para>
+    Please note that <productname>Postgres-XL</> enforces OID identity only locally.
     Different object at different Coordinator or Datanode may be assigned the same
     OID value.
    </para>
@@ -4761,6 +4933,9 @@ SELECT * FROM pg_attribute
 <!## end>
 <!## XC>
     The <productname>Postgres-XC</productname> type system contains a
+<!## end>
+<!## XL>
+    The <productname>Postgres-XL</productname> type system contains a
 <!## end>
     number of special-purpose entries that are collectively called
     <firstterm>pseudo-types</>.  A pseudo-type cannot be used as a

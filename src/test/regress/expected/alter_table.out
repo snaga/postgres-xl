@@ -44,9 +44,9 @@ INSERT INTO tmp (a, b, c, d, e, f, g, h, i, j, k, l, m, n, p, q, r, s, t, u,
 	'(0,2,4.1,4.1,3.1,3.1)', '(4.1,4.1,3.1,3.1)', '["epoch" "infinity"]',
 	'epoch', '01:00:10', '{1.0,2.0,3.0,4.0}', '{1.0,2.0,3.0,4.0}', '{1,2,3,4}');
 SELECT * FROM tmp;
- initial | a |  b   |  c   |  d  |  e  | f |           g           |              h               | i |                                               j                                                |   k    |   l   |  m  |        n        |       p       |     q     |           r           |              s              |          t          |                      u                      |            v             |        w         |     x     |     y     |     z     
----------+---+------+------+-----+-----+---+-----------------------+------------------------------+---+------------------------------------------------------------------------------------------------+--------+-------+-----+-----------------+---------------+-----------+-----------------------+-----------------------------+---------------------+---------------------------------------------+--------------------------+------------------+-----------+-----------+-----------
-         | 4 | name | text | 4.1 | 4.1 | 2 | ((4.1,4.1),(3.1,3.1)) | Mon May 01 00:30:30 1995 PDT | c | {"Mon May 01 00:30:30 1995 PDT","Mon Aug 24 14:43:07 1992 PDT","Wed Dec 31 16:00:00 1969 PST"} | 314159 | (1,1) | 512 | 1 2 3 4 5 6 7 8 | magnetic disk | (1.1,1.1) | [(4.1,4.1),(3.1,3.1)] | ((0,2),(4.1,4.1),(3.1,3.1)) | (4.1,4.1),(3.1,3.1) | ["Wed Dec 31 16:00:00 1969 PST" "infinity"] | Thu Jan 01 00:00:00 1970 | @ 1 hour 10 secs | {1,2,3,4} | {1,2,3,4} | {1,2,3,4}
+ initial | a |  b   |  c   |  d  |  e  | f |           g           |              h               | i |                                               j                                                |   k    |   l   |  m  |        n        |       p       |     q     |           r           |              s              |          t          |                      u                      |            v             |    w     |     x     |     y     |     z     
+---------+---+------+------+-----+-----+---+-----------------------+------------------------------+---+------------------------------------------------------------------------------------------------+--------+-------+-----+-----------------+---------------+-----------+-----------------------+-----------------------------+---------------------+---------------------------------------------+--------------------------+----------+-----------+-----------+-----------
+         | 4 | name | text | 4.1 | 4.1 | 2 | ((4.1,4.1),(3.1,3.1)) | Mon May 01 00:30:30 1995 PDT | c | {"Mon May 01 00:30:30 1995 PDT","Mon Aug 24 14:43:07 1992 PDT","Wed Dec 31 16:00:00 1969 PST"} | 314159 | (1,1) | 512 | 1 2 3 4 5 6 7 8 | magnetic disk | (1.1,1.1) | [(4.1,4.1),(3.1,3.1)] | ((0,2),(4.1,4.1),(3.1,3.1)) | (4.1,4.1),(3.1,3.1) | ["Wed Dec 31 16:00:00 1969 PST" "infinity"] | Thu Jan 01 00:00:00 1970 | 01:00:10 | {1,2,3,4} | {1,2,3,4} | {1,2,3,4}
 (1 row)
 
 DROP TABLE tmp;
@@ -89,9 +89,9 @@ INSERT INTO tmp (a, b, c, d, e, f, g, h, i, j, k, l, m, n, p, q, r, s, t, u,
 	'(0,2,4.1,4.1,3.1,3.1)', '(4.1,4.1,3.1,3.1)', '["epoch" "infinity"]',
 	'epoch', '01:00:10', '{1.0,2.0,3.0,4.0}', '{1.0,2.0,3.0,4.0}', '{1,2,3,4}');
 SELECT * FROM tmp;
- initial | a |  b   |  c   |  d  |  e  | f |           g           |              h               | i |                                               j                                                |   k    |   l   |  m  |        n        |       p       |     q     |           r           |              s              |          t          |                      u                      |            v             |        w         |     x     |     y     |     z     
----------+---+------+------+-----+-----+---+-----------------------+------------------------------+---+------------------------------------------------------------------------------------------------+--------+-------+-----+-----------------+---------------+-----------+-----------------------+-----------------------------+---------------------+---------------------------------------------+--------------------------+------------------+-----------+-----------+-----------
-         | 4 | name | text | 4.1 | 4.1 | 2 | ((4.1,4.1),(3.1,3.1)) | Mon May 01 00:30:30 1995 PDT | c | {"Mon May 01 00:30:30 1995 PDT","Mon Aug 24 14:43:07 1992 PDT","Wed Dec 31 16:00:00 1969 PST"} | 314159 | (1,1) | 512 | 1 2 3 4 5 6 7 8 | magnetic disk | (1.1,1.1) | [(4.1,4.1),(3.1,3.1)] | ((0,2),(4.1,4.1),(3.1,3.1)) | (4.1,4.1),(3.1,3.1) | ["Wed Dec 31 16:00:00 1969 PST" "infinity"] | Thu Jan 01 00:00:00 1970 | @ 1 hour 10 secs | {1,2,3,4} | {1,2,3,4} | {1,2,3,4}
+ initial | a |  b   |  c   |  d  |  e  | f |           g           |              h               | i |                                               j                                                |   k    |   l   |  m  |        n        |       p       |     q     |           r           |              s              |          t          |                      u                      |            v             |    w     |     x     |     y     |     z     
+---------+---+------+------+-----+-----+---+-----------------------+------------------------------+---+------------------------------------------------------------------------------------------------+--------+-------+-----+-----------------+---------------+-----------+-----------------------+-----------------------------+---------------------+---------------------------------------------+--------------------------+----------+-----------+-----------+-----------
+         | 4 | name | text | 4.1 | 4.1 | 2 | ((4.1,4.1),(3.1,3.1)) | Mon May 01 00:30:30 1995 PDT | c | {"Mon May 01 00:30:30 1995 PDT","Mon Aug 24 14:43:07 1992 PDT","Wed Dec 31 16:00:00 1969 PST"} | 314159 | (1,1) | 512 | 1 2 3 4 5 6 7 8 | magnetic disk | (1.1,1.1) | [(4.1,4.1),(3.1,3.1)] | ((0,2),(4.1,4.1),(3.1,3.1)) | (4.1,4.1),(3.1,3.1) | ["Wed Dec 31 16:00:00 1969 PST" "infinity"] | Thu Jan 01 00:00:00 1970 | 01:00:10 | {1,2,3,4} | {1,2,3,4} | {1,2,3,4}
 (1 row)
 
 DROP TABLE tmp;
@@ -99,8 +99,6 @@ DROP TABLE tmp;
 -- rename - check on both non-temp and temp tables
 --
 CREATE TABLE tmp (regtable int);
--- Enforce use of COMMIT instead of 2PC for temporary objects
-SET enforce_two_phase_commit TO off;
 CREATE TEMP TABLE tmp (tmptable int);
 ALTER TABLE tmp RENAME TO tmp_new;
 SELECT * FROM tmp;
@@ -237,7 +235,7 @@ Check constraints:
     "con1foo" CHECK (a > 0)
 Inherits: constraint_rename_test
 
-ALTER TABLE constraint_rename_test ADD CONSTRAINT con2 CHECK NO INHERIT (b > 0);
+ALTER TABLE constraint_rename_test ADD CONSTRAINT con2 CHECK (b > 0) NO INHERIT;
 ALTER TABLE ONLY constraint_rename_test RENAME CONSTRAINT con2 TO con2foo; -- ok
 ALTER TABLE constraint_rename_test RENAME CONSTRAINT con2foo TO con2bar; -- ok
 \d constraint_rename_test
@@ -249,7 +247,7 @@ Table "public.constraint_rename_test"
  c      | integer | 
 Check constraints:
     "con1foo" CHECK (a > 0)
-    "con2bar" CHECK NO INHERIT (b > 0)
+    "con2bar" CHECK (b > 0) NO INHERIT
 Number of child tables: 1 (Use \d+ to list them.)
 
 \d constraint_rename_test2
@@ -278,7 +276,7 @@ Indexes:
     "con3foo" PRIMARY KEY, btree (a)
 Check constraints:
     "con1foo" CHECK (a > 0)
-    "con2bar" CHECK NO INHERIT (b > 0)
+    "con2bar" CHECK (b > 0) NO INHERIT
 Number of child tables: 1 (Use \d+ to list them.)
 
 \d constraint_rename_test2
@@ -389,48 +387,77 @@ create table nv_child_2011 () inherits (nv_parent);
 alter table nv_child_2010 add check (d between '2010-01-01'::date and '2010-12-31'::date) not valid;
 alter table nv_child_2011 add check (d between '2011-01-01'::date and '2011-12-31'::date) not valid;
 explain (costs off, nodes off) select * from nv_parent where d between '2011-08-01' and '2011-08-31';
-                             QUERY PLAN                             
---------------------------------------------------------------------
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
  Result
    ->  Append
-         ->  Data Node Scan on nv_parent "_REMOTE_TABLE_QUERY_"
-         ->  Data Node Scan on nv_child_2010 "_REMOTE_TABLE_QUERY_"
-         ->  Data Node Scan on nv_child_2011 "_REMOTE_TABLE_QUERY_"
-(5 rows)
+         ->  Remote Subquery Scan on all
+               ->  Seq Scan on nv_parent
+                     Filter: ((d >= '08-01-2011'::date) AND (d <= '08-31-2011'::date))
+         ->  Remote Subquery Scan on all
+               ->  Seq Scan on nv_child_2010 nv_parent
+                     Filter: ((d >= '08-01-2011'::date) AND (d <= '08-31-2011'::date))
+         ->  Remote Subquery Scan on all
+               ->  Seq Scan on nv_child_2011 nv_parent
+                     Filter: ((d >= '08-01-2011'::date) AND (d <= '08-31-2011'::date))
+(11 rows)
 
 create table nv_child_2009 (check (d between '2009-01-01'::date and '2009-12-31'::date)) inherits (nv_parent);
 explain (costs off, nodes off) select * from nv_parent where d between '2011-08-01'::date and '2011-08-31'::date;
-                             QUERY PLAN                             
---------------------------------------------------------------------
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
  Result
    ->  Append
-         ->  Data Node Scan on nv_parent "_REMOTE_TABLE_QUERY_"
-         ->  Data Node Scan on nv_child_2010 "_REMOTE_TABLE_QUERY_"
-         ->  Data Node Scan on nv_child_2011 "_REMOTE_TABLE_QUERY_"
-(5 rows)
+         ->  Remote Subquery Scan on all
+               ->  Seq Scan on nv_parent
+                     Filter: ((d >= '08-01-2011'::date) AND (d <= '08-31-2011'::date))
+         ->  Remote Subquery Scan on all
+               ->  Seq Scan on nv_child_2010 nv_parent
+                     Filter: ((d >= '08-01-2011'::date) AND (d <= '08-31-2011'::date))
+         ->  Remote Subquery Scan on all
+               ->  Seq Scan on nv_child_2011 nv_parent
+                     Filter: ((d >= '08-01-2011'::date) AND (d <= '08-31-2011'::date))
+(11 rows)
 
 explain (costs off, nodes off) select * from nv_parent where d between '2009-08-01'::date and '2009-08-31'::date;
-                             QUERY PLAN                             
---------------------------------------------------------------------
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
  Result
    ->  Append
-         ->  Data Node Scan on nv_parent "_REMOTE_TABLE_QUERY_"
-         ->  Data Node Scan on nv_child_2010 "_REMOTE_TABLE_QUERY_"
-         ->  Data Node Scan on nv_child_2011 "_REMOTE_TABLE_QUERY_"
-         ->  Data Node Scan on nv_child_2009 "_REMOTE_TABLE_QUERY_"
-(6 rows)
+         ->  Remote Subquery Scan on all
+               ->  Seq Scan on nv_parent
+                     Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
+         ->  Remote Subquery Scan on all
+               ->  Seq Scan on nv_child_2010 nv_parent
+                     Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
+         ->  Remote Subquery Scan on all
+               ->  Seq Scan on nv_child_2011 nv_parent
+                     Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
+         ->  Remote Subquery Scan on all
+               ->  Seq Scan on nv_child_2009 nv_parent
+                     Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
+(14 rows)
 
 -- after validation, the constraint should be used
 alter table nv_child_2011 VALIDATE CONSTRAINT nv_child_2011_d_check;
 explain (costs off, nodes off) select * from nv_parent where d between '2009-08-01'::date and '2009-08-31'::date;
-                             QUERY PLAN                             
---------------------------------------------------------------------
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
  Result
    ->  Append
-         ->  Data Node Scan on nv_parent "_REMOTE_TABLE_QUERY_"
-         ->  Data Node Scan on nv_child_2010 "_REMOTE_TABLE_QUERY_"
-         ->  Data Node Scan on nv_child_2009 "_REMOTE_TABLE_QUERY_"
-(5 rows)
+         ->  Remote Subquery Scan on all
+               ->  Seq Scan on nv_parent
+                     Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
+         ->  Remote Subquery Scan on all
+               ->  Seq Scan on nv_child_2010 nv_parent
+                     Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
+         ->  Remote Subquery Scan on all
+               ->  Seq Scan on nv_child_2011 nv_parent
+                     Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
+         ->  Remote Subquery Scan on all
+               ->  Seq Scan on nv_child_2009 nv_parent
+                     Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
+(14 rows)
 
 -- Foreign key adding test with mixed types
 -- Note: these tables are TEMP to avoid name conflicts when this test
@@ -488,27 +515,23 @@ NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "pktable_pkey" fo
 -- This should fail, because we just chose really odd types
 CREATE TEMP TABLE FKTABLE (ftest1 cidr, ftest2 timestamp) DISTRIBUTE BY REPLICATION;
 ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1, ftest2) references pktable;
-ERROR:  foreign key constraint "fktable_ftest1_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: cidr and integer.
+ERROR:  Hash/Modulo distribution column does not refer to hash/modulo distribution column in referenced table.
 DROP TABLE FKTABLE;
 -- Again, so should this...
 CREATE TEMP TABLE FKTABLE (ftest1 cidr, ftest2 timestamp) DISTRIBUTE BY REPLICATION;
 ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1, ftest2)
      references pktable(ptest1, ptest2);
-ERROR:  foreign key constraint "fktable_ftest1_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: cidr and integer.
+ERROR:  Hash/Modulo distribution column does not refer to hash/modulo distribution column in referenced table.
 DROP TABLE FKTABLE;
 -- This fails because we mixed up the column ordering
 CREATE TEMP TABLE FKTABLE (ftest1 int, ftest2 inet) DISTRIBUTE BY REPLICATION;
 ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest1, ftest2)
      references pktable(ptest2, ptest1);
-ERROR:  foreign key constraint "fktable_ftest1_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "ptest2" are of incompatible types: integer and inet.
+ERROR:  Hash/Modulo distribution column does not refer to hash/modulo distribution column in referenced table.
 -- As does this...
 ALTER TABLE FKTABLE ADD FOREIGN KEY(ftest2, ftest1)
      references pktable(ptest1, ptest2);
-ERROR:  foreign key constraint "fktable_ftest2_fkey" cannot be implemented
-DETAIL:  Key columns "ftest2" and "ptest1" are of incompatible types: inet and integer.
+ERROR:  Hash/Modulo distribution column does not refer to hash/modulo distribution column in referenced table.
 -- temp tables should go away by themselves, need not drop them.
 -- test check constraint adding
 create table atacc1 ( test int );
@@ -629,7 +652,7 @@ drop table atacc1;
 create table atacc1 (test int);
 create table atacc2 (test2 int) inherits (atacc1);
 -- ok:
-alter table atacc1 add constraint foo check no inherit (test>0);
+alter table atacc1 add constraint foo check (test>0) no inherit;
 -- check constraint is not there on child
 insert into atacc2 (test) values (-3);
 -- check constraint is there on parent
@@ -638,7 +661,7 @@ ERROR:  new row for relation "atacc1" violates check constraint "foo"
 DETAIL:  Failing row contains (-3).
 insert into atacc1 (test) values (3);
 -- fail, violating row:
-alter table atacc2 add constraint foo check no inherit (test>0);
+alter table atacc2 add constraint foo check (test>0) no inherit;
 ERROR:  check constraint "foo" is violated by some row
 drop table atacc2;
 drop table atacc1;
@@ -680,7 +703,7 @@ drop table atacc1;
 create table atacc1 ( test int ) distribute by roundrobin;
 -- add a unique constraint (fails)
 alter table atacc1 add constraint atacc_test1 unique (test1);
-ERROR:  column "test1" named in key does not exist
+ERROR:  Cannot locally enforce a unique index on round robin distributed table.
 drop table atacc1;
 -- something a little more complicated
 create table atacc1 ( test int, test2 int);
@@ -1770,8 +1793,11 @@ ERROR:  composite type recur1 cannot be made a member of itself
 alter table recur1 add column f2 recur1[]; -- fails
 ERROR:  composite type recur1 cannot be made a member of itself
 create domain array_of_recur1 as recur1[];
+ERROR:  type "recur1[]" does not exist
 alter table recur1 add column f2 array_of_recur1; -- fails
-ERROR:  composite type recur1 cannot be made a member of itself
+ERROR:  type "array_of_recur1" does not exist
+LINE 1: alter table recur1 add column f2 array_of_recur1;
+                                         ^
 create temp table recur2 (f1 int, f2 recur1);
 alter table recur1 add column f2 recur2; -- fails
 ERROR:  composite type recur1 cannot be made a member of itself
@@ -1790,6 +1816,28 @@ where oid = 'test_storage'::regclass;
 -----------------
  t
 (1 row)
+
+-- ALTER TYPE with a check constraint and a child table (bug before Nov 2012)
+CREATE TABLE test_inh_check (a float check (a > 10.2));
+CREATE TABLE test_inh_check_child() INHERITS(test_inh_check);
+ALTER TABLE test_inh_check ALTER COLUMN a TYPE numeric;
+\d test_inh_check
+Table "public.test_inh_check"
+ Column |  Type   | Modifiers 
+--------+---------+-----------
+ a      | numeric | 
+Check constraints:
+    "test_inh_check_a_check" CHECK (a::double precision > 10.2::double precision)
+Number of child tables: 1 (Use \d+ to list them.)
+
+\d test_inh_check_child
+Table "public.test_inh_check_child"
+ Column |  Type   | Modifiers 
+--------+---------+-----------
+ a      | numeric | 
+Check constraints:
+    "test_inh_check_a_check" CHECK (a::double precision > 10.2::double precision)
+Inherits: test_inh_check
 
 --
 -- lock levels
@@ -1813,10 +1861,10 @@ select case when c.relname like 'pg_toast%' then 'pg_toast' else c.relname end, 
 from pg_locks l join pg_class c on l.relation = c.oid
 where virtualtransaction = (
         select virtualtransaction
-        from pg_locks
+        from pg_catalog.pg_locks
         where transactionid = txid_current()::integer)
 and locktype = 'relation'
-and relnamespace != (select oid from pg_namespace where nspname = 'pg_catalog')
+and relnamespace not in (select oid from pg_namespace where nspname = 'pg_catalog' or nspname = 'storm_catalog')
 and c.relname != 'my_locks'
 group by c.relname;
 create table alterlock (f1 int primary key, f2 text);
@@ -2283,7 +2331,7 @@ CREATE TABLE tt8(a int);
 CREATE SCHEMA alter2;
 ALTER TABLE IF EXISTS tt8 ADD COLUMN f int;
 ALTER TABLE IF EXISTS tt8 ADD CONSTRAINT xxx PRIMARY KEY(f);
-ERROR:  Cannot create index whose evaluation cannot be enforced to remote nodes
+ERROR:  Unique index of partitioned table must contain the hash distribution column.
 ALTER TABLE IF EXISTS tt8 ADD CHECK (f BETWEEN 0 AND 10);
 ALTER TABLE IF EXISTS tt8 ALTER COLUMN f SET DEFAULT 0;
 ALTER TABLE IF EXISTS tt8 RENAME COLUMN f TO f1;

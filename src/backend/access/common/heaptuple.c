@@ -45,6 +45,11 @@
  * and we'd like to still refer to them via C struct offsets.
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -63,7 +68,9 @@
 #include "access/sysattr.h"
 #include "access/tuptoaster.h"
 #include "executor/tuptable.h"
-
+#ifdef XCP
+#include "utils/memutils.h"
+#endif
 
 /* Does att's datatype allow packing into the 1-byte-header varlena format? */
 #define ATT_IS_PACKABLE(att) \
@@ -1154,14 +1161,23 @@ slot_deform_datarow(TupleTableSlot *slot)
 	int attnum;
 	int i;
 	int 		col_count;
+#ifdef XCP
+	char	   *cur = slot->tts_datarow->msg;
+#else
 	char	   *cur = slot->tts_dataRow;
+#endif
 	StringInfo  buffer;
 	uint16		n16;
 	uint32		n32;
 	MemoryContext oldcontext;
 
+#ifdef XCP
+	if (slot->tts_tupleDescriptor == NULL || slot->tts_datarow == NULL)
+		return;
+#else
 	if (slot->tts_tupleDescriptor == NULL || slot->tts_dataRow == NULL)
 		return;
+#endif
 
 	attnum = slot->tts_tupleDescriptor->natts;
 
@@ -1169,7 +1185,10 @@ slot_deform_datarow(TupleTableSlot *slot)
 	if (slot->tts_nvalid == attnum)
 		return;
 
+#ifndef XCP
+	/* XCP: Can not happen, we return earlier if condition not true */
 	Assert(slot->tts_dataRow);
+#endif
 
 	memcpy(&n16, cur, 2);
 	cur += 2;
@@ -1180,6 +1199,30 @@ slot_deform_datarow(TupleTableSlot *slot)
 				(errcode(ERRCODE_DATA_CORRUPTED),
 				 errmsg("Tuple does not match the descriptor")));
 
+#ifdef XCP
+	if (slot->tts_attinmeta == NULL)
+	{
+		/*
+		 * Ensure info about input functions is available as long as slot lives
+		 */
+		oldcontext = MemoryContextSwitchTo(slot->tts_mcxt);
+		slot->tts_attinmeta = TupleDescGetAttInMetadata(slot->tts_tupleDescriptor);
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	/*
+	 * Store values to separate context to easily free them when base datarow is
+	 * freed
+	 */
+	if (slot->tts_drowcxt == NULL)
+	{
+		slot->tts_drowcxt = AllocSetContextCreate(slot->tts_mcxt,
+												  "Datarow",
+												  ALLOCSET_DEFAULT_MINSIZE,
+												  ALLOCSET_DEFAULT_INITSIZE,
+												  ALLOCSET_DEFAULT_MAXSIZE);
+	}
+#else
 	/*
 	 * Ensure info about input functions is available as long as slot lives
 	 * as well as deformed values
@@ -1188,10 +1231,12 @@ slot_deform_datarow(TupleTableSlot *slot)
 
 	if (slot->tts_attinmeta == NULL)
 		slot->tts_attinmeta = TupleDescGetAttInMetadata(slot->tts_tupleDescriptor);
+#endif
 
 	buffer = makeStringInfo();
 	for (i = 0; i < attnum; i++)
 	{
+		Form_pg_attribute attr = slot->tts_tupleDescriptor->attrs[i];
 		int len;
 
 		/* get size */
@@ -1217,6 +1262,48 @@ slot_deform_datarow(TupleTableSlot *slot)
 			slot->tts_isnull[i] = false;
 
 			resetStringInfo(buffer);
+
+#ifdef XCP
+			/*
+			 * The input function was executed in caller's memory context,
+			 * because it may be allocating working memory, and caller may
+			 * want to clean it up.
+			 * However returned Datums need to be in the special context, so
+			 * if attribute is pass-by-reference, copy it.
+			 */
+			if (!attr->attbyval)
+			{
+				Pointer		val = DatumGetPointer(slot->tts_values[i]);
+				Size		data_length;
+				void	   *data;
+
+				if (attr->attlen == -1)
+				{
+					/* varlena */
+					if (VARATT_IS_EXTERNAL(val))
+						/* no alignment, since it's short by definition */
+						data_length = VARSIZE_EXTERNAL(val);
+					else if (VARATT_IS_SHORT(val))
+						/* no alignment for short varlenas */
+						data_length = VARSIZE_SHORT(val);
+					else
+						data_length = VARSIZE(val);
+				}
+				else if (attr->attlen == -2)
+				{
+					/* cstring */
+					data_length = strlen(val) + 1;
+				}
+				else
+				{
+					/* fixed-length pass-by-reference */
+					data_length = attr->attlen;
+				}
+				data = MemoryContextAlloc(slot->tts_drowcxt, data_length);
+				memcpy(data, val, data_length);
+				slot->tts_values[i] = (Datum) data;
+			}
+#endif
 		}
 	}
 	pfree(buffer->data);
@@ -1224,7 +1311,9 @@ slot_deform_datarow(TupleTableSlot *slot)
 
 	slot->tts_nvalid = attnum;
 
+#ifndef XCP
 	MemoryContextSwitchTo(oldcontext);
+#endif
 }
 #endif
 
@@ -1279,7 +1368,11 @@ slot_getattr(TupleTableSlot *slot, int attnum, bool *isnull)
 
 #ifdef PGXC
 	/* If it is a data row tuple extract all and return requested */
+#ifdef XCP
+	if (slot->tts_datarow)
+#else
 	if (slot->tts_dataRow)
+#endif
 	{
 		slot_deform_datarow(slot);
 		*isnull = slot->tts_isnull[attnum - 1];
@@ -1359,7 +1452,11 @@ slot_getallattrs(TupleTableSlot *slot)
 
 #ifdef PGXC
 	/* Handle the DataRow tuple case */
+#ifdef XCP
+	if (slot->tts_datarow)
+#else
 	if (slot->tts_dataRow)
+#endif
 	{
 		slot_deform_datarow(slot);
 		return;
@@ -1411,7 +1508,11 @@ slot_getsomeattrs(TupleTableSlot *slot, int attnum)
 
 #ifdef PGXC
 	/* Handle the DataRow tuple case */
+#ifdef XCP
+	if (slot->tts_datarow)
+#else
 	if (slot->tts_dataRow)
+#endif
 	{
 		slot_deform_datarow(slot);
 		return;
@@ -1487,7 +1588,11 @@ slot_attisnull(TupleTableSlot *slot, int attnum)
 
 #ifdef PGXC
 	/* If it is a data row tuple extract all and return requested */
+#ifdef XCP
+	if (slot->tts_datarow)
+#else
 	if (slot->tts_dataRow)
+#endif
 	{
 		slot_deform_datarow(slot);
 		return slot->tts_isnull[attnum - 1];

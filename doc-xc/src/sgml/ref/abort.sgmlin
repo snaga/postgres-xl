@@ -91,6 +91,9 @@ ABORT;
 <!## XC>
    This command is a <productname>Postgres-XC</productname> extension
 <!## end>
+<!## XL>
+   This command is a <productname>Postgres-XL</productname> extension
+<!## end>
    present for historical reasons. <command>ROLLBACK</command> is the
    equivalent standard SQL command.
   </para>

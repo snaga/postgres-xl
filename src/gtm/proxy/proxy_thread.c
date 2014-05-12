@@ -254,7 +254,7 @@ GTMProxy_ThreadCleanup(void *argp)
 {
 	GTMProxy_ThreadInfo *thrinfo = (GTMProxy_ThreadInfo *)argp;
 
-	elog(LOG, "Cleaning up thread state");
+	elog(DEBUG1, "Cleaning up thread state");
 
 	/*
 	 * TODO Close the open connection.

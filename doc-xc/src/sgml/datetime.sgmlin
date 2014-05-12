@@ -12,6 +12,10 @@
    <productname>Postgres-XC</productname> inherits uses an internal heuristic
    parser from <productname>PostgreSQL</> for all date/time input support. Dates and times are input as
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> inherits uses an internal heuristic
+   parser from <productname>PostgreSQL</> for all date/time input support. Dates and times are input as
+<!## end>
    strings, and are broken up into distinct fields with a preliminary
    determination of what kind of information can be in the
    field. Each field is interpreted and either assigned a numeric
@@ -362,6 +366,9 @@
 <!## XC>
     <productname>Postgres-XC</productname> provides a means to customize
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> provides a means to customize
+<!## end>
     the set of abbreviations accepted by the server.  The
     <xref linkend="guc-timezone-abbreviations"> run-time parameter
     determines the active set of abbreviations.  While this parameter
@@ -454,6 +461,9 @@
 <!## end>
 <!## XC>
      non-timezone meanings built into <productname>Postgres-XC</productname>.
+<!## end>
+<!## XL>
+     non-timezone meanings built into <productname>Postgres-XL</productname>.
 <!## end>
      For example, the <filename>Australia</> configuration file defines
      <literal>SAT</> (for South Australian Standard Time).  When this
@@ -557,6 +567,9 @@ $ <userinput>cal 9 1752</userinput>
 <!## XC>
    hence valid dates.  <productname>Postgres-XC</> follows the SQL
 <!## end>
+<!## XL>
+   hence valid dates.  <productname>Postgres-XL</> follows the SQL
+<!## end>
    standard's lead by counting dates exclusively in the Gregorian
    calendar, even for years before that calendar was in use.
   </para>
@@ -599,6 +612,9 @@ $ <userinput>cal 9 1752</userinput>
 <!## XC>
    Although <productname>Postgres-XC</> supports Julian Date notation for
 <!## end>
+<!## XL>
+   Although <productname>Postgres-XL</> supports Julian Date notation for
+<!## end>
    input and output of dates (and also uses them for some internal datetime
    calculations), it does not observe the nicety of having dates run from
 <!## PG>
@@ -606,6 +622,9 @@ $ <userinput>cal 9 1752</userinput>
 <!## end>
 <!## XC>
    noon to noon.  <productname>Postgres-XC</> treats a Julian Date as running
+<!## end>
+<!## XL>
+   noon to noon.  <productname>Postgres-XL</> treats a Julian Date as running
 <!## end>
    from midnight to midnight.
   </para>

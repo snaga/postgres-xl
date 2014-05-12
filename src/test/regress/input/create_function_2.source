@@ -67,7 +67,7 @@ CREATE FUNCTION user_relns()
    AS 'select relname
        from pg_class c, pg_namespace n
        where relnamespace = n.oid and
-             (nspname !~ ''pg_.*'' and nspname <> ''information_schema'') and
+             (nspname !~ ''pg_.*'' and nspname <> ''information_schema'' and nspname <> ''storm_catalog'') and
              relkind <> ''i'' '
    LANGUAGE SQL;
 

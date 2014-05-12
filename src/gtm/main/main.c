@@ -2,6 +2,11 @@
  *
  * main.c
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
@@ -72,6 +77,11 @@ int			tcp_keepalives_count;
 char		*error_reporter;
 char		*status_reader;
 bool		isStartUp;
+#ifdef XCP
+GTM_MutexLock   control_lock;
+char		GTMControlFileTmp[GTM_MAX_PATH];
+#define GTM_CONTROL_FILE_TMP		"gtm.control.tmp"
+#endif
 
 /* If this is GTM or not */
 /*
@@ -182,6 +192,9 @@ BaseInit()
 	CreateDataDirLockFile();
 
 	sprintf(GTMControlFile, "%s/%s", GTMDataDir, GTM_CONTROL_FILE);
+#ifdef XCP
+	sprintf(GTMControlFileTmp, "%s/%s", GTMDataDir, GTM_CONTROL_FILE_TMP);
+#endif
 	if (GTMLogFile == NULL)
 	{
 		GTMLogFile = (char *) malloc(GTM_MAX_PATH);
@@ -206,6 +219,9 @@ BaseInit()
 		fflush(stdout);
 		fflush(stderr);
 	}
+#ifdef XCP
+	GTM_MutexLockInit(&control_lock);
+#endif
 }
 
 static void
@@ -264,7 +280,6 @@ help(const char *progname)
 	printf(_("  -D directory    GTM working directory\n"));
 	printf(_("  -l filename     GTM server log file name \n"));
 	printf(_("  -c              show server status, then exit\n"));
-	printf(_("  -V, --version   output version information, then exit\n"));
 	printf(_("  --help          show this help, then exit\n"));
 	printf(_("\n"));
 	printf(_("Options for Standby mode:\n"));
@@ -280,6 +295,38 @@ gtm_status()
 	fprintf(stderr, "gtm_status(): must be implemented to scan the shmem.\n");
 	exit(0);
 }
+
+#ifdef XCP
+/*
+ * Save control file info
+ */
+void
+SaveControlInfo(void)
+{
+	FILE	   *ctlf;
+
+	GTM_MutexLockAcquire(&control_lock);
+
+	ctlf = fopen(GTMControlFileTmp, "w");
+
+	if (ctlf == NULL)
+	{
+		fprintf(stderr, "Failed to create/open the control file\n");
+		fclose(ctlf);
+		GTM_MutexLockRelease(&control_lock);
+		return;
+	}
+
+	GTM_SaveTxnInfo(ctlf);
+	GTM_SaveSeqInfo(ctlf);
+	fclose(ctlf);
+
+	remove(GTMControlFile);
+	rename(GTMControlFileTmp, GTMControlFile);
+
+	GTM_MutexLockRelease(&control_lock);
+}
+#endif
 
 int
 main(int argc, char *argv[])
@@ -337,11 +384,6 @@ main(int argc, char *argv[])
 		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
 		{
 			help(argv[0]);
-			exit(0);
-		}
-		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
-		{
-			puts("gtm (Postgres-XC) " PGXC_VERSION);
 			exit(0);
 		}
 	}
@@ -591,11 +633,19 @@ main(int argc, char *argv[])
 	}
 	else
 	{
+#ifdef XCP
+		GTM_MutexLockAcquire(&control_lock);
+#endif
+
 		ctlf = fopen(GTMControlFile, "r");
 		GTM_RestoreTxnInfo(ctlf, next_gxid);
 		GTM_RestoreSeqInfo(ctlf);
 		if (ctlf)
 			fclose(ctlf);
+
+#ifdef XCP
+		GTM_MutexLockRelease(&control_lock);
+#endif
 	}
 
 	if (Recovery_IsStandby())
@@ -692,13 +742,13 @@ main(int argc, char *argv[])
 			elog(ERROR, "Failed to update the standby-GTM status as \"CONNECTED\".");
 			exit(1);
 		}
-		elog(LOG, "Updating the standby-GTM status as \"CONNECTED\" succeeded.");
+		elog(DEBUG1, "Updating the standby-GTM status as \"CONNECTED\" succeeded.");
 		if (!gtm_standby_finish_startup())
 		{
 			elog(ERROR, "Failed to close the initial connection to the active-GTM.");
 			exit(1);
 		}
-		elog(LOG, "Startup connection with the active-GTM closed.");
+		elog(DEBUG1, "Startup connection with the active-GTM closed.");
 	}
 
 	/*
@@ -782,7 +832,9 @@ ServerLoop(void)
 
 		if (GTMAbortPending)
 		{
+#ifndef XCP
 			FILE *ctlf;
+#endif
 
 			/*
 			 * XXX We should do a clean shutdown here. For the time being, just
@@ -797,6 +849,9 @@ ServerLoop(void)
 			 */
 			GTM_SetShuttingDown();
 
+#ifdef XCP
+			SaveControlInfo();
+#else
 			ctlf = fopen(GTMControlFile, "w");
 			if (ctlf == NULL)
 			{
@@ -806,6 +861,7 @@ ServerLoop(void)
 
 			GTM_SaveTxnInfo(ctlf);
 			GTM_SaveSeqInfo(ctlf);
+#endif
 
 #if 0
 			/*
@@ -821,7 +877,9 @@ ServerLoop(void)
 			}
 #endif
 
+#ifndef XCP
 			fclose(ctlf);
+#endif
 
 			exit(1);
 		}
@@ -1002,6 +1060,7 @@ GTM_ThreadMain(void *argp)
 		pq_getmsgend(&inBuf);
 
 		GTM_RegisterPGXCNode(thrinfo->thr_conn->con_port, sp.sp_node_name);
+
 		thrinfo->thr_conn->con_port->remote_type = sp.sp_remotetype;
 		thrinfo->thr_conn->con_port->is_postmaster = sp.sp_ispostmaster;
 	}
@@ -1213,6 +1272,9 @@ ProcessCommand(Port *myport, StringInfo input_message)
 		case MSG_NODE_UNREGISTER:
 		case MSG_BKUP_NODE_UNREGISTER:
 		case MSG_NODE_LIST:
+#ifdef XCP
+		case MSG_REGISTER_SESSION:
+#endif
 			ProcessPGXCNodeCommand(myport, mtype, input_message);
 			break;
 		case MSG_BEGIN_BACKUP:
@@ -1260,6 +1322,7 @@ ProcessCommand(Port *myport, StringInfo input_message)
 
 		case MSG_SEQUENCE_INIT:
 		case MSG_BKUP_SEQUENCE_INIT:
+		case MSG_SEQUENCE_GET_CURRENT:
 		case MSG_SEQUENCE_GET_NEXT:
 		case MSG_BKUP_SEQUENCE_GET_NEXT:
 		case MSG_SEQUENCE_GET_LAST:
@@ -1449,6 +1512,12 @@ ProcessPGXCNodeCommand(Port *myport, GTM_MessageType mtype, StringInfo message)
 			ProcessPGXCNodeList(myport, message);
 			break;
 
+#ifdef XCP
+		case MSG_REGISTER_SESSION:
+			ProcessPGXCRegisterSession(myport, message);
+			break;
+#endif
+
 		default:
 			Assert(0);			/* Shouldn't come here.. keep compiler quite */
 	}
@@ -1483,6 +1552,7 @@ ProcessTransactionCommand(Port *myport, GTM_MessageType mtype, StringInfo messag
 
 		case MSG_BKUP_TXN_BEGIN_GETGXID:
 			ProcessBkupBeginTransactionGetGXIDCommand(myport, message);
+			break;
 
 		case MSG_TXN_BEGIN_GETGXID_AUTOVACUUM:
 			ProcessBeginTransactionGetGXIDAutovacuumCommand(myport, message);
@@ -1627,6 +1697,10 @@ ProcessSequenceCommand(Port *myport, GTM_MessageType mtype, StringInfo message)
 			ProcessSequenceAlterCommand(myport, message, true);
 			break;
 
+		case MSG_SEQUENCE_GET_CURRENT:
+			ProcessSequenceGetCurrentCommand(myport, message);
+			break;
+
 		case MSG_SEQUENCE_GET_NEXT:
 			ProcessSequenceGetNextCommand(myport, message, false);
 			break;
@@ -1692,12 +1766,14 @@ ProcessQueryCommand(Port *myport, GTM_MessageType mtype, StringInfo message)
 
 }
 
+
 static void
 GTM_RegisterPGXCNode(Port *myport, char *PGXCNodeName)
 {
 	elog(DEBUG3, "Registering coordinator with name %s", PGXCNodeName);
-	myport->node_name = strdup(PGXCNodeName);
+	myport->node_name = pstrdup(PGXCNodeName);
 }
+
 
 /*
  * Validate the proposed data directory

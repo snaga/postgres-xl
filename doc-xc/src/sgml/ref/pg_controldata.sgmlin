@@ -18,6 +18,9 @@ PostgreSQL documentation
 <!## XC>
   <refpurpose>display control information of a Coordinator or Datanode  database cluster of <productname>Postgres-XC</productname></refpurpose>
 <!## end>
+<!## XL>
+  <refpurpose>display control information of a Coordinator or Datanode  database cluster of <productname>Postgres-XL</productname></refpurpose>
+<!## end>
  </refnamediv>
 
  <indexterm zone="app-pgcontroldata">
@@ -57,6 +60,13 @@ PostgreSQL documentation
 
 <!## XC>
 &xconly;
+  <para>
+   To print information of each Datanode and Coordinator, you should
+   issue <command>pg_controldata</> against each of them.
+  </para>
+<!## end>
+<!## XL>
+&xlonly;
   <para>
    To print information of each Datanode and Coordinator, you should
    issue <command>pg_controldata</> against each of them.

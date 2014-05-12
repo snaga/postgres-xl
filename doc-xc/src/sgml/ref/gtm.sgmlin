@@ -13,7 +13,8 @@ PostgreSQL documentation
  <refnamediv>
   <refname>gtm</refname>
   <refpurpose>
-   provides global transaction management feature to <productname>Postgres-XC</productname>.
+   provides global transaction management for the <productname>Postgres-XL</productname>
+   across the entire cluster.
   </refpurpose>
  </refnamediv>
 
@@ -32,16 +33,16 @@ PostgreSQL documentation
   <title>
    Description
   </title>
-&xconly
+&xlonly
   <para>
-   gtm provides consistent transaction manager fully compatible with
+   gtm provides consistent transaction management fully compatible with
    vanilla PostgreSQL. It is highly advised to start and stop gtm
    using gtm_ctl(8).
   </para>
 
   <para>
-   You must provide gtm configuration
-   file <filename>gtm.conf</filename> placed at gtm working directory
+   You must provide a gtm configuration
+   file <filename>gtm.conf</filename> placed in the gtm working directory
    as specified by <literal>-D</literal> command line option. The
    configuration file specifies gtm running environment and resources.
   </para>
@@ -51,12 +52,17 @@ PostgreSQL documentation
    command line options.
   </para>
 
+  <para>
+   As with other cluster components, the recommended method of
+   configuring and managing them is with the <xref linkend="pgxc-ctl"> utility.
+ </para>
+
  </refsect1>
 
  <refsect1>
   <title>Configuration File</title>
 
-&xconly
+&xlonly
   <para>
    <literal>GTM</literal> configuration parameters are specified in the configuration file 
    <filename>gtm.conf</filename><indexterm><primary>gtm.conf</></> placed in the working directory
@@ -65,8 +71,8 @@ PostgreSQL documentation
    in the next section.
   </para>
   <para>
-   Format of the configuration file is the same as <filename>postgresql.conf</filename>.
-   Options are as follows.
+   The format of the configuration file is patterned after the <filename>postgresql.conf</filename>.
+   The options are as follows.
   </para>
 
 <!-- Add description of each gtm.conf entry -->
@@ -92,7 +98,7 @@ PostgreSQL documentation
     </indexterm>
     <listitem>
      <para>
-      Specifies listen addresses (host name or IP address) of active <application>gtm</application>.  This
+      Specifies the listen addresses (host name or IP address) of active <application>gtm</application>.  This
       parameter is effective only when this <application>gtm</application>
       is specified as a standby.  There is no default value for this parameter.
      </para>
@@ -108,7 +114,8 @@ PostgreSQL documentation
      <para>
       Specifies the port number of active <application>gtm</application>.  This
       parameter is effective only when this <application>gtm</application>
-      is specified as a standby.
+      is specified as a GTM standby. The standby connects to the primary gtm
+      to obtain a stream of updates of transaction status values.
       There is no default value for this parameter.
      </para>
     </listitem>
@@ -123,8 +130,8 @@ PostgreSQL documentation
      <para>
       Specifies <literal>keepalives_count</literal> option for the
       connection to <application>gtm</application>.  This option is
-      effective only when it runs as GTM-Standby.
-      Default value is zero and keepalives feature is disabled.
+      effective only when it runs as GTM Standby.
+      The default value is zero and keepalives feature is disabled.
      </para>
     </listitem>
    </varlistentry>
@@ -138,8 +145,8 @@ PostgreSQL documentation
      <para>
       Specifies <literal>keepalives_idle</literal> option for the
       connection to <application>gtm</application>.  This option is
-      effective only when it runs as GTM-Standby.
-      Default value is zero and keepalives feature is disabled.
+      effective only when it runs as GTM Standby.
+      The default value is zero and keepalives feature is disabled.
      </para>
     </listitem>
    </varlistentry>
@@ -153,8 +160,8 @@ PostgreSQL documentation
      <para>
       Specifies <literal>keepalives_interval</literal> option for the
       connection to <application>gtm</application>.  This option is
-      effective only when it runs as GTM-Standby.
-      Default value is zero and keepalives feature is disabled.
+      effective only when it runs as GTM Standby.
+      The default value is zero and keepalives feature is disabled.
      </para>
     </listitem>
    </varlistentry>
@@ -182,7 +189,7 @@ PostgreSQL documentation
     <listitem>
      <para>
       Specifies <filename>log</filename> file name.  This file will be
-      created at the working directory of
+      created in the working directory of
       this <application>gtm</application> as specified
       by <literal>-D</literal> command line option.
       The default is <filename>gtm.log</filename>.
@@ -266,7 +273,7 @@ PostgreSQL documentation
     </indexterm>
     <listitem>
      <para>
-      Specifies if backup to GTM-Standby is taken synchronously.   If this is turned on,
+      Specifies if the backup to GTM-Standby is taken synchronously.   If this is turned on,
       GTM will send and receive synchronize message to make sure that all the backups
       reached to the standby.
      </para>
@@ -328,7 +335,7 @@ PostgreSQL documentation
      <term><option>x</option></term>
      <listitem>
       <para>
-       Specify global transaction ID to start with. This is needed
+       Specify the global transaction ID to start with. This is needed
        when you start gtm for the first time
        because <command>initdb</command> consumes XID locally and gtm
        should start to give GXID greater than the last one
@@ -341,7 +348,7 @@ PostgreSQL documentation
        run, initial global transaction ID value will be set to a
        default initial value which is considered to be safe enough (in
        version &version;, it is 10000).  If many statements are
-       involved in initdb, you should consider to specify larger
+       involved in initdb, you should consider to increasing this
        value.
       </para>
       <para>
@@ -376,7 +383,7 @@ PostgreSQL documentation
   </para>
 
   <para>
-    When starting GTM as a standby instance, following options can also be provided.
+    When starting GTM as a standby instance, the following options can also be provided.
   </para>
 
   <para>

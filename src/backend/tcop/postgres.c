@@ -3,6 +3,11 @@
  * postgres.c
  *	  POSTGRES C Backend Interface
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
@@ -89,10 +94,14 @@
 /* PGXC_COORD */
 #include "pgxc/execRemote.h"
 #include "pgxc/barrier.h"
-#include "optimizer/pgxcplan.h"
+#include "pgxc/planner.h"
 #include "nodes/nodes.h"
 #include "pgxc/poolmgr.h"
 #include "pgxc/pgxcnode.h"
+#ifdef XCP
+#include "pgxc/pause.h"
+#include "pgxc/squeue.h"
+#endif
 #include "commands/copy.h"
 /* PGXC_DATANODE */
 #include "access/transam.h"
@@ -374,10 +383,105 @@ SocketBackend(StringInfo inBuf)
 {
 	int			qtype;
 
+#ifdef XCP
+	/*
+	 * Session from data node may need to do some background work if it is
+	 * running producing subplans. So just poll the connection, and if it does
+	 * not have input for us do the work.
+	 * If we do not have producing portals we should use the blocking read
+	 * to avoid loop consuming 100% of CPU
+	 */
+	if (IS_PGXC_DATANODE && IsConnFromDatanode())
+	{
+		/*
+		 * Advance producing portals or poll client connection until we have
+		 * a client command to handle.
+		 */
+		while (true)
+		{
+			unsigned char c;
+
+			qtype = pq_getbyte_if_available(&c);
+			if (qtype == 0)			/* no commands, do producing */
+			{
+				/*
+				 * No command yet, try to advance producing portals, and
+				 * depending on result do:
+				 * -1 No producing portals, block and wait for client command
+				 * 0  All producing portals are paused, sleep for a moment and
+				 *    then check again either we have client command or some
+				 *    portal is awaken.
+				 * 1  check for client command and more continue advancing
+				 *    producers immediately
+				 */
+				int activePortals = -1;
+				ListCell   *lc = list_head(getProducingPortals());
+				while (lc)
+				{
+					Portal p = (Portal) lfirst(lc);
+					int result;
+
+					/*
+					 * Get next already, because next call may remove cell from
+					 * the list and invalidate next reference
+					 */
+					lc = lnext(lc);
+
+					result = AdvanceProducingPortal(p, true);
+					if (result == 0)
+					{
+						/* Portal is paused */
+						if (activePortals < 0)
+							activePortals = 0;
+					}
+					else if (result > 0)
+					{
+						if (activePortals < 0)
+							activePortals = result;
+						else
+							activePortals += result;
+					}
+				}
+				if (activePortals < 0)
+				{
+					/* no producers at all, we may wait while next command */
+					qtype = pq_getbyte();
+					break;
+				}
+				else if (activePortals == 0)
+				{
+					/* all producers are paused, sleep a little to allow other
+					 * processes to go */
+					pg_usleep(10000L);
+				}
+			}
+			else if (qtype == 1)
+			{
+				/* command code in c is defined, move it to qtype
+				 * and break to handle the command */
+				qtype = c;
+				break;
+			}
+			else
+			{
+				/* error, default handling, qtype is already set to EOF */
+				break;
+			}
+		}
+	}
+	else
+	{
+		/*
+		 * Get message type code from the frontend.
+		 */
+		qtype = pq_getbyte();
+	}
+#else
 	/*
 	 * Get message type code from the frontend.
 	 */
 	qtype = pq_getbyte();
+#endif
 
 	if (qtype == EOF)			/* frontend disconnected */
 	{
@@ -449,6 +553,9 @@ SocketBackend(StringInfo inBuf)
 			break;
 
 		case 'B':				/* bind */
+#ifdef XCP /* PGXC_DATANODE */
+		case 'p':				/* plan */
+#endif
 		case 'C':				/* close */
 		case 'D':				/* describe */
 		case 'E':				/* execute */
@@ -666,6 +773,7 @@ pg_analyze_and_rewrite(Node *parsetree, const char *query_string,
 	querytree_list = pg_rewrite_query(query);
 
 #ifdef PGXC
+#ifndef XCP
 	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
 	{
 		ListCell   *lc;
@@ -678,6 +786,7 @@ pg_analyze_and_rewrite(Node *parsetree, const char *query_string,
 				query->sql_statement = pstrdup(query_string);
 		}
 	}
+#endif
 #endif
 
 	TRACE_POSTGRESQL_QUERY_REWRITE_DONE(query_string);
@@ -715,6 +824,9 @@ pg_analyze_and_rewrite_params(Node *parsetree,
 	(*parserSetup) (pstate, parserSetupArg);
 
 	query = transformTopLevelStmt(pstate, parsetree);
+
+	if (post_parse_analyze_hook)
+		(*post_parse_analyze_hook) (pstate, query);
 
 	if (post_parse_analyze_hook)
 		(*post_parse_analyze_hook) (pstate, query);
@@ -953,6 +1065,37 @@ exec_simple_query(const char *query_string)
 	 */
 	parsetree_list = pg_parse_query(query_string);
 
+#ifdef XCP
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord() &&
+			list_length(parsetree_list) > 1)
+	{
+		/*
+		 * There is a bug in old code, if one query contains multiple utility
+		 * statements, entire query may be sent multiple times to the Datanodes
+		 * for execution. That is becoming a severe problem, if query contains
+		 * COMMIT or ROLLBACK. After executed for the first time the transaction
+		 * handling statement would write CLOG entry for current xid, but other
+		 * executions would be done with the same xid, causing PANIC on the
+		 * Datanodes because of already existing CLOG record. Datanode is
+		 * restarting all sessions if it PANICs, and affects all cluster users.
+		 * Multiple utility statements may result in strange error messages,
+		 * but somteime they work, and used in many applications, so we do not
+		 * want to disable them completely, just protect against severe
+		 * vulnerability here.
+		 */
+		foreach(parsetree_item, parsetree_list)
+		{
+			Node	   *parsetree = (Node *) lfirst(parsetree_item);
+
+			if (IsTransactionExitStmt(parsetree))
+				ereport(ERROR,
+						(errcode(ERRCODE_STATEMENT_TOO_COMPLEX),
+						 errmsg("COMMIT or ROLLBACK "
+								"in multi-statement queries not allowed")));
+		}
+	}
+#endif
+
 	/* Log immediately if dictated by log_statement */
 	if (check_log_statement(parsetree_list))
 	{
@@ -1057,6 +1200,10 @@ exec_simple_query(const char *query_string)
 
 		plantree_list = pg_plan_queries(querytree_list, 0, NULL);
 
+		/* Done with the snapshot used for parsing/planning */
+		if (snapshot_set)
+			PopActiveSnapshot();
+
 		/* If we got a cancel signal in analysis or planning, quit */
 		CHECK_FOR_INTERRUPTS();
 
@@ -1088,19 +1235,9 @@ exec_simple_query(const char *query_string)
 						  NULL);
 
 		/*
-		 * Start the portal.
-		 *
-		 * If we took a snapshot for parsing/planning, the portal may be able
-		 * to reuse it for the execution phase.  Currently, this will only
-		 * happen in PORTAL_ONE_SELECT mode.  But even if PortalStart doesn't
-		 * end up being able to do this, keeping the parse/plan snapshot
-		 * around until after we start the portal doesn't cost much.
+		 * Start the portal.  No parameters here.
 		 */
-		PortalStart(portal, NULL, 0, snapshot_set);
-
-		/* Done with the snapshot used for parsing/planning */
-		if (snapshot_set)
-			PopActiveSnapshot();
+		PortalStart(portal, NULL, 0, InvalidSnapshot);
 
 		/*
 		 * Select the appropriate output format: text unless we are doing a
@@ -1423,6 +1560,7 @@ exec_parse_message(const char *query_string,	/* string to execute */
 
 		querytree_list = pg_rewrite_query(query);
 #ifdef PGXC
+#ifndef XCP
 		if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
 		{
 			ListCell   *lc;
@@ -1435,6 +1573,7 @@ exec_parse_message(const char *query_string,	/* string to execute */
 					query->sql_statement = pstrdup(query_string);
 			}
 		}
+#endif
 #endif
 
 		/* Done with the snapshot used for parsing */
@@ -1533,6 +1672,143 @@ exec_parse_message(const char *query_string,	/* string to execute */
 
 	debug_query_string = NULL;
 }
+
+#ifdef XCP
+/*
+ * exec_plan_message
+ *
+ * Execute a "Plan" protocol message - already planned statement.
+ */
+static void
+exec_plan_message(const char *query_string,	/* source of the query */
+				  const char *stmt_name,		/* name for prepared stmt */
+				  const char *plan_string,		/* encoded plan to execute */
+				  char **paramTypeNames,	/* parameter type names */
+				  int numParams)		/* number of parameters */
+{
+	MemoryContext oldcontext;
+	bool		save_log_statement_stats = log_statement_stats;
+	char		msec_str[32];
+	Oid		   *paramTypes;
+	CachedPlanSource *psrc;
+
+	/* Statement name should not be empty */
+	Assert(stmt_name[0]);
+
+	/*
+	 * Report query to various monitoring facilities.
+	 */
+	debug_query_string = query_string;
+
+	pgstat_report_activity(STATE_RUNNING, query_string);
+
+	set_ps_display("PLAN", false);
+
+	if (save_log_statement_stats)
+		ResetUsage();
+
+	ereport(DEBUG2,
+			(errmsg("plan %s: %s",
+					*stmt_name ? stmt_name : "<unnamed>",
+					query_string)));
+
+	/*
+	 * Start up a transaction command so we can decode plan etc. (Note
+	 * that this will normally change current memory context.) Nothing happens
+	 * if we are already in one.
+	 */
+	start_xact_command();
+
+	/*
+	 * XXX
+	 * Postgres decides about memory context to use based on "named/unnamed"
+	 * assuming named statement is executed multiple times and unnamed is
+	 * executed once.
+	 * Plan message always provide statement name, but we may use different
+	 * criteria, like if plan is referencing "internal" parameters it probably
+	 * will be executed multiple times, if not - once.
+	 * So far optimize for multiple executions.
+	 */
+	/* Named prepared statement --- parse in MessageContext */
+	oldcontext = MemoryContextSwitchTo(MessageContext);
+//	unnamed_stmt_context =
+//		AllocSetContextCreate(CacheMemoryContext,
+//							  "unnamed prepared statement",
+//							  ALLOCSET_DEFAULT_MINSIZE,
+//							  ALLOCSET_DEFAULT_INITSIZE,
+//							  ALLOCSET_DEFAULT_MAXSIZE);
+//	oldcontext = MemoryContextSwitchTo(unnamed_stmt_context);
+
+	/*
+	 * Determine parameter types
+	 */
+	if (numParams > 0)
+	{
+		int cnt_param;
+		paramTypes = (Oid *) palloc(numParams * sizeof(Oid));
+		/* we don't expect type mod */
+		for (cnt_param = 0; cnt_param < numParams; cnt_param++)
+			parseTypeString(paramTypeNames[cnt_param], &paramTypes[cnt_param],
+								NULL);
+
+	}
+
+	/* If we got a cancel signal, quit */
+	CHECK_FOR_INTERRUPTS();
+
+	psrc = CreateCachedPlan(NULL, query_string, stmt_name, "REMOTE SUBPLAN");
+
+	CompleteCachedPlan(psrc, NIL, NULL, paramTypes, numParams, NULL, NULL,
+					   CURSOR_OPT_GENERIC_PLAN, false);
+
+	/*
+	 * Store the query as a prepared statement.  See above comments.
+	 */
+	StorePreparedStatement(stmt_name, psrc, false);
+
+	SetRemoteSubplan(psrc, plan_string);
+
+	MemoryContextSwitchTo(oldcontext);
+
+	/*
+	 * We do NOT close the open transaction command here; that only happens
+	 * when the client sends Sync.	Instead, do CommandCounterIncrement just
+	 * in case something happened during parse/plan.
+	 */
+	CommandCounterIncrement();
+
+	/*
+	 * Send ParseComplete.
+	 */
+	if (whereToSendOutput == DestRemote)
+		pq_putemptymessage('1');
+
+	/*
+	 * Emit duration logging if appropriate.
+	 */
+	switch (check_log_duration(msec_str, false))
+	{
+		case 1:
+			ereport(LOG,
+					(errmsg("duration: %s ms", msec_str),
+					 errhidestmt(true)));
+			break;
+		case 2:
+			ereport(LOG,
+					(errmsg("duration: %s ms  parse %s: %s",
+							msec_str,
+							*stmt_name ? stmt_name : "<unnamed>",
+							query_string),
+					 errhidestmt(true)));
+			break;
+	}
+
+	if (save_log_statement_stats)
+		ShowUsage("PLAN MESSAGE STATISTICS");
+
+	debug_query_string = NULL;
+}
+#endif
 
 /*
  * exec_bind_message
@@ -1865,18 +2141,14 @@ exec_bind_message(StringInfo input_message)
 					  cplan->stmt_list,
 					  cplan);
 
-	/*
-	 * And we're ready to start portal execution.
-	 *
-	 * If we took a snapshot for parsing/planning, we'll try to reuse it for
-	 * query execution (currently, reuse will only occur if PORTAL_ONE_SELECT
-	 * mode is chosen).
-	 */
-	PortalStart(portal, params, 0, snapshot_set);
-
 	/* Done with the snapshot used for parameter I/O and parsing/planning */
 	if (snapshot_set)
 		PopActiveSnapshot();
+
+	/*
+	 * And we're ready to start portal execution.
+	 */
+	PortalStart(portal, params, 0, InvalidSnapshot);
 
 	/*
 	 * Apply the result format requests to the portal.
@@ -2741,6 +3013,14 @@ die(SIGNAL_ARGS)
 		}
 	}
 
+#ifdef XCP
+	/* release cluster lock if holding it */
+	if (cluster_ex_lock_held)
+	{
+		ReleaseClusterLock(true);
+	}
+#endif
+
 	/* If we're still here, waken anything waiting on the process latch */
 	if (MyProc)
 		SetLatch(&MyProc->procLatch);
@@ -3373,13 +3653,14 @@ get_stats_option_name(const char *arg)
  * coming from the client, or PGC_SUSET for insecure options coming from
  * a superuser client.
  *
- * Returns the database name extracted from the command line, if any.
+ * If a database name is present in the command line arguments, it's
+ * returned into *dbname (this is allowed only if *dbname is initially NULL).
  * ----------------------------------------------------------------
  */
-const char *
-process_postgres_switches(int argc, char *argv[], GucContext ctx)
+void
+process_postgres_switches(int argc, char *argv[], GucContext ctx,
+						  const char **dbname)
 {
-	const char *dbname;
 	bool		secure = (ctx == PGC_POSTMASTER);
 	int			errs = 0;
 	GucSource	gucsource;
@@ -3436,7 +3717,8 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx)
 
 			case 'b':
 				/* Undocumented flag used for binary upgrades */
-				IsBinaryUpgrade = true;
+				if (secure)
+					IsBinaryUpgrade = true;
 				break;
 
 			case 'C':
@@ -3453,7 +3735,8 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx)
 				break;
 
 			case 'E':
-				EchoQuery = true;
+				if (secure)
+					EchoQuery = true;
 				break;
 
 			case 'e':
@@ -3478,7 +3761,8 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx)
 				break;
 
 			case 'j':
-				UseNewLine = 0;
+				if (secure)
+					UseNewLine = 0;
 				break;
 
 			case 'k':
@@ -3628,7 +3912,12 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx)
 	{
 		ereport(FATAL,
 				(errcode(ERRCODE_SYNTAX_ERROR),
+#ifdef XCP
+			 errmsg("Postgres-XL: must start as either a Coordinator (--coordinator) or Datanode (-datanode)\n")));
+#else
 			 errmsg("Postgres-XC: must start as either a Coordinator (--coordinator) or Datanode (-datanode)\n")));
+#endif
+
 	}
 	if (!IsPostmasterEnvironment)
 	{
@@ -3638,13 +3927,10 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx)
 #endif
 
 	/*
-	 * Should be no more arguments except an optional database name, and
-	 * that's only in the secure case.
+	 * Optional database name should be there only if *dbname is NULL.
 	 */
-	if (!errs && secure && argc - optind >= 1)
-		dbname = strdup(argv[optind++]);
-	else
-		dbname = NULL;
+	if (!errs && dbname && *dbname == NULL && argc - optind >= 1)
+		*dbname = strdup(argv[optind++]);
 
 	if (errs || argc != optind)
 	{
@@ -3673,8 +3959,6 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx)
 #ifdef HAVE_INT_OPTRESET
 	optreset = 1;				/* some systems need this too */
 #endif
-
-	return dbname;
 }
 
 
@@ -3684,14 +3968,16 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx)
  *
  * argc/argv are the command line arguments to be used.  (When being forked
  * by the postmaster, these are not the original argv array of the process.)
- * username is the (possibly authenticated) PostgreSQL user name to be used
- * for the session.
+ * dbname is the name of the database to connect to, or NULL if the database
+ * name should be extracted from the command line arguments or defaulted.
+ * username is the PostgreSQL user name to be used for the session.
  * ----------------------------------------------------------------
  */
 int
-PostgresMain(int argc, char *argv[], const char *username)
+PostgresMain(int argc, char *argv[],
+			 const char *dbname,
+			 const char *username)
 {
-	const char *dbname;
 	int			firstchar;
 	StringInfoData input_message;
 	sigjmp_buf	local_sigjmp_buf;
@@ -3705,10 +3991,17 @@ PostgresMain(int argc, char *argv[], const char *username)
 	int 			*xip;
 	/* Timestamp info */
 	TimestampTz		timestamp;
+#ifndef XCP
 	PoolHandle		*pool_handle;
+#endif
 
 	remoteConnType = REMOTE_CONN_APP;
 #endif
+#ifdef XCP
+	parentPGXCNode = NULL;
+	cluster_lock_held = false;
+	cluster_ex_lock_held = false;
+#endif /* XCP */
 
 	/*
 	 * Initialize globals (already done if under postmaster, but not if
@@ -3751,7 +4044,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 	/*
 	 * Parse command-line options.
 	 */
-	dbname = process_postgres_switches(argc, argv, PGC_POSTMASTER);
+	process_postgres_switches(argc, argv, PGC_POSTMASTER, &dbname);
 
 	/* Must have gotten a database name, or have a default (the username) */
 	if (dbname == NULL)
@@ -3960,7 +4253,39 @@ PostgresMain(int argc, char *argv[], const char *username)
 	if (!IsUnderPostmaster)
 		PgStartTime = GetCurrentTimestamp();
 
-#ifdef PGXC /* PGXC_COORD */
+#ifdef PGXC
+	/*
+	 * Initialize key pair to be used as object id while using advisory lock
+	 * for backup
+	 */
+	xc_lockForBackupKey1 = Int32GetDatum(XC_LOCK_FOR_BACKUP_KEY_1);
+	xc_lockForBackupKey1 = Int32GetDatum(XC_LOCK_FOR_BACKUP_KEY_2);
+
+#ifdef XCP
+	if (IsUnderPostmaster)
+	{
+		/*
+		 * Prepare to handle distributed requests.
+		 * Do that after sending down ReadyForQuery, to avoid pooler
+		 * blocking.
+		 */
+		start_xact_command();
+		InitMultinodeExecutor(false);
+		finish_xact_command();
+	}
+
+	/* Set up the post parse analyze hook */
+	post_parse_analyze_hook = ParseAnalyze_callback;
+
+	/* if we exit, try to release cluster lock properly */
+	on_shmem_exit(PGXCCleanClusterLock, 0);
+
+	/* if we exit, try to release shared queues */
+	on_shmem_exit(SharedQueuesCleanup, 0);
+
+	/* If we exit, first try and clean connections and send to pool */
+	on_proc_exit(PGXCNodeCleanAndRelease, 0);
+#else
 	/* If this postmaster is launched from another Coord, do not initialize handles. skip it */
 	if (IS_PGXC_COORDINATOR && !IsPoolHandle())
 	{
@@ -3987,6 +4312,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 		/* If we exit, first try and clean connections and send to pool */
 		on_proc_exit (PGXCNodeCleanAndRelease, 0);
 	}
+#endif /* XCP */
 	if (IS_PGXC_DATANODE)
 	{
 		/* If we exit, first try and clean connection to GTM */
@@ -4142,6 +4468,15 @@ PostgresMain(int argc, char *argv[], const char *username)
 			}
 
 			ReadyForQuery(whereToSendOutput);
+#ifdef XCP
+			/*
+			 * Before we read any new command we now should wait while all
+			 * already closed portals which are still producing finish their
+			 * work.
+			 */
+			if (IS_PGXC_DATANODE && IsConnFromDatanode())
+				cleanupClosedProducers();
+#endif
 #ifdef PGXC
 			/*
 			 * Helps us catch any problems where we did not send down a snapshot
@@ -4189,6 +4524,24 @@ PostgresMain(int argc, char *argv[], const char *username)
 		 */
 		if (ignore_till_sync && firstchar != EOF)
 			continue;
+
+#ifdef XCP
+		/*
+		 * Acquire the ClusterLock before starting query processing.
+		 *
+		 * If we are inside a transaction block, this lock will be already held
+		 * when the transaction began
+		 *
+		 * If the session has invoked a PAUSE CLUSTER earlier, then this lock
+		 * will be held already in exclusive mode. No need to lock in that case
+		 */
+		if (IsUnderPostmaster && IS_PGXC_COORDINATOR && !cluster_ex_lock_held && !cluster_lock_held)
+		{
+			bool exclusive = false;
+			AcquireClusterLock(exclusive);
+			cluster_lock_held = true;
+		}
+#endif /* XCP */
 
 		switch (firstchar)
 		{
@@ -4246,6 +4599,38 @@ PostgresMain(int argc, char *argv[], const char *username)
 									   paramTypes, paramTypeNames, numParams);
 				}
 				break;
+
+#ifdef XCP
+			case 'p':			/* plan */
+				{
+					const char *stmt_name;
+					const char *query_string;
+					const char *plan_string;
+					int			numParams;
+					char 	  **paramTypes = NULL;
+
+					/* Set statement_timestamp() */
+					SetCurrentStatementStartTimestamp();
+
+					stmt_name = pq_getmsgstring(&input_message);
+					query_string = pq_getmsgstring(&input_message);
+					plan_string = pq_getmsgstring(&input_message);
+					numParams = pq_getmsgint(&input_message, 2);
+					paramTypes = (char **)palloc(numParams * sizeof(char *));
+					if (numParams > 0)
+					{
+						int			i;
+						for (i = 0; i < numParams; i++)
+							paramTypes[i] = (char *)
+									pq_getmsgstring(&input_message);
+					}
+					pq_getmsgend(&input_message);
+
+					exec_plan_message(query_string, stmt_name, plan_string,
+									  paramTypes, numParams);
+				}
+				break;
+#endif
 
 			case 'B':			/* bind */
 				/* Set statement_timestamp() */
@@ -4463,7 +4848,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 				if (xcnt > 0)
 				{
 					int i;
-					xip = malloc(xcnt * 4);
+					xip = malloc(xcnt * sizeof(int));
 					if (xip == NULL)
 					{
 						ereport(ERROR,
@@ -4528,6 +4913,22 @@ PostgresMain(int argc, char *argv[], const char *username)
 						 errmsg("invalid frontend message type %d",
 								firstchar)));
 		}
+
+#ifdef XCP
+		/*
+		 * If the connection is going idle, release the cluster lock. However
+		 * if the session had invoked a PAUSE CLUSTER earlier, then wait for a
+		 * subsequent UNPAUSE to release this lock
+		 */
+		if (IsUnderPostmaster && IS_PGXC_COORDINATOR && !IsAbortedTransactionBlockState()
+			&& !IsTransactionOrTransactionBlock()
+			&& cluster_lock_held && !cluster_ex_lock_held)
+		{
+			bool exclusive = false;
+			ReleaseClusterLock(exclusive);
+			cluster_lock_held = false;
+		}
+#endif /* XCP */
 	}							/* end of input-reading loop */
 
 	/* can't get here because the above loop never exits */

@@ -58,6 +58,9 @@ ALTER ROLE <replaceable class="PARAMETER">name</replaceable> [ IN DATABASE <repl
 <!## XC>
    <productname>Postgres-XC</productname> role.
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> role.
+<!## end>
   </para>
 
   <para>
@@ -310,6 +313,9 @@ ALTER ROLE fred IN DATABASE devel SET client_min_messages = DEBUG;
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname> extension.
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> extension.
 <!## end>
   </para>
  </refsect1>

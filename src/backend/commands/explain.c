@@ -3,6 +3,11 @@
  * explain.c
  *	  Explain query execution plans
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994-5, Regents of the University of California
  *
@@ -779,6 +784,11 @@ ExplainNode(PlanState *planstate, List *ancestors,
 		case T_ForeignScan:
 			pname = sname = "Foreign Scan";
 			break;
+#ifdef XCP
+		case T_RemoteSubplan:
+			pname = sname = "Remote Subquery Scan";
+			break;
+#endif /* XCP */
 		case T_Material:
 			pname = sname = "Materialize";
 			break;
@@ -809,6 +819,21 @@ ExplainNode(PlanState *planstate, List *ancestors,
 					strategy = "???";
 					break;
 			}
+#ifdef XCP
+			switch (((Agg *) plan)->aggstrategy)
+			{
+				case AGG_SLAVE:
+					operation = "Transition";
+					break;
+				case AGG_MASTER:
+					operation = "Collection";
+					break;
+				default:
+					operation = NULL;
+					break;
+			}
+#endif
+
 			break;
 		case T_WindowAgg:
 			pname = sname = "WindowAgg";
@@ -902,6 +927,66 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			ExplainScanTarget((Scan *) plan, es);
 			break;
 #endif
+#ifdef XCP
+		case T_RemoteSubplan:
+			{
+				RemoteSubplan  *rsubplan = (RemoteSubplan *) plan;
+				List *nodeNameList = NIL;
+				ListCell *lc;
+
+				foreach(lc, rsubplan->nodeList)
+				{
+					char *nodename = get_pgxc_nodename(
+							PGXCNodeGetNodeOid(lfirst_int(lc),
+											   PGXC_NODE_DATANODE));
+					nodeNameList = lappend(nodeNameList, nodename);
+				}
+
+				/* print out destination nodes */
+				if (es->format == EXPLAIN_FORMAT_TEXT)
+				{
+					if (nodeNameList)
+					{
+						if (es->nodes)
+						{
+							bool 			first = true;
+							ListCell 	   *lc;
+							foreach(lc, nodeNameList)
+							{
+								char *nodename = (char *) lfirst(lc);
+								if (first)
+								{
+									appendStringInfo(es->str, " on %s (%s",
+													 rsubplan->execOnAll ? "all" : "any",
+													 nodename);
+									first = false;
+								}
+								else
+									appendStringInfo(es->str, ",%s", nodename);
+							}
+							appendStringInfoChar(es->str, ')');
+						}
+						else
+						{
+							appendStringInfo(es->str, " on %s",
+										 rsubplan->execOnAll ? "all" : "any");
+						}
+					}
+					else
+					{
+						appendStringInfo(es->str, " on local node");
+					}
+				}
+				else
+				{
+					ExplainPropertyText("Replicated",
+										rsubplan->execOnAll ? "no" : "yes",
+										es);
+					ExplainPropertyList("Node List", nodeNameList, es);
+				}
+			}
+			break;
+#endif /* XCP */
 		case T_IndexScan:
 			{
 				IndexScan  *indexscan = (IndexScan *) plan;
@@ -1130,6 +1215,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 						   "Index Cond", planstate, ancestors, es);
 			break;
 #ifdef PGXC
+#ifndef XCP
 		case T_ModifyTable:
 			{
 				/* Remote query planning on DMLs */
@@ -1139,10 +1225,46 @@ ExplainNode(PlanState *planstate, List *ancestors,
 					ExplainRemoteQuery((RemoteQuery *) lfirst(elt), planstate, ancestors, es);
 			}
 			break;
+#endif
 		case T_RemoteQuery:
 			/* Remote query */
 			ExplainRemoteQuery((RemoteQuery *)plan, planstate, ancestors, es);
 			show_scan_qual(plan->qual, "Coordinator quals", planstate, ancestors, es);
+			break;
+#endif
+#ifdef XCP
+		case T_RemoteSubplan:
+			{
+				RemoteSubplan  *rsubplan = (RemoteSubplan *) plan;
+
+				/* print out destination nodes */
+				if (es->format == EXPLAIN_FORMAT_TEXT)
+				{
+					if (list_length(rsubplan->distributionNodes) > 0)
+					{
+						char 		label[24];
+						AttrNumber 	dkey = rsubplan->distributionKey;
+						sprintf(label, "Distribute results by %c",
+								rsubplan->distributionType);
+						if (dkey == InvalidAttrNumber)
+						{
+							appendStringInfoSpaces(es->str, es->indent * 2);
+							appendStringInfo(es->str, "%s\n", label);
+						}
+						else
+						{
+							TargetEntry *tle = NULL;
+							if (plan->targetlist)
+								tle = (TargetEntry *) list_nth(plan->targetlist,
+															   dkey-1);
+							if (IsA(tle, TargetEntry))
+								show_expression((Node *) tle->expr, label,
+												planstate, ancestors,
+												false, es);
+						}
+					}
+				}
+			}
 			break;
 #endif
 		case T_BitmapHeapScan:
@@ -1922,7 +2044,7 @@ ExplainTargetRel(Plan *plan, Index rti, ExplainState *es)
 		case T_RemoteQuery:
 			/* get the object name from RTE itself */
 			Assert(rte->rtekind == RTE_REMOTE_DUMMY);
-			objectname = rte->relname;
+			objectname = get_rel_name(rte->relid);
 			objecttag = "RemoteQuery name";
 			break;
 		default:

@@ -262,7 +262,7 @@ GTM_ThreadCleanup(void *argp)
 {
 	GTM_ThreadInfo *thrinfo = (GTM_ThreadInfo *)argp;
 
-	elog(LOG, "Cleaning up thread state");
+	elog(DEBUG1, "Cleaning up thread state");
 
 	if (thrinfo->thr_status == GTM_THREAD_BACKUP)
 	{
@@ -280,7 +280,7 @@ GTM_ThreadCleanup(void *argp)
 	 */
 	if (thrinfo->thr_conn->standby)
 	{
-		elog(LOG, "Closing a connection to the GTM standby.");
+		elog(DEBUG1, "Closing a connection to the GTM standby.");
 
 		GTMPQfinish(thrinfo->thr_conn->standby);
 		thrinfo->thr_conn->standby = NULL;
@@ -290,6 +290,14 @@ GTM_ThreadCleanup(void *argp)
 	 * TODO Close the open connection.
 	 */
 	StreamClose(thrinfo->thr_conn->con_port->sock);
+
+	/* Free the node_name in the port */
+	if (thrinfo->thr_conn->con_port->node_name != NULL)
+		/* 
+		 * We don't have to reset pointer to NULL her because ConnFree() 
+		 * frees this structure next.
+		 */
+		pfree(thrinfo->thr_conn->con_port->node_name);
 
 	/* Free the port */
 	ConnFree(thrinfo->thr_conn->con_port);

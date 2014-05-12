@@ -75,6 +75,9 @@ CREATE OPERATOR <replaceable>name</replaceable> (
 <!## XC>
      This restriction allows <productname>Postgres-XC</productname> to
 <!## end>
+<!## XL>
+     This restriction allows <productname>Postgres-XL</productname> to
+<!## end>
      parse SQL-compliant commands without requiring spaces between tokens.
      </para>
     </listitem>
@@ -287,6 +290,9 @@ CREATE OPERATOR === (
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname> extension.  There are no
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> extension.  There are no
 <!## end>
    provisions for user-defined operators in the SQL standard.
   </para>

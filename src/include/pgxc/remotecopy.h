@@ -16,6 +16,9 @@
 #define REMOTECOPY_H
 
 #include "nodes/parsenodes.h"
+#ifdef XCP
+#include "pgxc/locator.h"
+#endif
 
 /*
  * This contains the set of data necessary for remote COPY control.
@@ -32,15 +35,21 @@ typedef struct RemoteCopyData {
 	 * as copy source or destination
 	 */
 	StringInfoData query_buf;
-
+#ifdef XCP
+	Locator			*locator;		/* the locator object */
+	Oid				dist_type;		/* data type of the distribution column */
+#else
 	/* Execution nodes for COPY */
 	ExecNodes   *exec_nodes;
+#endif
 
 	/* Locator information */
 	RelationLocInfo *rel_loc;		/* the locator key */
+#ifndef XCP
 	int idx_dist_by_col;			/* index of the distributed by column */
 
 	PGXCNodeHandle **connections;	/* Involved Datanode connections */
+#endif
 } RemoteCopyData;
 
 /*

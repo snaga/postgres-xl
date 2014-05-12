@@ -15,38 +15,23 @@ ifneq ($(PORTNAME), win32)
 override CFLAGS += $(PTHREAD_CFLAGS)
 endif
 
-SUBDIRS = $(top_builddir)/src/gtm/client \
-	$(top_builddir)/src/gtm/common \
-	$(top_builddir)/src/gtm/config \
-	$(top_builddir)/src/gtm/libpq \
-	$(top_builddir)/src/gtm/path \
-	$(top_builddir)/src/gtm/recovery
+OBJS=main.o gtm_thread.o gtm_txn.o gtm_seq.o gtm_snap.o gtm_time.o gtm_standby.o gtm_opt.o
 
-include $(top_srcdir)/src/backend/common.mk
+OTHERS= ../libpq/libpqcomm.a ../path/libgtmpath.a ../recovery/libgtmrecovery.a ../client/libgtmclient.a ../common/libgtm.a ../../port/libpgport.a 
 
-OBJS = $(SUBDIROBJS) \
-	$(top_builddir)/src/port/libpgport_srv.a \
-	main.o gtm_thread.o gtm_txn.o gtm_seq.o gtm_snap.o gtm_time.o \
-	gtm_standby.o gtm_opt.o register_gtm.o replication.o
+LDFLAGS=-L$(top_builddir)/common -L$(top_builddir)/libpq
 
-LIBS += $(PTHREAD_LIBS)
+LIBS=-lpthread
 
-all: gtm
+gtm:$(OBJS)
+	$(CC) $(CFLAGS) $(LDFLAGS) $(LIBS) $^ $(OTHERS) -o gtm
 
-gtm: $(OBJS) | submake-libpgport
-	$(CC) $(CFLAGS) $(LDFLAGS) $(LIBS) $(call expand_subsys,$^) -o $@
+all:gtm
 
-install: all installdirs
-	$(INSTALL_PROGRAM) gtm$(X) '$(DESTDIR)$(bindir)/gtm$(X)'
-	$(INSTALL_DATA) $(srcdir)/gtm.conf.sample '$(DESTDIR)$(datadir)/gtm.conf.sample'
+clean:
+	rm -f $(OBJS)
+	rm -f gtm
 
-installdirs:
-	$(MKDIR_P) '$(DESTDIR)$(bindir)' '$(DESTDIR)$(datadir)'
+distclean: clean
 
-uninstall:
-	rm -f '$(DESTDIR)$(bindir)/gtm$(X)' '$(DESTDIR)$(datadir)/gtm.conf.sample'
-
-clean distclean maintainer-clean:
-	rm -f gtm$(X) $(OBJS)
-
-$(top_builddir)/src/port/libpgport_srv.a: | submake-libpgport
+maintainer-clean: distclean

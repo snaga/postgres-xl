@@ -4,6 +4,11 @@
  *	  POSTGRES heap tuple definitions.
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -533,6 +538,22 @@ typedef HeapTupleData *HeapTuple;
  * GETSTRUCT - given a HeapTuple pointer, return address of the user data
  */
 #define GETSTRUCT(TUP) ((char *) ((TUP)->t_data) + (TUP)->t_data->t_hoff)
+
+#ifdef XCP
+/*
+ * Represents a DataRow message received from a remote node.
+ * Contains originating node number and message body in DataRow format without
+ * message code and length. Length and node number are separate fields.
+ * This is a variable length structure.
+ */
+typedef struct RemoteDataRowData
+{
+	Oid 		msgnode;				/* node number of the data row message */
+	int 		msglen;					/* length of the data row message */
+	char		msg[0];					/* last data row message */
+} 	RemoteDataRowData;
+typedef RemoteDataRowData *RemoteDataRow;
+#endif
 
 /*
  * Accessor macros to be used with HeapTuple pointers.

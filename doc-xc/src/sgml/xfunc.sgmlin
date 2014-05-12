@@ -16,6 +16,9 @@
 <!## XC>
    Similar to <productname>PostgreSQL</productname>, <productname>Postgres-XC</> provides four kinds of
 <!## end>
+<!## XL>
+   Similar to <productname>PostgreSQL</productname>, <productname>Postgres-XL</> provides four kinds of
+<!## end>
    functions:
 
    <itemizedlist>
@@ -79,6 +82,9 @@
 <!## XC>
    directory in the <productname>Postgres-XC</productname> source
 <!## end>
+<!## XL>
+   directory in the <productname>Postgres-XL</productname> source
+<!## end>
    distribution.
   </para>
 
@@ -86,6 +92,14 @@
 &xconly;
    <para>
     <productname>Postgres-XC</> allow only one SQL statement embedded
+    in each function.  This restriction will be removed in the future
+    releases.
+   </para>
+<!## end>
+<!## XL>
+&xlonly;
+   <para>
+    <productname>Postgres-XL</> allow only one SQL statement embedded
     in each function.  This restriction will be removed in the future
     releases.
    </para>
@@ -301,6 +315,15 @@ $$ LANGUAGE SQL;
      Here, original <productname>PostgreSQL</> document describes
      multiple statement function and <command>RETURNING</> clause,
      neither of them are not supported by <productname>Postgres-XC</>
+     yet.  They will be supported in the future releases.
+    </para>
+<!## end>
+<!## XL>
+&xlonly;
+    <para>
+     Here, original <productname>PostgreSQL</> document describes
+     multiple statement function and <command>RETURNING</> clause,
+     neither of them are not supported by <productname>Postgres-XL</>
      yet.  They will be supported in the future releases.
     </para>
 <!## end>
@@ -603,6 +626,14 @@ $$ LANGUAGE SQL;
      will be supported in the future releases.
     </para>
 <!## end>
+<!## XL>
+&xlonly;
+    <para>
+     This feature needs <command>RETURNING</> clause, which is not
+     supported in current <productname>Postgres-XL</>.  This feature
+     will be supported in the future releases.
+    </para>
+<!## end>
    </sect2>
 
    <sect2 id="xfunc-output-parameters">
@@ -674,6 +705,9 @@ LANGUAGE SQL;
 <!## XC>
      <productname>Postgres-XC</productname> considers only the input
 <!## end>
+<!## XL>
+     <productname>Postgres-XL</productname> considers only the input
+<!## end>
      parameters to define the function's calling signature.  That means
      also that only the input parameters matter when referencing the function
      for purposes such as dropping it.  We could drop the above function
@@ -715,6 +749,17 @@ DROP FUNCTION sum_n_product (int, int);
     <para>
      It is highly recommended not to use <literal>VARIADIC</> in the
      current <productname>Postgres-XC</>.  It is not well reviewed and
+     may return wrong result.
+    </para>
+<!## end>
+<!## XL>
+<!-- NOTICE:
+     VARIADIC is not well tested yet.  CREATE FUNCTION succeeds but the result can be wrong.
+-->
+&xlonly;
+    <para>
+     It is highly recommended not to use <literal>VARIADIC</> in the
+     current <productname>Postgres-XL</>.  It is not well reviewed and
      may return wrong result.
     </para>
 <!## end>
@@ -1176,6 +1221,18 @@ SELECT concat_values('|', 1, 4, 2);
      supported in the future releases.
     </para>
 <!## end>
+<!## XL>
+<!-- NOTICE:
+     VARIADIC is not well tested and supported
+-->
+&xlonly;
+    <para>
+     Here, original <productname>PostgreSQL</> document describes an
+     example with <command>VARIADIC</>, which is not well tested and
+     supported in current <productname>Postgres-XL</>.  This may be
+     supported in the future releases.
+    </para>
+<!## end>
    </sect2>
 
    <sect2>
@@ -1440,6 +1497,9 @@ CREATE FUNCTION test(int, int) RETURNS int
 <!## XC>
     <productname>Postgres-XC</productname> will execute all commands of a
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> will execute all commands of a
+<!## end>
     <literal>STABLE</> function using the snapshot established for the
     calling query, and so it will see a fixed view of the database throughout
     that query.
@@ -1455,6 +1515,9 @@ CREATE FUNCTION test(int, int) RETURNS int
 <!## end>
 <!## XC>
     However, <productname>Postgres-XC</productname> does not enforce that you
+<!## end>
+<!## XL>
+    However, <productname>Postgres-XL</productname> does not enforce that you
 <!## end>
     do not do that.
    </para>
@@ -1493,6 +1556,9 @@ CREATE FUNCTION test(int, int) RETURNS int
 <!## XC>
     <productname>Postgres-XC</productname> allows user-defined functions
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> allows user-defined functions
+<!## end>
     to be written in other languages besides SQL and C.  These other
     languages are generically called <firstterm>procedural
     languages</firstterm> (<acronym>PL</>s).
@@ -1502,6 +1568,9 @@ CREATE FUNCTION test(int, int) RETURNS int
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname> server; they are offered
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> server; they are offered
 <!## end>
     by loadable modules.
     See <xref linkend="xplang"> and following chapters for more
@@ -1521,6 +1590,9 @@ CREATE FUNCTION test(int, int) RETURNS int
 <!## end>
 <!## XC>
     linked into the <productname>Postgres-XC</productname> server.
+<!## end>
+<!## XL>
+    linked into the <productname>Postgres-XL</productname> server.
 <!## end>
     The <quote>body</quote> of the function definition
     specifies the C-language name of the function, which need not be the
@@ -1629,6 +1701,9 @@ CREATE FUNCTION square_root(double precision) RETURNS double precision
 <!## XC>
        that part is replaced by the <productname>Postgres-XC</> package
 <!## end>
+<!## XL>
+       that part is replaced by the <productname>Postgres-XL</> package
+<!## end>
         library directory
        name, which is determined at build time.<indexterm><primary>$libdir</></>
       </para>
@@ -1674,6 +1749,9 @@ CREATE FUNCTION square_root(double precision) RETURNS double precision
 <!## XC>
     The user ID the <productname>Postgres-XC</productname> server runs
 <!## end>
+<!## XL>
+    The user ID the <productname>Postgres-XL</productname> server runs
+<!## end>
     as must be able to traverse the path to the file you intend to
     load.  Making the file or a higher-level directory not readable
     and/or not executable by the <systemitem>postgres</systemitem>
@@ -1695,6 +1773,9 @@ CREATE FUNCTION square_root(double precision) RETURNS double precision
 <!## XC>
      <productname>Postgres-XC</productname> will not compile a C function
 <!## end>
+<!## XL>
+     <productname>Postgres-XL</productname> will not compile a C function
+<!## end>
      automatically.  The object file must be compiled before it is referenced
      in a <command>CREATE
      FUNCTION</> command.  See <xref linkend="dfunc"> for additional
@@ -1714,6 +1795,9 @@ CREATE FUNCTION square_root(double precision) RETURNS double precision
 <!## XC>
     incompatible server, <productname>Postgres-XC</productname> checks that the
 <!## end>
+<!## XL>
+    incompatible server, <productname>Postgres-XL</productname> checks that the
+<!## end>
     file contains a <quote>magic block</> with the appropriate contents.
     This allows the server to detect obvious incompatibilities, such as code
     compiled for a different major version of
@@ -1722,6 +1806,9 @@ CREATE FUNCTION square_root(double precision) RETURNS double precision
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname>.  A magic block is required as of
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname>.  A magic block is required as of
 <!## end>
     <productname>PostgreSQL</productname> 8.2.  To include a magic block,
     write this in one (and only one) of the module source files, after having
@@ -1811,6 +1898,20 @@ PG_MODULE_MAGIC;
      to input, process, and output the data.
     </para>
 <!## end>
+<!## XL>
+    <para>
+     To know how to write C-language functions, you need to know how
+     <productname>Postgres-XL</productname> internally represents base
+     data types and how they can be passed to and from functions.
+     Internally, <productname>Postgres-XL</productname> regards a base
+     type as a <quote>blob of memory</quote>.  The user-defined
+     functions that you define over a type in turn define the way that
+     <productname>Postgres-XL</productname> can operate on it.  That
+     is, <productname>Postgres-XL</productname> will only store and
+     retrieve the data from disk and use your user-defined functions
+     to input, process, and output the data.
+    </para>
+<!## end>
 
     <para>
      Base types can have one of three internal formats:
@@ -1859,6 +1960,9 @@ typedef int int4;
 <!## XC>
      implementation of a <productname>Postgres-XC</productname> type:
 <!## end>
+<!## XL>
+     implementation of a <productname>Postgres-XL</productname> type:
+<!## end>
 
 <programlisting>
 /* 16-byte structure, passed by reference */
@@ -1874,6 +1978,9 @@ typedef struct
 <!## end>
 <!## XC>
      them in and out of <productname>Postgres-XC</productname> functions.
+<!## end>
+<!## XL>
+     them in and out of <productname>Postgres-XL</productname> functions.
 <!## end>
      To return a value of such a type, allocate the right amount of
      memory with <literal>palloc</literal>, fill in the allocated memory,
@@ -1956,6 +2063,9 @@ memcpy(destination->data, buffer, 40);
 <!## end>
 <!## XC>
      that uses a built-in type of <productname>Postgres-XC</>.
+<!## end>
+<!## XL>
+     that uses a built-in type of <productname>Postgres-XL</>.
 <!## end>
      The <quote>Defined In</quote> column gives the header file that
      needs to be included to get the type definition.  (The actual
@@ -2242,6 +2352,9 @@ concat_text(text *arg1, text *arg2)
 <!## XC>
      we could define the functions to <productname>Postgres-XC</productname>
 <!## end>
+<!## XL>
+     we could define the functions to <productname>Postgres-XL</productname>
+<!## end>
      with commands like this:
 
 <programlisting>
@@ -2276,6 +2389,9 @@ CREATE FUNCTION concat_text(text, text) RETURNS text
 <!## end>
 <!## XC>
      <productname>Postgres-XC</productname> tutorial directory, which
+<!## end>
+<!## XL>
+     <productname>Postgres-XL</productname> tutorial directory, which
 <!## end>
      contains the code for the examples used in this section).
      (Better style would be to use just <literal>'funcs'</> in the
@@ -2329,6 +2445,9 @@ PG_FUNCTION_INFO_V1(funcname);
 <!## end>
 <!## XC>
      <productname>Postgres-XC</> assumes that all internal functions
+<!## end>
+<!## XL>
+     <productname>Postgres-XL</> assumes that all internal functions
 <!## end>
      use the version-1 convention.  It is, however, required for
      dynamically-loaded functions.
@@ -2533,6 +2652,12 @@ concat_text(PG_FUNCTION_ARGS)
      written in languages other than C into
      <productname>Postgres-XC</productname>, this is usually difficult
 <!## end>
+<!## XL>
+     some coding rules for <productname>Postgres-XL</productname>
+     C-language functions.  While it might be possible to load functions
+     written in languages other than C into
+     <productname>Postgres-XL</productname>, this is usually difficult
+<!## end>
      (when it is possible at all) because other languages, such as
      C++, FORTRAN, or Pascal often do not follow the same calling
      convention as C.  That is, other languages do not pass argument
@@ -2555,6 +2680,9 @@ concat_text(PG_FUNCTION_ARGS)
 <!## XC>
         to find out where the <productname>Postgres-XC</> server header
 <!## end>
+<!## XL>
+        to find out where the <productname>Postgres-XL</> server header
+<!## end>
         files are installed on your system (or the system that your
         users will be running on).
        </para>
@@ -2568,6 +2696,9 @@ concat_text(PG_FUNCTION_ARGS)
 <!## end>
 <!## XC>
         loaded into <productname>Postgres-XC</productname> always
+<!## end>
+<!## XL>
+        loaded into <productname>Postgres-XL</productname> always
 <!## end>
         requires special flags.  See <xref linkend="dfunc"> for a
         detailed explanation of how to do it for your particular
@@ -2590,6 +2721,9 @@ concat_text(PG_FUNCTION_ARGS)
 <!## end>
 <!## XC>
         <productname>Postgres-XC</productname> functions
+<!## end>
+<!## XL>
+        <productname>Postgres-XL</productname> functions
 <!## end>
         <function>palloc</function><indexterm><primary>palloc</></> and <function>pfree</function><indexterm><primary>pfree</></>
         instead of the corresponding C library functions
@@ -2620,6 +2754,9 @@ concat_text(PG_FUNCTION_ARGS)
 <!## XC>
         Most of the internal <productname>Postgres-XC</productname>
 <!## end>
+<!## XL>
+        Most of the internal <productname>Postgres-XL</productname>
+<!## end>
         types are declared in <filename>postgres.h</filename>, while
         the function manager interfaces
         (<symbol>PG_FUNCTION_ARGS</symbol>, etc.)  are in
@@ -2642,6 +2779,9 @@ concat_text(PG_FUNCTION_ARGS)
 <!## end>
 <!## XC>
         <productname>Postgres-XC</productname> server executable.  You
+<!## end>
+<!## XL>
+        <productname>Postgres-XL</productname> server executable.  You
 <!## end>
         will have to rename your functions or variables if you get
         error messages to this effect.
@@ -2667,6 +2807,9 @@ concat_text(PG_FUNCTION_ARGS)
 <!## end>
 <!## XC>
      <productname>Postgres-XC</productname> provides a function
+<!## end>
+<!## XL>
+     <productname>Postgres-XL</productname> provides a function
 <!## end>
      interface for accessing fields of composite types from C.
     </para>
@@ -2744,6 +2887,9 @@ c_overpaid(PG_FUNCTION_ARGS)
 <!## end>
 <!## XC>
      <productname>Postgres-XC</productname> system function that
+<!## end>
+<!## XL>
+     <productname>Postgres-XL</productname> system function that
 <!## end>
      returns attributes out of the specified row.  It has
      three arguments: the argument of type <type>HeapTupleHeader</type> passed
@@ -3403,6 +3549,9 @@ if (!ptr)
 <!## end>
 <!## XC>
      Although the <productname>Postgres-XC</productname> backend is written in
+<!## end>
+<!## XL>
+     Although the <productname>Postgres-XL</productname> backend is written in
 <!## end>
      C, it is possible to write extensions in C++ if these guidelines are
      followed:

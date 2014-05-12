@@ -125,6 +125,16 @@ SELECT [ ALL | DISTINCT [ ON ( <replaceable class="parameter">expression</replac
     distribution is done by <literal>ROUNDROBIN</literal>.
    </para>
 <!## end>
+<!## XL>
+&xlonly;
+   <para>
+    In Postgres-XL, the <command>SELECT INTO</command> distributes data
+    of the newly-created table on all the nodes respecting the default
+    distribution which is <literal>HASH</literal> on the first column
+    having a type that can be distributed. If no columns are found,
+    distribution is done by <literal>ROUNDROBIN</literal>.
+   </para>
+<!## end>
  </refsect1>
 
  <refsect1>

@@ -1739,13 +1739,12 @@ begin
 	return x;
 end$$ language plpgsql;
 
+-- PGXCTODO: This is failing due to issue 3522907, complicated SELECT queries in plpgsql functions
 select trap_matching_test(50);
 select trap_matching_test(0);
 select trap_matching_test(100000);
+-- PGXCTODO: This is failing due to issue 3522907, complicated SELECT queries in plpgsql functions
 select trap_matching_test(1);
-
--- Enforce use of COMMIT instead of 2PC for temporary objects
-SET enforce_two_phase_commit TO off;
 
 create temp table foo (f1 int);
 
@@ -3429,6 +3428,19 @@ rollback;
 
 drop function error2(p_name_table text);
 drop function error1(text);
+
+-- Test for consistent reporting of error context
+
+create function fail() returns int language plpgsql as $$
+begin
+  return 1/0;
+end
+$$;
+
+select fail();
+select fail();
+
+drop function fail();
 
 -- Test handling of string literals.
 

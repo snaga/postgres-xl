@@ -58,6 +58,9 @@ COPY { <replaceable class="parameter">table_name</replaceable> [ ( <replaceable 
 <!## XC>
    <productname>Postgres-XC</productname> tables and standard file-system
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> tables and standard file-system
+<!## end>
    files. <command>COPY TO</command> copies the contents of a table
    <emphasis>to</> a file, while <command>COPY FROM</command> copies
    data <emphasis>from</> a file to a table (appending the data to
@@ -80,6 +83,9 @@ COPY { <replaceable class="parameter">table_name</replaceable> [ ( <replaceable 
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname> server to directly read from
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> server to directly read from
 <!## end>
    or write to a file. The file must be accessible to the server and
    the name must be specified from the viewpoint of the server. When
@@ -193,6 +199,14 @@ COPY { <replaceable class="parameter">table_name</replaceable> [ ( <replaceable 
 &xconly;
      <para>
       In <productname>Postgres-XC</>, OIDs are only maintained locally
+      in Coordinators and Datanodes.  The value of <literal>OIDs</>
+      may conflict if you copy this value to another table.
+     </para>
+<!## end>
+<!## XL>
+&xlonly;
+     <para>
+      In <productname>Postgres-XL</>, OIDs are only maintained locally
       in Coordinators and Datanodes.  The value of <literal>OIDs</>
       may conflict if you copy this value to another table.
      </para>
@@ -370,6 +384,9 @@ COPY <replaceable class="parameter">count</replaceable>
 <!## XC>
     by the <productname>Postgres-XC</productname> user (the user ID the
 <!## end>
+<!## XL>
+    by the <productname>Postgres-XL</productname> user (the user ID the
+<!## end>
     server runs as), not the client. <command>COPY</command> naming a
     file is only allowed to database superusers, since it allows reading
     or writing any file that the server has privileges to access.
@@ -409,6 +426,9 @@ COPY <replaceable class="parameter">count</replaceable>
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname> installations that might use
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> installations that might use
 <!## end>
     non-default <varname>DateStyle</varname> settings,
     <varname>DateStyle</varname> should be set to <literal>ISO</> before
@@ -592,6 +612,9 @@ COPY <replaceable class="parameter">count</replaceable>
 <!## XC>
     <productname>Postgres-XC</productname>'s standard text format, it
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</productname>'s standard text format, it
+<!## end>
     produces and recognizes the common CSV escaping mechanism.
    </para>
 
@@ -615,6 +638,9 @@ COPY <replaceable class="parameter">count</replaceable>
 <!## end>
 <!## XC>
     <productname>Postgres-XC</>'s <command>COPY</> handles this by quoting.
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</>'s <command>COPY</> handles this by quoting.
 <!## end>
     A <literal>NULL</> is output as the <literal>NULL</> parameter string
     and is not quoted, while a non-<literal>NULL</> value matching the
@@ -653,6 +679,9 @@ COPY <replaceable class="parameter">count</replaceable>
 <!## XC>
      <productname>Postgres-XC</>.
 <!## end>
+<!## XL>
+     <productname>Postgres-XL</>.
+<!## end>
     </para>
    </note>
 
@@ -690,6 +719,9 @@ COPY <replaceable class="parameter">count</replaceable>
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname> versions.
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> versions.
 <!## end>
     Also, the binary format is very data type specific; for example
     it will not work to output binary data from a <type>smallint</> column
@@ -817,6 +849,9 @@ should consult the <productname>PostgreSQL</productname> source, in
 <!## end>
 <!## XC>
 should consult the <productname>Postgres-XC</productname> source, in
+<!## end>
+<!## XL>
+should consult the <productname>Postgres-XL</productname> source, in
 <!## end>
 particular the <function>*send</> and <function>*recv</> functions for
 each column's data type (typically these functions are found in the

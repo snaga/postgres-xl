@@ -4,6 +4,11 @@
  *	  per-process shared memory data structures
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -91,6 +96,12 @@ struct PGPROC
 	BackendId	backendId;		/* This backend's backend ID (if assigned) */
 	Oid			databaseId;		/* OID of database this backend is using */
 	Oid			roleId;			/* OID of role using this backend */
+#ifdef XCP
+	Oid			coordId;  		/* Oid of originating coordinator */
+	int			coordPid;		/* Pid of the originating session */
+	BackendId	firstBackendId;	/* Backend ID of the first backend of
+								 * the distributed session */
+#endif
 
 	/*
 	 * While in hot standby mode, shows that a conflict signal has been sent

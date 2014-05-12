@@ -320,12 +320,18 @@ SET TIME ZONE 'Europe/Rome';
 <!## XC>
    <productname>Postgres-XC</productname> allows more flexible
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> allows more flexible
+<!## end>
    time-zone specifications.  All other <literal>SET</literal>
 <!## PG>
    features are <productname>PostgreSQL</productname> extensions.
 <!## end>
 <!## XC>
    features are <productname>Postgres-XC</productname> extensions.
+<!## end>
+<!## XL>
+   features are <productname>Postgres-XL</productname> extensions.
 <!## end>
   </para>
  </refsect1>

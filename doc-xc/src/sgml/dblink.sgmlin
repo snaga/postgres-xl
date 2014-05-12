@@ -21,6 +21,20 @@
   corresponding <productname>PostgreSQL</> reference manual.
  </para>
 <!## end>
+<!## XL>
+&xlonly;
+ <para>
+  <filename>dblink</> module has not been tested
+  with <productname>Postges-XL</> yet.  Although there're no reason
+  that <filename>dblink</> does not run
+  in <productname>Postgres-XL</>, the development team leaves the test
+  and the use of this module entirely to users.
+ </para>
+ <para>
+  This section is identical to the
+  corresponding <productname>PostgreSQL</> reference manual.
+ </para>
+<!## end>
 
 &pgonly;
  <para>
@@ -56,6 +70,20 @@ dblink_connect(text connname, text connstr) returns text
   with <productname>Postges-XC</> yet.  Although there're no reason
   that <filename>dblink</> does not run
   in <productname>Postgres-XC</>, the development team leaves the test
+  and the use of this module entirely to users.
+ </para>
+ <para>
+  This section is identical to the
+  corresponding <productname>PostgreSQL</> reference manual.
+ </para>
+<!## end>
+<!## XL>
+&xlonly;
+ <para>
+  <filename>dblink</> module has not been tested
+  with <productname>Postges-XL</> yet.  Although there're no reason
+  that <filename>dblink</> does not run
+  in <productname>Postgres-XL</>, the development team leaves the test
   and the use of this module entirely to users.
  </para>
  <para>
@@ -243,6 +271,20 @@ dblink_connect_u(text connname, text connstr) returns text
   corresponding <productname>PostgreSQL</> reference manual.
  </para>
 <!## end>
+<!## XL>
+&xlonly;
+ <para>
+  <filename>dblink</> module has not been tested
+  with <productname>Postges-XL</> yet.  Although there're no reason
+  that <filename>dblink</> does not run
+  in <productname>Postgres-XL</>, the development team leaves the test
+  and the use of this module entirely to users.
+ </para>
+ <para>
+  This section is identical to the
+  corresponding <productname>PostgreSQL</> reference manual.
+ </para>
+<!## end>
 &pgonly;
    <para>
     <function>dblink_connect_u()</> is identical to
@@ -303,6 +345,20 @@ dblink_disconnect(text connname) returns text
   with <productname>Postges-XC</> yet.  Although there're no reason
   that <filename>dblink</> does not run
   in <productname>Postgres-XC</>, the development team leaves the test
+  and the use of this module entirely to users.
+ </para>
+ <para>
+  This section is identical to the
+  corresponding <productname>PostgreSQL</> reference manual.
+ </para>
+<!## end>
+<!## XL>
+&xlonly;
+ <para>
+  <filename>dblink</> module has not been tested
+  with <productname>Postges-XL</> yet.  Although there're no reason
+  that <filename>dblink</> does not run
+  in <productname>Postgres-XL</>, the development team leaves the test
   and the use of this module entirely to users.
  </para>
  <para>
@@ -390,6 +446,20 @@ dblink(text sql [, bool fail_on_error]) returns setof record
   with <productname>Postges-XC</> yet.  Although there're no reason
   that <filename>dblink</> does not run
   in <productname>Postgres-XC</>, the development team leaves the test
+  and the use of this module entirely to users.
+ </para>
+ <para>
+  This section is identical to the
+  corresponding <productname>PostgreSQL</> reference manual.
+ </para>
+<!## end>
+<!## XL>
+&xlonly;
+ <para>
+  <filename>dblink</> module has not been tested
+  with <productname>Postges-XL</> yet.  Although there're no reason
+  that <filename>dblink</> does not run
+  in <productname>Postgres-XL</>, the development team leaves the test
   and the use of this module entirely to users.
  </para>
  <para>
@@ -639,6 +709,20 @@ dblink_exec(text sql [, bool fail_on_error]) returns text
   corresponding <productname>PostgreSQL</> reference manual.
  </para>
 <!## end>
+<!## XL>
+&xlonly;
+ <para>
+  <filename>dblink</> module has not been tested
+  with <productname>Postges-XL</> yet.  Although there're no reason
+  that <filename>dblink</> does not run
+  in <productname>Postgres-XL</>, the development team leaves the test
+  and the use of this module entirely to users.
+ </para>
+ <para>
+  This section is identical to the
+  corresponding <productname>PostgreSQL</> reference manual.
+ </para>
+<!## end>
 &pgonly;
 
    <para>
@@ -789,6 +873,20 @@ dblink_open(text connname, text cursorname, text sql [, bool fail_on_error]) ret
   corresponding <productname>PostgreSQL</> reference manual.
  </para>
 <!## end>
+<!## XL>
+&xlonly;
+ <para>
+  <filename>dblink</> module has not been tested
+  with <productname>Postges-XL</> yet.  Although there're no reason
+  that <filename>dblink</> does not run
+  in <productname>Postgres-XL</>, the development team leaves the test
+  and the use of this module entirely to users.
+ </para>
+ <para>
+  This section is identical to the
+  corresponding <productname>PostgreSQL</> reference manual.
+ </para>
+<!## end>
 &pgonly;
 
    <para>
@@ -921,6 +1019,20 @@ dblink_fetch(text connname, text cursorname, int howmany [, bool fail_on_error])
   with <productname>Postges-XC</> yet.  Although there're no reason
   that <filename>dblink</> does not run
   in <productname>Postgres-XC</>, the development team leaves the test
+  and the use of this module entirely to users.
+ </para>
+ <para>
+  This section is identical to the
+  corresponding <productname>PostgreSQL</> reference manual.
+ </para>
+<!## end>
+<!## XL>
+&xlonly;
+ <para>
+  <filename>dblink</> module has not been tested
+  with <productname>Postges-XL</> yet.  Although there're no reason
+  that <filename>dblink</> does not run
+  in <productname>Postgres-XL</>, the development team leaves the test
   and the use of this module entirely to users.
  </para>
  <para>
@@ -1096,6 +1208,20 @@ dblink_close(text connname, text cursorname [, bool fail_on_error]) returns text
   corresponding <productname>PostgreSQL</> reference manual.
  </para>
 <!## end>
+<!## XL>
+&xlonly;
+ <para>
+  <filename>dblink</> module has not been tested
+  with <productname>Postges-XL</> yet.  Although there're no reason
+  that <filename>dblink</> does not run
+  in <productname>Postgres-XL</>, the development team leaves the test
+  and the use of this module entirely to users.
+ </para>
+ <para>
+  This section is identical to the
+  corresponding <productname>PostgreSQL</> reference manual.
+ </para>
+<!## end>
 &pgonly;
 
    <para>
@@ -1221,6 +1347,20 @@ dblink_get_connections() returns text[]
   corresponding <productname>PostgreSQL</> reference manual.
  </para>
 <!## end>
+<!## XL>
+&xlonly;
+ <para>
+  <filename>dblink</> module has not been tested
+  with <productname>Postges-XL</> yet.  Although there're no reason
+  that <filename>dblink</> does not run
+  in <productname>Postgres-XL</>, the development team leaves the test
+  and the use of this module entirely to users.
+ </para>
+ <para>
+  This section is identical to the
+  corresponding <productname>PostgreSQL</> reference manual.
+ </para>
+<!## end>
 &pgonly;
 
    <para>
@@ -1272,6 +1412,20 @@ dblink_error_message(text connname) returns text
   with <productname>Postges-XC</> yet.  Although there're no reason
   that <filename>dblink</> does not run
   in <productname>Postgres-XC</>, the development team leaves the test
+  and the use of this module entirely to users.
+ </para>
+ <para>
+  This section is identical to the
+  corresponding <productname>PostgreSQL</> reference manual.
+ </para>
+<!## end>
+<!## XL>
+&xlonly;
+ <para>
+  <filename>dblink</> module has not been tested
+  with <productname>Postges-XL</> yet.  Although there're no reason
+  that <filename>dblink</> does not run
+  in <productname>Postgres-XL</>, the development team leaves the test
   and the use of this module entirely to users.
  </para>
  <para>
@@ -1349,6 +1503,20 @@ dblink_send_query(text connname, text sql) returns int
   with <productname>Postges-XC</> yet.  Although there're no reason
   that <filename>dblink</> does not run
   in <productname>Postgres-XC</>, the development team leaves the test
+  and the use of this module entirely to users.
+ </para>
+ <para>
+  This section is identical to the
+  corresponding <productname>PostgreSQL</> reference manual.
+ </para>
+<!## end>
+<!## XL>
+&xlonly;
+ <para>
+  <filename>dblink</> module has not been tested
+  with <productname>Postges-XL</> yet.  Although there're no reason
+  that <filename>dblink</> does not run
+  in <productname>Postgres-XL</>, the development team leaves the test
   and the use of this module entirely to users.
  </para>
  <para>
@@ -1452,6 +1620,20 @@ dblink_is_busy(text connname) returns int
   corresponding <productname>PostgreSQL</> reference manual.
  </para>
 <!## end>
+<!## XL>
+&xlonly;
+ <para>
+  <filename>dblink</> module has not been tested
+  with <productname>Postges-XL</> yet.  Although there're no reason
+  that <filename>dblink</> does not run
+  in <productname>Postgres-XL</>, the development team leaves the test
+  and the use of this module entirely to users.
+ </para>
+ <para>
+  This section is identical to the
+  corresponding <productname>PostgreSQL</> reference manual.
+ </para>
+<!## end>
 &pgonly;
 
    <para>
@@ -1523,6 +1705,20 @@ dblink_get_notify(text connname) returns setof (notify_name text, be_pid int, ex
   with <productname>Postges-XC</> yet.  Although there're no reason
   that <filename>dblink</> does not run
   in <productname>Postgres-XC</>, the development team leaves the test
+  and the use of this module entirely to users.
+ </para>
+ <para>
+  This section is identical to the
+  corresponding <productname>PostgreSQL</> reference manual.
+ </para>
+<!## end>
+<!## XL>
+&xlonly;
+ <para>
+  <filename>dblink</> module has not been tested
+  with <productname>Postges-XL</> yet.  Although there're no reason
+  that <filename>dblink</> does not run
+  in <productname>Postgres-XL</>, the development team leaves the test
   and the use of this module entirely to users.
  </para>
  <para>
@@ -1617,6 +1813,20 @@ dblink_get_result(text connname [, bool fail_on_error]) returns setof record
   with <productname>Postges-XC</> yet.  Although there're no reason
   that <filename>dblink</> does not run
   in <productname>Postgres-XC</>, the development team leaves the test
+  and the use of this module entirely to users.
+ </para>
+ <para>
+  This section is identical to the
+  corresponding <productname>PostgreSQL</> reference manual.
+ </para>
+<!## end>
+<!## XL>
+&xlonly;
+ <para>
+  <filename>dblink</> module has not been tested
+  with <productname>Postges-XL</> yet.  Although there're no reason
+  that <filename>dblink</> does not run
+  in <productname>Postgres-XL</>, the development team leaves the test
   and the use of this module entirely to users.
  </para>
  <para>
@@ -1790,6 +2000,20 @@ dblink_cancel_query(text connname) returns text
   corresponding <productname>PostgreSQL</> reference manual.
  </para>
 <!## end>
+<!## XL>
+&xlonly;
+ <para>
+  <filename>dblink</> module has not been tested
+  with <productname>Postges-XL</> yet.  Although there're no reason
+  that <filename>dblink</> does not run
+  in <productname>Postgres-XL</>, the development team leaves the test
+  and the use of this module entirely to users.
+ </para>
+ <para>
+  This section is identical to the
+  corresponding <productname>PostgreSQL</> reference manual.
+ </para>
+<!## end>
 &pgonly;
 
    <para>
@@ -1865,6 +2089,20 @@ dblink_get_pkey(text relname) returns setof dblink_pkey_results
   with <productname>Postges-XC</> yet.  Although there're no reason
   that <filename>dblink</> does not run
   in <productname>Postgres-XC</>, the development team leaves the test
+  and the use of this module entirely to users.
+ </para>
+ <para>
+  This section is identical to the
+  corresponding <productname>PostgreSQL</> reference manual.
+ </para>
+<!## end>
+<!## XL>
+&xlonly;
+ <para>
+  <filename>dblink</> module has not been tested
+  with <productname>Postges-XL</> yet.  Although there're no reason
+  that <filename>dblink</> does not run
+  in <productname>Postgres-XL</>, the development team leaves the test
   and the use of this module entirely to users.
  </para>
  <para>
@@ -1976,6 +2214,20 @@ dblink_build_sql_insert(text relname,
   with <productname>Postges-XC</> yet.  Although there're no reason
   that <filename>dblink</> does not run
   in <productname>Postgres-XC</>, the development team leaves the test
+  and the use of this module entirely to users.
+ </para>
+ <para>
+  This section is identical to the
+  corresponding <productname>PostgreSQL</> reference manual.
+ </para>
+<!## end>
+<!## XL>
+&xlonly;
+ <para>
+  <filename>dblink</> module has not been tested
+  with <productname>Postges-XL</> yet.  Although there're no reason
+  that <filename>dblink</> does not run
+  in <productname>Postgres-XL</>, the development team leaves the test
   and the use of this module entirely to users.
  </para>
  <para>
@@ -2131,6 +2383,20 @@ dblink_build_sql_delete(text relname,
   corresponding <productname>PostgreSQL</> reference manual.
  </para>
 <!## end>
+<!## XL>
+&xlonly;
+ <para>
+  <filename>dblink</> module has not been tested
+  with <productname>Postges-XL</> yet.  Although there're no reason
+  that <filename>dblink</> does not run
+  in <productname>Postgres-XL</>, the development team leaves the test
+  and the use of this module entirely to users.
+ </para>
+ <para>
+  This section is identical to the
+  corresponding <productname>PostgreSQL</> reference manual.
+ </para>
+<!## end>
 &pgonly;
 
    <para>
@@ -2264,6 +2530,20 @@ dblink_build_sql_update(text relname,
   corresponding <productname>PostgreSQL</> reference manual.
  </para>
 <!## end>
+<!## XL>
+&xlonly;
+ <para>
+  <filename>dblink</> module has not been tested
+  with <productname>Postges-XL</> yet.  Although there're no reason
+  that <filename>dblink</> does not run
+  in <productname>Postgres-XL</>, the development team leaves the test
+  and the use of this module entirely to users.
+ </para>
+ <para>
+  This section is identical to the
+  corresponding <productname>PostgreSQL</> reference manual.
+ </para>
+<!## end>
 &pgonly;
 
    <para>
@@ -2289,6 +2569,20 @@ dblink_build_sql_update(text relname,
   with <productname>Postges-XC</> yet.  Although there're no reason
   that <filename>dblink</> does not run
   in <productname>Postgres-XC</>, the development team leaves the test
+  and the use of this module entirely to users.
+ </para>
+ <para>
+  This section is identical to the
+  corresponding <productname>PostgreSQL</> reference manual.
+ </para>
+<!## end>
+<!## XL>
+&xlonly;
+ <para>
+  <filename>dblink</> module has not been tested
+  with <productname>Postges-XL</> yet.  Although there're no reason
+  that <filename>dblink</> does not run
+  in <productname>Postgres-XL</>, the development team leaves the test
   and the use of this module entirely to users.
  </para>
  <para>
@@ -2372,6 +2666,20 @@ dblink_build_sql_update(text relname,
   with <productname>Postges-XC</> yet.  Although there're no reason
   that <filename>dblink</> does not run
   in <productname>Postgres-XC</>, the development team leaves the test
+  and the use of this module entirely to users.
+ </para>
+ <para>
+  This section is identical to the
+  corresponding <productname>PostgreSQL</> reference manual.
+ </para>
+<!## end>
+<!## XL>
+&xlonly;
+ <para>
+  <filename>dblink</> module has not been tested
+  with <productname>Postges-XL</> yet.  Although there're no reason
+  that <filename>dblink</> does not run
+  in <productname>Postgres-XL</>, the development team leaves the test
   and the use of this module entirely to users.
  </para>
  <para>

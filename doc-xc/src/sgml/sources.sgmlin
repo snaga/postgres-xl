@@ -7,6 +7,9 @@
 <!## XC>
   <title>Postgres-XC Coding Conventions</title>
 <!## end>
+<!## XL>
+  <title>Postgres-XL Coding Conventions</title>
+<!## end>
 
 &common;
 
@@ -337,6 +340,9 @@ ereport(level, (errmsg_internal("format string", ...)));
 <!## end>
 <!## XC>
     <productname>Postgres-XC</>.
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</>.
 <!## end>
    </para>
 

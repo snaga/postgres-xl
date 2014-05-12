@@ -19,6 +19,13 @@
    tasks should be done for each of them.
   </para>
 <!## end>
+<!## XL>
+&xlonly;
+  <para>
+   This chapter describes database maintenance tasks
+   of individual Coordinators and Datanodes.  
+  </para>
+<!## end>
 
 &common;
 
@@ -36,7 +43,19 @@
 <!## end>
 <!## XC>
   <para>
-   <productname>Postgres-XC</> inherits most of its funcamentals from <productname>PostgreSQL</>.   Like any database software, requires that certain tasks
+   <productname>Postgres-XC</> inherits most of its fundamentals from <productname>PostgreSQL</>.   Like any database software, requires that certain tasks
+   be performed regularly to achieve optimum performance. The tasks
+   discussed here are <emphasis>required</emphasis>, but they
+   are repetitive in nature and can easily be automated using standard
+   tools such as <application>cron</application> scripts or
+   Windows' <application>Task Scheduler</>.  It is the database
+   administrator's responsibility to set up appropriate scripts, and to
+   check that they execute successfully.
+  </para>
+<!## end>
+<!## XL>
+  <para>
+   <productname>Postgres-XL</> inherits most of its fundamentals from <productname>PostgreSQL</>.   Like any database software, it requires that certain tasks
    be performed regularly to achieve optimum performance. The tasks
    discussed here are <emphasis>required</emphasis>, but they
    are repetitive in nature and can easily be automated using standard
@@ -64,6 +83,16 @@
    after a catastrophe (disk failure, fire, mistakenly dropping a critical
    table, etc.).  The backup and recovery mechanisms available in
    <productname>Postgres-XC</productname> are discussed at length in
+   <xref linkend="backup">.
+  </para>
+<!## end>
+<!## XL>
+  <para>
+   One obvious maintenance task is the creation of backup copies of the data on a
+   regular schedule.  Without a recent backup, you have no chance of recovery
+   after a catastrophe (disk failure, fire, mistakenly dropping a critical
+   table, etc.).  The backup and recovery mechanisms available in
+   <productname>Postgres-XL</productname> are discussed at length in
    <xref linkend="backup">.
   </para>
 <!## end>
@@ -111,6 +140,13 @@
    Coordinator and Datanode.  It should be done for each of them.
   </para>
 <!## end>
+<!## XL>
+&xlonly;
+  <para>
+   Please note that this section describes the task of individual
+   Coordinator and Datanode.  It should be done for each of them.
+  </para>
+<!## end>
 
 &common;
 
@@ -120,6 +156,9 @@
 <!## end>
 <!## XC>
    <productname>Postgres-XC</> databases require periodic
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</> databases require periodic
 <!## end>
    maintenance known as <firstterm>vacuuming</>.  For many installations, it
    is sufficient to let vacuuming be performed by the <firstterm>autovacuum
@@ -144,6 +183,13 @@
    Coordinator and Datanode.  It should be done for each of them.
   </para>
 <!## end>
+<!## XL>
+&xlonly;
+  <para>
+   Please note that this section describes the task of individual
+   Coordinator and Datanode.  It should be done for each of them.
+  </para>
+<!## end>
 
 &common;
 
@@ -153,6 +199,9 @@
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname>'s
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname>'s
 <!## end>
     <xref linkend="sql-vacuum"> command has to
     process each table on a regular basis for several reasons:
@@ -170,6 +219,9 @@
 <!## end>
 <!## XC>
       <productname>Postgres-XC</productname> query planner.</simpara>
+<!## end>
+<!## XL>
+      <productname>Postgres-XL</productname> query planner.</simpara>
 <!## end>
      </listitem>
 
@@ -222,6 +274,13 @@
    Coordinator and Datanode.  It should be done for each of them.
   </para>
 <!## end>
+<!## XL>
+&xlonly;
+  <para>
+   Please note that this section describes the task of individual
+   Coordinator and Datanode.  It should be done for each of them.
+  </para>
+<!## end>
 
 &common;
 
@@ -231,6 +290,9 @@
 <!## end>
 <!## XC>
     In <productname>Postgres-XC</productname>, an
+<!## end>
+<!## XL>
+    In <productname>Postgres-XL</productname>, an
 <!## end>
     <command>UPDATE</> or <command>DELETE</> of a row does not
     immediately remove the old version of the row.
@@ -350,6 +412,13 @@
    Coordinator and Datanode.  It should be done for each of them.
   </para>
 <!## end>
+<!## XL>
+&xlonly;
+  <para>
+   Please note that this section describes the task of individual
+   Coordinator and Datanode.  It should be done for each of them.
+  </para>
+<!## end>
 
 &common;
 
@@ -359,6 +428,9 @@
 <!## end>
 <!## XC>
     As in <productname>PostgreSQL</>, <productname>Postgres-XC</productname> query planner relies on
+<!## end>
+<!## XL>
+    As in <productname>PostgreSQL</>, <productname>Postgres-XL</productname> query planner relies on
 <!## end>
     statistical information about the contents of tables in order to
     generate good plans for queries.  These statistics are gathered by
@@ -443,6 +515,13 @@
    Coordinator and Datanode.  It should be done for each of them.
   </para>
 <!## end>
+<!## XL>
+&xlonly;
+  <para>
+   Please note that this section describes the task of individual
+   Coordinator and Datanode.  It should be done for each of them.
+  </para>
+<!## end>
 
 &common;
 
@@ -452,6 +531,9 @@
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname>'s MVCC transaction semantics
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname>'s MVCC transaction semantics
 <!## end>
     depend on being able to compare transaction ID (<acronym>XID</>)
     numbers: a row version with an insertion XID greater than the current
@@ -475,6 +557,14 @@
     global transaction manager (<acronym>GTM</>).
    </para>
 <!## end>
+<!## XL>
+&xlonly;
+   <para>
+    Please note that <productname>Postgres-XL</>'s transaction is
+    called global transaction ID (<acronym>GXID</>) and is supplied by
+    global transaction manager (<acronym>GTM</>).
+   </para>
+<!## end>
 &common;
    <para>
     The reason that periodic vacuuming solves the problem is that
@@ -483,6 +573,9 @@
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname> reserves a special XID
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> reserves a special XID
 <!## end>
     as <literal>FrozenXID</>.  This XID does not follow the normal XID
     comparison rules and is always considered older
@@ -697,6 +790,13 @@ HINT:  Stop the postmaster and use a standalone backend to VACUUM in "mydb".
    Coordinator and Datanode.  It should be done for each of them.
   </para>
 <!## end>
+<!## XL>
+&xlonly;
+  <para>
+   Please note that this section describes the task of individual
+   Coordinator and Datanode.  It should be done for each of them.
+  </para>
+<!## end>
 
 &common;
 
@@ -706,6 +806,9 @@ HINT:  Stop the postmaster and use a standalone backend to VACUUM in "mydb".
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname> has an optional but highly
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> has an optional but highly
 <!## end>
     recommended feature called <firstterm>autovacuum</firstterm>,
     whose purpose is to automate the execution of
@@ -849,6 +952,13 @@ analyze threshold = analyze base threshold + analyze scale factor * number of tu
    Coordinator and Datanode.  It should be done for each of them.
   </para>
 <!## end>
+<!## XL>
+&xlonly;
+  <para>
+   Please note that this section describes the task of individual
+   Coordinator and Datanode.  It should be done for each of them.
+  </para>
+<!## end>
 
 &common;
 
@@ -898,6 +1008,13 @@ analyze threshold = analyze base threshold + analyze scale factor * number of tu
    Coordinator and Datanode.  It should be done for each of them.
   </para>
 <!## end>
+<!## XL>
+&xlonly;
+  <para>
+   Please note that this section describes the task of individual
+   Coordinator and Datanode.  It should be done for each of them.
+  </para>
+<!## end>
 
 &common;
 
@@ -924,6 +1041,9 @@ analyze threshold = analyze base threshold + analyze scale factor * number of tu
 <!## XC>
    <productname>Postgres-XC</productname> in a development environment,
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> in a development environment,
+<!## end>
    but few production servers would find this behavior acceptable.
   </para>
 
@@ -949,6 +1069,9 @@ analyze threshold = analyze base threshold + analyze scale factor * number of tu
 <!## end>
 <!## XC>
    can be used with <productname>Postgres-XC</productname>.  To do this,
+<!## end>
+<!## XL>
+   can be used with <productname>Postgres-XL</productname>.  To do this,
 <!## end>
    just pipe the server's
    <systemitem>stderr</> output to the desired program.

@@ -45,6 +45,9 @@ CREATE DATABASE <replaceable class="PARAMETER">name</replaceable>
 <!## XC>
    <productname>Postgres-XC</productname> database.
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> database.
+<!## end>
   </para>
 
   <para>
@@ -74,6 +77,9 @@ CREATE DATABASE <replaceable class="PARAMETER">name</replaceable>
 <!## XC>
    version of <productname>Postgres-XC</productname>.  This is useful
 <!## end>
+<!## XL>
+   version of <productname>Postgres-XL</productname>.  This is useful
+<!## end>
    if you wish to avoid copying
    any installation-local objects that might have been added to
    <literal>template1</>.
@@ -84,6 +90,15 @@ CREATE DATABASE <replaceable class="PARAMETER">name</replaceable>
    <para>
     If there's any live connection to any of the template database in
     Coordinator or Datanode, you will have an error message.  In this
+    case, you should clean these connections using <command>CLEAN
+    CONNECTION</> statement.
+   </para>
+<!## end>
+<!## XL>
+&xlonly;
+   <para>
+    If there are any live connections to any one of the template databases in
+    a Coordinator or Datanode, you will receive an error message.  In this
     case, you should clean these connections using <command>CLEAN
     CONNECTION</> statement.
    </para>
@@ -136,6 +151,9 @@ CREATE DATABASE <replaceable class="PARAMETER">name</replaceable>
 <!## end>
 <!## XC>
         <productname>Postgres-XC</productname> server are described in
+<!## end>
+<!## XL>
+        <productname>Postgres-XL</productname> server are described in
 <!## end>
         <xref linkend="multibyte-charset-supported">. See below for
         additional restrictions.

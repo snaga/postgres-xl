@@ -139,6 +139,9 @@ ALTER VIEW foo RENAME TO bar;
 <!## XC>
    <command>ALTER VIEW</command> is a <productname>Postgres-XC</>
 <!## end>
+<!## XL>
+   <command>ALTER VIEW</command> is a <productname>Postgres-XL</>
+<!## end>
    extension of the SQL standard.
   </para>
  </refsect1>

@@ -38,6 +38,14 @@ CREATE FOREIGN DATA WRAPPER <replaceable class="parameter">name</replaceable>
    in the future releases.
   </para>
 <!## end>
+<!## XL>
+&xlonly;
+  <para>
+   <command>FOREIGN DATA WRAPPER</> has not been supported
+   by <productname>Postgres-XL</> yet.  This command may be supported
+   in the future releases.
+  </para>
+<!## end>
 <!## PG>
 &pgonly;
 

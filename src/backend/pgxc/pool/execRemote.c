@@ -5,6 +5,11 @@
  *	  Functions to execute commands on remote Datanodes
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2011, PostgreSQL Global Development Group
  * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
  *
@@ -31,6 +36,11 @@
 #include "libpq/libpq.h"
 #include "miscadmin.h"
 #include "pgxc/execRemote.h"
+#ifdef XCP
+#include "executor/nodeSubplan.h"
+#include "nodes/nodeFuncs.h"
+#include "pgstat.h"
+#endif
 #include "nodes/nodes.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/var.h"
@@ -52,8 +62,17 @@
 
 /* Enforce the use of two-phase commit when temporary objects are used */
 bool EnforceTwoPhaseCommit = true;
-
+/*
+ * We do not want it too long, when query is terminating abnormally we just
+ * want to read in already available data, if datanode connection will reach a
+ * consistent state after that, we will go normal clean up procedure: send down
+ * ABORT etc., if data node is not responding we will signal pooler to drop
+ * the connection.
+ * It is better to drop and recreate datanode connection then wait for several
+ * seconds while it being cleaned up when, for example, cancelling query.
+ */
 #define END_QUERY_TIMEOUT	20
+#ifndef XCP
 #define ROLLBACK_RESP_LEN	9
 
 typedef enum RemoteXactNodeStatus
@@ -108,6 +127,7 @@ typedef struct RemoteXactState
 } RemoteXactState;
 
 static RemoteXactState remoteXactState;
+#endif
 
 #ifdef PGXC
 typedef struct
@@ -124,6 +144,7 @@ typedef struct
 #define COPY_BUFFER_SIZE 8192
 #define PRIMARY_NODE_WRITEAHEAD 1024 * 1024
 
+#ifndef XCP
 /*
  * List of PGXCNodeHandle to track readers and writers involved in the
  * current transaction
@@ -131,6 +152,7 @@ typedef struct
 static List *XactWriteNodes;
 static List *XactReadNodes;
 static char *preparedNodes;
+#endif
 
 /*
  * Flag to track if a temporary object is accessed by the current transaction
@@ -148,39 +170,169 @@ static PGXCNodeAllHandles * get_exec_connections(RemoteQueryState *planstate,
 					 ExecNodes *exec_nodes,
 					 RemoteQueryExecType exec_type);
 
+#ifndef XCP
 static void close_node_cursors(PGXCNodeHandle **connections, int conn_count, char *cursor);
 
 static int pgxc_get_transaction_nodes(PGXCNodeHandle *connections[], int size, bool writeOnly);
 static int pgxc_get_connections(PGXCNodeHandle *connections[], int size, List *connlist);
+#endif
 
 static bool pgxc_start_command_on_connection(PGXCNodeHandle *connection,
 					RemoteQueryState *remotestate, Snapshot snapshot);
+#ifndef XCP
 static TupleTableSlot * RemoteQueryNext(ScanState *node);
 static bool RemoteQueryRecheck(RemoteQueryState *node, TupleTableSlot *slot);
 
-
 static char *generate_begin_command(void);
-static bool pgxc_node_remote_prepare(char *prepareGID);
+#endif
+
+#ifdef XCP
+static char *pgxc_node_remote_prepare(char *prepareGID, bool localNode);
+static bool pgxc_node_remote_finish(char *prepareGID, bool commit,
+						char *nodestring, GlobalTransactionId gxid,
+						GlobalTransactionId prepare_gxid);
+#else
+static bool pgxc_node_remote_prepare(char *prepareGID, bool localNode);
+static char *pgxc_node_get_nodelist(bool localNode);
+#endif
 static void pgxc_node_remote_commit(void);
 static void pgxc_node_remote_abort(void);
-static char *pgxc_node_get_nodelist(bool localNode);
+#ifdef XCP
+static void pgxc_connections_cleanup(ResponseCombiner *combiner);
 
+static void pgxc_node_report_error(ResponseCombiner *combiner);
+#else
 static void ExecClearTempObjectIncluded(void);
 static void init_RemoteXactState(bool preparedLocalNode);
 static void clear_RemoteXactState(void);
 static void pgxc_node_report_error(RemoteQueryState *combiner);
-static TupleTableSlot *getrow_for_tapesort(RemoteQueryState *combiner,
-											TupleTableSlot *scanslot);
-static bool IsReturningDMLOnReplicatedTable(RemoteQuery *rq);
-static void SetDataRowForIntParams(TupleTableSlot *slot, RemoteQueryState *rq_state);
+#endif
+
+#ifdef XCP
+#define REMOVE_CURR_CONN(combiner) \
+	if ((combiner)->current_conn < --((combiner)->conn_count)) \
+	{ \
+		(combiner)->connections[(combiner)->current_conn] = \
+				(combiner)->connections[(combiner)->conn_count]; \
+	} \
+	else \
+		(combiner)->current_conn = 0
+#endif
+
+#define MAX_STATEMENTS_PER_TRAN 10
+
+/* Variables to collect statistics */
+static int	total_transactions = 0;
+static int	total_statements = 0;
+static int	total_autocommit = 0;
+static int	nonautocommit_2pc = 0;
+static int	autocommit_2pc = 0;
+static int	current_tran_statements = 0;
+static int *statements_per_transaction = NULL;
+static int *nodes_per_transaction = NULL;
+
+/*
+ * statistics collection: count a statement
+ */
+static void
+stat_statement()
+{
+	total_statements++;
+	current_tran_statements++;
+}
+
+/*
+ * To collect statistics: count a transaction
+ */
+static void
+stat_transaction(int node_count)
+{
+	total_transactions++;
+
+	if (!statements_per_transaction)
+	{
+		statements_per_transaction = (int *) malloc((MAX_STATEMENTS_PER_TRAN + 1) * sizeof(int));
+		memset(statements_per_transaction, 0, (MAX_STATEMENTS_PER_TRAN + 1) * sizeof(int));
+	}
+	if (current_tran_statements > MAX_STATEMENTS_PER_TRAN)
+		statements_per_transaction[MAX_STATEMENTS_PER_TRAN]++;
+	else
+		statements_per_transaction[current_tran_statements]++;
+	current_tran_statements = 0;
+	if (node_count > 0 && node_count <= NumDataNodes)
+	{
+		if (!nodes_per_transaction)
+		{
+			nodes_per_transaction = (int *) malloc(NumDataNodes * sizeof(int));
+			memset(nodes_per_transaction, 0, NumDataNodes * sizeof(int));
+		}
+		nodes_per_transaction[node_count - 1]++;
+	}
+}
+
+
+#ifdef NOT_USED
+/*
+ * To collect statistics: count a two-phase commit on nodes
+ */
+static void
+stat_2pc()
+{
+	if (autocommit)
+		autocommit_2pc++;
+	else
+		nonautocommit_2pc++;
+}
+#endif
+
+
+/*
+ * Output collected statistics to the log
+ */
+static void
+stat_log()
+{
+	elog(DEBUG1, "Total Transactions: %d Total Statements: %d", total_transactions, total_statements);
+	elog(DEBUG1, "Autocommit: %d 2PC for Autocommit: %d 2PC for non-Autocommit: %d",
+		 total_autocommit, autocommit_2pc, nonautocommit_2pc);
+	if (total_transactions)
+	{
+		if (statements_per_transaction)
+		{
+			int			i;
+
+			for (i = 0; i < MAX_STATEMENTS_PER_TRAN; i++)
+				elog(DEBUG1, "%d Statements per Transaction: %d (%d%%)",
+					 i, statements_per_transaction[i], statements_per_transaction[i] * 100 / total_transactions);
+		}
+		elog(DEBUG1, "%d+ Statements per Transaction: %d (%d%%)",
+			 MAX_STATEMENTS_PER_TRAN, statements_per_transaction[MAX_STATEMENTS_PER_TRAN], statements_per_transaction[MAX_STATEMENTS_PER_TRAN] * 100 / total_transactions);
+		if (nodes_per_transaction)
+		{
+			int			i;
+
+			for (i = 0; i < NumDataNodes; i++)
+				elog(DEBUG1, "%d Nodes per Transaction: %d (%d%%)",
+					 i + 1, nodes_per_transaction[i], nodes_per_transaction[i] * 100 / total_transactions);
+		}
+	}
+}
+
 
 /*
  * Create a structure to store parameters needed to combine responses from
  * multiple connections as well as state information
  */
+#ifdef XCP
+void
+InitResponseCombiner(ResponseCombiner *combiner, int node_count,
+					   CombineType combine_type)
+#else
 static RemoteQueryState *
 CreateResponseCombiner(int node_count, CombineType combine_type)
+#endif
 {
+#ifndef XCP
 	RemoteQueryState *combiner;
 
 	/* ResponseComber is a typedef for pointer to ResponseCombinerData */
@@ -190,31 +342,51 @@ CreateResponseCombiner(int node_count, CombineType combine_type)
 		/* Out of memory */
 		return combiner;
 	}
-
+#endif
 	combiner->node_count = node_count;
 	combiner->connections = NULL;
 	combiner->conn_count = 0;
 	combiner->combine_type = combine_type;
 	combiner->command_complete_count = 0;
 	combiner->request_type = REQUEST_TYPE_NOT_DEFINED;
-	combiner->tuple_desc = NULL;
 	combiner->description_count = 0;
 	combiner->copy_in_count = 0;
 	combiner->copy_out_count = 0;
+	combiner->copy_file = NULL;
 	combiner->errorMessage = NULL;
 	combiner->errorDetail = NULL;
-	combiner->query_Done = false;
+	combiner->tuple_desc = NULL;
+#ifdef XCP
+	combiner->probing_primary = false;
+	combiner->returning_node = InvalidOid;
+	combiner->currentRow = NULL;
+#else
 	combiner->currentRow.msg = NULL;
 	combiner->currentRow.msglen = 0;
 	combiner->currentRow.msgnode = 0;
+#endif
 	combiner->rowBuffer = NIL;
 	combiner->tapenodes = NULL;
+#ifdef XCP
+	combiner->merge_sort = false;
+	combiner->extended_query = false;
+	combiner->tapemarks = NULL;
+	combiner->tuplesortstate = NULL;
+	combiner->cursor = NULL;
+	combiner->update_cursor = NULL;
+	combiner->cursor_count = 0;
+	combiner->cursor_connections = NULL;
 	combiner->remoteCopyType = REMOTE_COPY_NONE;
+#else
+	combiner->initAggregates = true;
+	combiner->query_Done = false;
 	combiner->copy_file = NULL;
 	combiner->rqs_cmd_id = FirstCommandId;
 
 	return combiner;
+#endif
 }
+
 
 /*
  * Parse out row count from the command status response and convert it to integer
@@ -311,8 +483,16 @@ create_tuple_desc(char *msg_body, size_t len)
  * Handle CopyOutCommandComplete ('c') message from a Datanode connection
  */
 static void
+#ifdef XCP
+HandleCopyOutComplete(ResponseCombiner *combiner)
+#else
 HandleCopyOutComplete(RemoteQueryState *combiner)
+#endif
 {
+#ifdef XCP
+	if (combiner->request_type == REQUEST_TYPE_ERROR)
+		return;
+#endif
 	if (combiner->request_type == REQUEST_TYPE_NOT_DEFINED)
 		combiner->request_type = REQUEST_TYPE_COPY_OUT;
 	if (combiner->request_type != REQUEST_TYPE_COPY_OUT)
@@ -328,7 +508,11 @@ HandleCopyOutComplete(RemoteQueryState *combiner)
  * Handle CommandComplete ('C') message from a Datanode connection
  */
 static void
+#ifdef XCP
+HandleCommandComplete(ResponseCombiner *combiner, char *msg_body, size_t len, PGXCNodeHandle *conn)
+#else
 HandleCommandComplete(RemoteQueryState *combiner, char *msg_body, size_t len, PGXCNodeHandle *conn)
+#endif
 {
 	int 			digits = 0;
 	EState		   *estate = combiner->ss.ps.state;
@@ -350,11 +534,22 @@ HandleCommandComplete(RemoteQueryState *combiner, char *msg_body, size_t len, PG
 			{
 				if (combiner->command_complete_count)
 				{
+#ifdef XCP
 					/*
-					 * For comments on why non_fqs_dml is required
-					 * see comments in ExecProcNodeDMLInXC
+					 * Replicated command may succeed on on node and fail on
+					 * another. The example is if distributed table referenced
+					 * by a foreign key constraint defined on a partitioned
+					 * table. If command deletes rows from the replicated table
+					 * they may be referenced on one Datanode but not on other.
+					 * So, replicated command on each Datanode either affects
+					 * proper number of rows, or returns error. Here if
+					 * combiner got an error already, we allow to report it,
+					 * not the scaring data corruption message.
 					 */
-					if (rowcount != estate->es_processed && !combiner->non_fqs_dml)
+					if (combiner->errorMessage == NULL && rowcount != estate->es_processed)
+#else
+					if (rowcount != estate->es_processed)
+#endif
 						/* There is a consistency issue in the database with the replicated table */
 						ereport(ERROR,
 								(errcode(ERRCODE_DATA_CORRUPTED),
@@ -362,19 +557,53 @@ HandleCommandComplete(RemoteQueryState *combiner, char *msg_body, size_t len, PG
 				}
 				else
 					/* first result */
-					if (!combiner->non_fqs_dml)
-						estate->es_processed = rowcount;
+					estate->es_processed = rowcount;
 			}
 			else
-				if (!combiner->non_fqs_dml)
-					estate->es_processed += rowcount;
+				estate->es_processed += rowcount;
 		}
 		else
 			combiner->combine_type = COMBINE_TYPE_NONE;
 	}
 
 	/* If response checking is enable only then do further processing */
-
+#ifdef XCP
+	if (conn->ck_resp_rollback)
+	{
+		if (strcmp(msg_body, "ROLLBACK") == 0)
+		{
+			/*
+			 * Subsequent clean up routine will be checking this flag
+			 * to determine nodes where to send ROLLBACK PREPARED.
+			 * On current node PREPARE has failed and the two-phase record
+			 * does not exist, so clean this flag as if PREPARE was not sent
+			 * to that node and avoid erroneous command.
+			 */
+			conn->ck_resp_rollback = false;
+			/*
+			 * Set the error, if none, to force throwing.
+			 * If there is error already, it will be thrown anyway, do not add
+			 * this potentially confusing message
+			 */
+			if (combiner->errorMessage == NULL)
+			{
+				combiner->errorMessage =
+								pstrdup("unexpected ROLLBACK from remote node");
+				/*
+				 * ERRMSG_PRODUCER_ERROR
+				 * Messages with this code are replaced by others, if they are
+				 * received, so if node will send relevant error message that
+				 * one will be replaced.
+				 */
+				combiner->errorCode[0] = 'X';
+				combiner->errorCode[1] = 'X';
+				combiner->errorCode[2] = '0';
+				combiner->errorCode[3] = '1';
+				combiner->errorCode[4] = '0';
+			}
+		}
+	}
+#else
 	if (conn->ck_resp_rollback == RESP_ROLLBACK_CHECK)
 	{
 		conn->ck_resp_rollback = RESP_ROLLBACK_NOT_RECEIVED;
@@ -384,6 +613,7 @@ HandleCommandComplete(RemoteQueryState *combiner, char *msg_body, size_t len, PG
 				conn->ck_resp_rollback = RESP_ROLLBACK_RECEIVED;
 		}
 	}
+#endif
 
 	combiner->command_complete_count++;
 }
@@ -392,8 +622,16 @@ HandleCommandComplete(RemoteQueryState *combiner, char *msg_body, size_t len, PG
  * Handle RowDescription ('T') message from a Datanode connection
  */
 static bool
+#ifdef XCP
+HandleRowDescription(ResponseCombiner *combiner, char *msg_body, size_t len)
+#else
 HandleRowDescription(RemoteQueryState *combiner, char *msg_body, size_t len)
+#endif
 {
+#ifdef XCP
+	if (combiner->request_type == REQUEST_TYPE_ERROR)
+		return false;
+#endif
 	if (combiner->request_type == REQUEST_TYPE_NOT_DEFINED)
 		combiner->request_type = REQUEST_TYPE_QUERY;
 	if (combiner->request_type != REQUEST_TYPE_QUERY)
@@ -441,8 +679,16 @@ HandleParameterStatus(RemoteQueryState *combiner, char *msg_body, size_t len)
  * Handle CopyInResponse ('G') message from a Datanode connection
  */
 static void
+#ifdef XCP
+HandleCopyIn(ResponseCombiner *combiner)
+#else
 HandleCopyIn(RemoteQueryState *combiner)
+#endif
 {
+#ifdef XCP
+	if (combiner->request_type == REQUEST_TYPE_ERROR)
+		return;
+#endif
 	if (combiner->request_type == REQUEST_TYPE_NOT_DEFINED)
 		combiner->request_type = REQUEST_TYPE_COPY_IN;
 	if (combiner->request_type != REQUEST_TYPE_COPY_IN)
@@ -463,8 +709,16 @@ HandleCopyIn(RemoteQueryState *combiner)
  * Handle CopyOutResponse ('H') message from a Datanode connection
  */
 static void
+#ifdef XCP
+HandleCopyOut(ResponseCombiner *combiner)
+#else
 HandleCopyOut(RemoteQueryState *combiner)
+#endif
 {
+#ifdef XCP
+	if (combiner->request_type == REQUEST_TYPE_ERROR)
+		return;
+#endif
 	if (combiner->request_type == REQUEST_TYPE_NOT_DEFINED)
 		combiner->request_type = REQUEST_TYPE_COPY_OUT;
 	if (combiner->request_type != REQUEST_TYPE_COPY_OUT)
@@ -485,8 +739,16 @@ HandleCopyOut(RemoteQueryState *combiner)
  * Handle CopyOutDataRow ('d') message from a Datanode connection
  */
 static void
+#ifdef XCP
+HandleCopyDataRow(ResponseCombiner *combiner, char *msg_body, size_t len)
+#else
 HandleCopyDataRow(RemoteQueryState *combiner, char *msg_body, size_t len)
+#endif
 {
+#ifdef XCP
+	if (combiner->request_type == REQUEST_TYPE_ERROR)
+		return;
+#endif
 	if (combiner->request_type == REQUEST_TYPE_NOT_DEFINED)
 		combiner->request_type = REQUEST_TYPE_COPY_OUT;
 
@@ -511,6 +773,9 @@ HandleCopyDataRow(RemoteQueryState *combiner, char *msg_body, size_t len)
 			pq_putmessage('d', msg_body, len);
 			break;
 		case REMOTE_COPY_TUPLESTORE:
+#ifdef XCP
+			tuplestore_putmessage(combiner->tuplestorestate, len, msg_body);
+#else
 			{
 				Datum  *values;
 				bool   *nulls;
@@ -586,6 +851,7 @@ HandleCopyDataRow(RemoteQueryState *combiner, char *msg_body, size_t len)
 				pfree(in_functions);
 				pfree(typioparams);
 			}
+#endif
 			break;
 		case REMOTE_COPY_NONE:
 		default:
@@ -595,9 +861,67 @@ HandleCopyDataRow(RemoteQueryState *combiner, char *msg_body, size_t len)
 
 /*
  * Handle DataRow ('D') message from a Datanode connection
- * The function returns true if buffer can accept more data rows.
- * Caller must stop reading if function returns false
+ * The function returns true if data row is accepted and successfully stored
+ * within the combiner.
  */
+#ifdef XCP
+static bool
+HandleDataRow(ResponseCombiner *combiner, char *msg_body, size_t len, Oid node)
+{
+	/* We expect previous message is consumed */
+	Assert(combiner->currentRow == NULL);
+
+	if (combiner->request_type == REQUEST_TYPE_ERROR)
+		return false;
+
+	if (combiner->request_type != REQUEST_TYPE_QUERY)
+	{
+		/* Inconsistent responses */
+		ereport(ERROR,
+				(errcode(ERRCODE_DATA_CORRUPTED),
+				 errmsg("Unexpected response from the data nodes for 'D' message, current request type %d", combiner->request_type)));
+	}
+
+	/*
+	 * If we got an error already ignore incoming data rows from other nodes
+	 * Still we want to continue reading until get CommandComplete
+	 */
+	if (combiner->errorMessage)
+		return false;
+
+	/*
+	 * Replicated INSERT/UPDATE/DELETE with RETURNING: receive only tuples
+	 * from one node, skip others as duplicates
+	 */
+	if (combiner->combine_type == COMBINE_TYPE_SAME)
+	{
+		/* Do not return rows when probing primary, instead return when doing
+		 * first normal node. Just save some CPU and traffic in case if
+		 * probing fails.
+		 */
+		if (combiner->probing_primary)
+			return false;
+		if (OidIsValid(combiner->returning_node))
+		{
+			if (combiner->returning_node != node)
+				return false;
+		}
+		else
+			combiner->returning_node = node;
+	}
+
+	/*
+	 * We are copying message because it points into connection buffer, and
+	 * will be overwritten on next socket read
+	 */
+	combiner->currentRow = (RemoteDataRow) palloc(sizeof(RemoteDataRowData) + len);
+	memcpy(combiner->currentRow->msg, msg_body, len);
+	combiner->currentRow->msglen = len;
+	combiner->currentRow->msgnode = node;
+
+	return true;
+}
+#else
 static void
 HandleDataRow(RemoteQueryState *combiner, char *msg_body, size_t len, int nid)
 {
@@ -634,12 +958,17 @@ HandleDataRow(RemoteQueryState *combiner, char *msg_body, size_t len, int nid)
 	combiner->currentRow.msglen = len;
 	combiner->currentRow.msgnode = nid;
 }
+#endif
 
 /*
  * Handle ErrorResponse ('E') message from a Datanode connection
  */
 static void
+#ifdef XCP
+HandleError(ResponseCombiner *combiner, char *msg_body, size_t len)
+#else
 HandleError(RemoteQueryState *combiner, char *msg_body, size_t len)
+#endif
 {
 	/* parse error message */
 	char *code = NULL;
@@ -692,6 +1021,24 @@ HandleError(RemoteQueryState *combiner, char *msg_body, size_t len)
 	 * ReadyForQuery is received, so we just store the error message.
 	 * If multiple connections return errors only first one is reported.
 	 */
+#ifdef XCP
+	/*
+	 * The producer error may be hiding primary error, so if previously received
+	 * error is a producer error allow it to be overwritten.
+	 */
+	if (combiner->errorMessage == NULL ||
+			MAKE_SQLSTATE(combiner->errorCode[0], combiner->errorCode[1],
+						  combiner->errorCode[2], combiner->errorCode[3],
+						  combiner->errorCode[4]) == ERRCODE_PRODUCER_ERROR)
+	{
+		combiner->errorMessage = pstrdup(message);
+		/* Error Code is exactly 5 significant bytes */
+		if (code)
+			memcpy(combiner->errorCode, code, 5);
+		if (detail)
+			combiner->errorDetail = pstrdup(detail);
+	}
+#else
 	if (!combiner->errorMessage)
 	{
 		combiner->errorMessage = pstrdup(message);
@@ -704,6 +1051,7 @@ HandleError(RemoteQueryState *combiner, char *msg_body, size_t len)
 	{
 		combiner->errorDetail = pstrdup(detail);
 	}
+#endif
 
 	/*
 	 * If Datanode have sent ErrorResponse it will never send CommandComplete.
@@ -791,8 +1139,13 @@ HandleCmdComplete(CmdType commandType, CombineTag *combine,
 /*
  * HandleDatanodeCommandId ('M') message from a Datanode connection
  */
+#ifdef XCP
+static void
+HandleDatanodeCommandId(ResponseCombiner *combiner, char *msg_body, size_t len)
+#else
 static void
 HandleDatanodeCommandId(RemoteQueryState *combiner, char *msg_body, size_t len)
+#endif
 {
 	uint32		n32;
 	CommandId	cid;
@@ -814,7 +1167,11 @@ HandleDatanodeCommandId(RemoteQueryState *combiner, char *msg_body, size_t len)
  * successfully
  */
 static bool
+#ifdef XCP
+validate_combiner(ResponseCombiner *combiner)
+#else
 validate_combiner(RemoteQueryState *combiner)
+#endif
 {
 	/* There was error message while combining */
 	if (combiner->errorMessage)
@@ -853,6 +1210,24 @@ validate_combiner(RemoteQueryState *combiner)
 /*
  * Close combiner and free allocated memory, if it is not needed
  */
+#ifdef XCP
+void
+CloseCombiner(ResponseCombiner *combiner)
+{
+	if (combiner->connections)
+		pfree(combiner->connections);
+	if (combiner->tuple_desc)
+		FreeTupleDesc(combiner->tuple_desc);
+	if (combiner->errorMessage)
+		pfree(combiner->errorMessage);
+	if (combiner->cursor_connections)
+		pfree(combiner->cursor_connections);
+	if (combiner->tapenodes)
+		pfree(combiner->tapenodes);
+	if (combiner->tapemarks)
+		pfree(combiner->tapemarks);
+}
+#else
 static void
 CloseCombiner(RemoteQueryState *combiner)
 {
@@ -881,12 +1256,17 @@ CloseCombiner(RemoteQueryState *combiner)
 		pfree(combiner);
 	}
 }
+#endif
 
 /*
  * Validate combiner and release storage freeing allocated memory
  */
 static bool
+#ifdef XCP
+ValidateAndCloseCombiner(ResponseCombiner *combiner)
+#else
 ValidateAndCloseCombiner(RemoteQueryState *combiner)
+#endif
 {
 	bool		valid = validate_combiner(combiner);
 
@@ -911,6 +1291,171 @@ ValidateAndCloseCombiner(RemoteQueryState *combiner)
  * points to the original RemoteQueryState. If combiner differs from "this" the
  * connection should be buffered.
  */
+#ifdef XCP
+void
+BufferConnection(PGXCNodeHandle *conn)
+{
+	ResponseCombiner *combiner = conn->combiner;
+	MemoryContext oldcontext;
+
+	if (combiner == NULL || conn->state != DN_CONNECTION_STATE_QUERY)
+		return;
+
+	elog(LOG, "Buffer connection %u to step %s", conn->nodeoid, combiner->cursor);
+
+	/*
+	 * When BufferConnection is invoked CurrentContext is related to other
+	 * portal, which is trying to control the connection.
+	 * TODO See if we can find better context to switch to
+	 */
+	oldcontext = MemoryContextSwitchTo(combiner->ss.ps.ps_ResultTupleSlot->tts_mcxt);
+
+	/* Verify the connection is in use by the combiner */
+	combiner->current_conn = 0;
+	while (combiner->current_conn < combiner->conn_count)
+	{
+		if (combiner->connections[combiner->current_conn] == conn)
+			break;
+		combiner->current_conn++;
+	}
+	Assert(combiner->current_conn < combiner->conn_count);
+
+	if (combiner->tapemarks == NULL)
+		combiner->tapemarks = (ListCell**) palloc0(combiner->conn_count * sizeof(ListCell*));
+
+	/*
+	 * If current bookmark for the current tape is not set it means either
+	 * first row in the buffer is from the current tape or no rows from
+	 * the tape in the buffer, so if first row is not from current
+	 * connection bookmark the last cell in the list.
+	 */
+	if (combiner->tapemarks[combiner->current_conn] == NULL &&
+			list_length(combiner->rowBuffer) > 0)
+	{
+		RemoteDataRow dataRow = (RemoteDataRow) linitial(combiner->rowBuffer);
+		if (dataRow->msgnode != conn->nodeoid)
+			combiner->tapemarks[combiner->current_conn] = list_tail(combiner->rowBuffer);
+	}
+
+	/*
+	 * Buffer data rows until data node return number of rows specified by the
+	 * fetch_size parameter of last Execute message (PortalSuspended message)
+	 * or end of result set is reached (CommandComplete message)
+	 */
+	while (true)
+	{
+		int res;
+
+		/* Move to buffer currentRow (received from the data node) */
+		if (combiner->currentRow)
+		{
+			combiner->rowBuffer = lappend(combiner->rowBuffer,
+										  combiner->currentRow);
+			combiner->currentRow = NULL;
+		}
+
+		res = handle_response(conn, combiner);
+		/*
+		 * If response message is a DataRow it will be handled on the next
+		 * iteration.
+		 * PortalSuspended will cause connection state change and break the loop
+		 * The same is for CommandComplete, but we need additional handling -
+		 * remove connection from the list of active connections.
+		 * We may need to add handling error response
+		 */
+
+		/* Most often result check first */
+		if (res == RESPONSE_DATAROW)
+		{
+			/*
+			 * The row is in the combiner->currentRow, on next iteration it will
+			 * be moved to the buffer
+			 */
+			continue;
+		}
+
+		/* incomplete message, read more */
+		if (res == RESPONSE_EOF)
+		{
+			if (pgxc_node_receive(1, &conn, NULL))
+			{
+				conn->state = DN_CONNECTION_STATE_ERROR_FATAL;
+				add_error_message(conn, "Failed to fetch from data node");
+			}
+		}
+
+		/*
+		 * End of result set is reached, so either set the pointer to the
+		 * connection to NULL (combiner with sort) or remove it from the list
+		 * (combiner without sort)
+		 */
+		else if (res == RESPONSE_COMPLETE)
+		{
+			/*
+			 * If combiner is doing merge sort we should set reference to the
+			 * current connection to NULL in the array, indicating the end
+			 * of the tape is reached. FetchTuple will try to access the buffer
+			 * first anyway.
+			 * Since we remove that reference we can not determine what node
+			 * number was this connection, but we need this info to find proper
+			 * tuple in the buffer if we are doing merge sort. So store node
+			 * number in special array.
+			 * NB: We can not test if combiner->tuplesortstate is set here:
+			 * connection may require buffering inside tuplesort_begin_merge
+			 * - while pre-read rows from the tapes, one of the tapes may be
+			 * the local connection with RemoteSubplan in the tree. The
+			 * combiner->tuplesortstate is set only after tuplesort_begin_merge
+			 * returns.
+			 */
+			if (combiner->merge_sort)
+			{
+				combiner->connections[combiner->current_conn] = NULL;
+				if (combiner->tapenodes == NULL)
+					combiner->tapenodes = (Oid *)
+							palloc0(combiner->conn_count * sizeof(Oid));
+				combiner->tapenodes[combiner->current_conn] = conn->nodeoid;
+			}
+			else
+			{
+				/* Remove current connection, move last in-place, adjust current_conn */
+				if (combiner->current_conn < --combiner->conn_count)
+					combiner->connections[combiner->current_conn] = combiner->connections[combiner->conn_count];
+				else
+					combiner->current_conn = 0;
+			}
+			/*
+			 * If combiner runs Simple Query Protocol we need to read in
+			 * ReadyForQuery. In case of Extended Query Protocol it is not
+			 * sent and we should quit.
+			 */
+			if (combiner->extended_query)
+				break;
+		}
+		else if (res == RESPONSE_ERROR)
+		{
+			if (combiner->extended_query)
+			{
+				/*
+				 * Need to sync connection to enable receiving commands
+				 * by the datanode
+				 */
+				if (pgxc_node_send_sync(conn) != 0)
+					ereport(ERROR,
+							(errcode(ERRCODE_INTERNAL_ERROR),
+							 errmsg("Failed to fetch from data node")));
+			}
+		}
+		else if (res == RESPONSE_SUSPENDED || res == RESPONSE_READY)
+		{
+			/* Now it is OK to quit */
+			break;
+		}
+	}
+	Assert(conn->state != DN_CONNECTION_STATE_QUERY);
+	MemoryContextSwitchTo(oldcontext);
+	conn->combiner = NULL;
+}
+#else
 void
 BufferConnection(PGXCNodeHandle *conn)
 {
@@ -982,7 +1527,7 @@ BufferConnection(PGXCNodeHandle *conn)
 			 * connection to NULL (step with sort) or remove it from the list
 			 * (step without sort)
 			 */
-			if (combiner->rqs_for_sort)
+			if (combiner->tuplesortstate)
 			{
 				combiner->connections[combiner->current_conn] = NULL;
 				if (combiner->tapenodes == NULL)
@@ -1008,11 +1553,29 @@ BufferConnection(PGXCNodeHandle *conn)
 	MemoryContextSwitchTo(oldcontext);
 	conn->combiner = NULL;
 }
+#endif
 
 /*
  * copy the datarow from combiner to the given slot, in the slot's memory
  * context
  */
+#ifdef XCP
+static void
+CopyDataRowTupleToSlot(ResponseCombiner *combiner, TupleTableSlot *slot)
+{
+	RemoteDataRow 	datarow;
+	MemoryContext	oldcontext;
+	oldcontext = MemoryContextSwitchTo(slot->tts_mcxt);
+	datarow = (RemoteDataRow) palloc(sizeof(RemoteDataRowData) + combiner->currentRow->msglen);
+	datarow->msgnode = combiner->currentRow->msgnode;
+	datarow->msglen = combiner->currentRow->msglen;
+	memcpy(datarow->msg, combiner->currentRow->msg, datarow->msglen);
+	ExecStoreDataRowTuple(datarow, slot, true);
+	pfree(combiner->currentRow);
+	combiner->currentRow = NULL;
+	MemoryContextSwitchTo(oldcontext);
+}
+#else
 static void
 CopyDataRowTupleToSlot(RemoteQueryState *combiner, TupleTableSlot *slot)
 {
@@ -1028,7 +1591,349 @@ CopyDataRowTupleToSlot(RemoteQueryState *combiner, TupleTableSlot *slot)
 	combiner->currentRow.msgnode = 0;
 	MemoryContextSwitchTo(oldcontext);
 }
+#endif
 
+
+#ifdef XCP
+/*
+ * FetchTuple
+ *
+		Get next tuple from one of the datanode connections.
+ * The connections should be in combiner->connections, if "local" dummy
+ * connection presents it should be the last active connection in the array.
+ *      If combiner is set up to perform merge sort function returns tuple from
+ * connection defined by combiner->current_conn, or NULL slot if no more tuple
+ * are available from the connection. Otherwise it returns tuple from any
+ * connection or NULL slot if no more available connections.
+ * 		Function looks into combiner->rowBuffer before accessing connection
+ * and return a tuple from there if found.
+ * 		Function may wait while more data arrive from the data nodes. If there
+ * is a locally executed subplan function advance it and buffer resulting rows
+ * instead of waiting.
+ */
+TupleTableSlot *
+FetchTuple(ResponseCombiner *combiner)
+{
+	PGXCNodeHandle *conn;
+	TupleTableSlot *slot;
+	Oid 			nodeOid = -1;
+
+	/*
+	 * Case if we run local subplan.
+	 * We do not have remote connections, so just get local tuple and return it
+	 */
+	if (outerPlanState(combiner))
+	{
+		RemoteSubplanState *planstate = (RemoteSubplanState *) combiner;
+		RemoteSubplan *plan = (RemoteSubplan *) combiner->ss.ps.plan;
+		/* Advance subplan in a loop until we have something to return */
+		for (;;)
+		{
+			Datum 	value = NULL;
+			bool 	isnull;
+			int 	numnodes;
+			int		i;
+
+			slot = ExecProcNode(outerPlanState(combiner));
+			/* If locator is not defined deliver all the results */
+			if (planstate->locator == NULL)
+				return slot;
+
+			/*
+			 * If NULL tuple is returned we done with the subplan, finish it up and
+			 * return NULL
+			 */
+			if (TupIsNull(slot))
+				return NULL;
+
+			/* Get partitioning value if defined */
+			if (plan->distributionKey != InvalidAttrNumber)
+				value = slot_getattr(slot, plan->distributionKey, &isnull);
+
+			/* Determine target nodes */
+			numnodes = GET_NODES(planstate->locator, value, isnull, NULL);
+			for (i = 0; i < numnodes; i++)
+			{
+				/* Deliver the node */
+				if (planstate->dest_nodes[i] == PGXCNodeId-1)
+					return slot;
+			}
+		}
+	}
+
+	/*
+	 * Get current connection
+	 */
+	if (combiner->conn_count > combiner->current_conn)
+		conn = combiner->connections[combiner->current_conn];
+	else
+		conn = NULL;
+
+	/*
+	 * If doing merge sort determine the node number.
+	 * It may be needed to get buffered row.
+	 */
+	if (combiner->merge_sort)
+	{
+		Assert(conn || combiner->tapenodes);
+		nodeOid = conn ? conn->nodeoid :
+						 combiner->tapenodes[combiner->current_conn];
+		Assert(OidIsValid(nodeOid));
+	}
+
+	/*
+	 * First look into the row buffer.
+	 * When we are performing merge sort we need to get from the buffer record
+	 * from the connection marked as "current". Otherwise get first.
+	 */
+	if (list_length(combiner->rowBuffer) > 0)
+	{
+		RemoteDataRow dataRow;
+
+		Assert(combiner->currentRow == NULL);
+
+		if (combiner->merge_sort)
+		{
+			ListCell *lc;
+			ListCell *prev;
+
+			elog(LOG, "Getting buffered tuple from node %x", nodeOid);
+
+			prev = combiner->tapemarks[combiner->current_conn];
+			if (prev)
+			{
+				/*
+				 * Start looking through the list from the bookmark.
+				 * Probably the first cell we check contains row from the needed
+				 * node. Otherwise continue scanning until we encounter one,
+				 * advancing prev pointer as well.
+				 */
+				while((lc = lnext(prev)) != NULL)
+				{
+					dataRow = (RemoteDataRow) lfirst(lc);
+					if (dataRow->msgnode == nodeOid)
+					{
+						combiner->currentRow = dataRow;
+						break;
+					}
+					prev = lc;
+				}
+			}
+			else
+			{
+				/*
+				 * Either needed row is the first in the buffer or no such row
+				 */
+				lc = list_head(combiner->rowBuffer);
+				dataRow = (RemoteDataRow) lfirst(lc);
+				if (dataRow->msgnode == nodeOid)
+					combiner->currentRow = dataRow;
+				else
+					lc = NULL;
+			}
+			if (lc)
+			{
+				/*
+				 * Delete cell from the buffer. Before we delete we must check
+				 * the bookmarks, if the cell is a bookmark for any tape.
+				 * If it is the case we are deleting last row of the current
+				 * block from the current tape. That tape should have bookmark
+				 * like current, and current bookmark will be advanced when we
+				 * read the tape once again.
+				 */
+				int i;
+				for (i = 0; i < combiner->conn_count; i++)
+				{
+					if (combiner->tapemarks[i] == lc)
+						combiner->tapemarks[i] = prev;
+				}
+				elog(LOG, "Found buffered tuple from node %x", nodeOid);
+				combiner->rowBuffer = list_delete_cell(combiner->rowBuffer,
+													   lc, prev);
+			}
+			elog(LOG, "Update tapemark");
+			combiner->tapemarks[combiner->current_conn] = prev;
+		}
+		else
+		{
+			dataRow = (RemoteDataRow) linitial(combiner->rowBuffer);
+			combiner->currentRow = dataRow;
+			combiner->rowBuffer = list_delete_first(combiner->rowBuffer);
+		}
+	}
+
+	/* If we have node message in the currentRow slot, and it is from a proper
+	 * node, consume it.  */
+	if (combiner->currentRow)
+	{
+		Assert(!combiner->merge_sort ||
+			   combiner->currentRow->msgnode == nodeOid);
+		slot = combiner->ss.ps.ps_ResultTupleSlot;
+		CopyDataRowTupleToSlot(combiner, slot);
+		return slot;
+	}
+
+	while (conn)
+	{
+		int res;
+
+		/* Going to use a connection, buffer it if needed */
+		CHECK_OWNERSHIP(conn, combiner);
+
+		/*
+		 * If current connection is idle it means portal on the data node is
+		 * suspended. Request more and try to get it
+		 */
+		if (combiner->extended_query &&
+				conn->state == DN_CONNECTION_STATE_IDLE)
+		{
+			/*
+			 * We do not allow to suspend if querying primary node, so that
+			 * only may mean the current node is secondary and subplan was not
+			 * executed there yet. Return and go on with second phase.
+			 */
+			if (combiner->probing_primary)
+				return NULL;
+			if (pgxc_node_send_execute(conn, combiner->cursor, 1000) != 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+						 errmsg("Failed to fetch from data node")));
+			if (pgxc_node_send_flush(conn) != 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+						 errmsg("Failed to fetch from data node")));
+			if (pgxc_node_receive(1, &conn, NULL))
+				ereport(ERROR,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+						 errmsg("Failed to fetch from data node")));
+		}
+
+		/* read messages */
+		res = handle_response(conn, combiner);
+		if (res == RESPONSE_DATAROW)
+		{
+			slot = combiner->ss.ps.ps_ResultTupleSlot;
+			CopyDataRowTupleToSlot(combiner, slot);
+			return slot;
+		}
+		else if (res == RESPONSE_EOF)
+		{
+			/* incomplete message, read more */
+			if (pgxc_node_receive(1, &conn, NULL))
+				ereport(ERROR,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+						 errmsg("Failed to fetch from data node")));
+			continue;
+		}
+		else if (res == RESPONSE_SUSPENDED)
+		{
+			/*
+			 * If we are doing merge sort or probing primary node we should
+			 * remain on the same node, so query next portion immediately.
+			 * Otherwise leave node suspended and fetch lazily.
+			 */
+			if (combiner->merge_sort || combiner->probing_primary)
+			{
+				if (pgxc_node_send_execute(conn, combiner->cursor, 1000) != 0)
+					ereport(ERROR,
+							(errcode(ERRCODE_INTERNAL_ERROR),
+							 errmsg("Failed to fetch from data node")));
+				if (pgxc_node_send_flush(conn) != 0)
+					ereport(ERROR,
+							(errcode(ERRCODE_INTERNAL_ERROR),
+							 errmsg("Failed to fetch from data node")));
+				if (pgxc_node_receive(1, &conn, NULL))
+					ereport(ERROR,
+							(errcode(ERRCODE_INTERNAL_ERROR),
+							 errmsg("Failed to fetch from data node")));
+				continue;
+			}
+			if (++combiner->current_conn >= combiner->conn_count)
+				combiner->current_conn = 0;
+			conn = combiner->connections[combiner->current_conn];
+		}
+		else if (res == RESPONSE_COMPLETE)
+		{
+			/*
+			 * In case of Simple Query Protocol we should receive ReadyForQuery
+			 * before removing connection from the list. In case of Extended
+			 * Query Protocol we may remove connection right away.
+			 */
+			if (combiner->extended_query)
+			{
+				/* If we are doing merge sort clean current connection and return
+				 * NULL, otherwise remove current connection, move last in-place,
+				 * adjust current_conn and continue if it is not last connection */
+				if (combiner->merge_sort)
+				{
+					combiner->connections[combiner->current_conn] = NULL;
+					return NULL;
+				}
+				REMOVE_CURR_CONN(combiner);
+				if (combiner->conn_count > 0)
+					conn = combiner->connections[combiner->current_conn];
+				else
+					return NULL;
+			}
+		}
+		else if (res == RESPONSE_ERROR)
+		{
+			/*
+			 * If doing Extended Query Protocol we need to sync connection,
+			 * otherwise subsequent commands will be ignored.
+			 */
+			if (combiner->extended_query)
+			{
+				if (pgxc_node_send_sync(conn) != 0)
+					ereport(ERROR,
+							(errcode(ERRCODE_INTERNAL_ERROR),
+							 errmsg("Failed to fetch from data node")));
+			}
+			/*
+			 * Do not wait for response from primary, it needs to wait
+			 * for other nodes to respond. Instead go ahead and send query to
+			 * other nodes. It will fail there, but we can continue with
+			 * normal cleanup.
+			 */
+			if (combiner->probing_primary)
+			{
+				REMOVE_CURR_CONN(combiner);
+				return NULL;
+			}
+		}
+		else if (res == RESPONSE_READY)
+		{
+			/* If we are doing merge sort clean current connection and return
+			 * NULL, otherwise remove current connection, move last in-place,
+			 * adjust current_conn and continue if it is not last connection */
+			if (combiner->merge_sort)
+			{
+				combiner->connections[combiner->current_conn] = NULL;
+				return NULL;
+			}
+			REMOVE_CURR_CONN(combiner);
+			if (combiner->conn_count > 0)
+				conn = combiner->connections[combiner->current_conn];
+			else
+				return NULL;
+		}
+		else if (res == RESPONSE_TUPDESC)
+		{
+			ExecSetSlotDescriptor(combiner->ss.ps.ps_ResultTupleSlot,
+								  combiner->tuple_desc);
+			/* Now slot is responsible for freeng the descriptor */
+			combiner->tuple_desc = NULL;
+		}
+		else
+		{
+			// Can not get here?
+			Assert(false);
+		}
+	}
+
+	return NULL;
+}
+#else
 /*
  * Get next data row from the combiner's buffer into provided slot
  * Just clear slot and return false if buffer is empty, that means end of result
@@ -1039,18 +1944,21 @@ FetchTuple(RemoteQueryState *combiner, TupleTableSlot *slot)
 {
 	bool have_tuple = false;
 
-	/*
-	 * We don't expect the RemoteQuery feeding a sort to come this way. As of
-	 * now, such a RemoteQuery gets the rows as dictated by the Sort plan above,
-	 * hence fetches the rows on its own.
-	 */
-	Assert(!combiner->rqs_for_sort);
 	/* If we have message in the buffer, consume it */
 	if (combiner->currentRow.msg)
 	{
 		CopyDataRowTupleToSlot(combiner, slot);
 		have_tuple = true;
 	}
+
+	/*
+	 * If this is ordered fetch we can not know what is the node
+	 * to handle next, so sorter will choose next itself and set it as
+	 * currentRow to have it consumed on the next call to FetchTuple.
+	 * Otherwise allow to prefetch next tuple
+	 */
+	if (((RemoteQuery *)combiner->ss.ps.plan)->sort)
+		return have_tuple;
 
 	/*
 	 * Note: If we are fetching not sorted results we can not have both
@@ -1155,6 +2063,15 @@ FetchTuple(RemoteQueryState *combiner, TupleTableSlot *slot)
 			CopyDataRowTupleToSlot(combiner, slot);
 			have_tuple = true;
 		}
+
+		/*
+		 * If this is ordered fetch we can not know what is the node
+		 * to handle next, so sorter will choose next itself and set it as
+		 * currentRow to have it consumed on the next call to FetchTuple.
+		 * Otherwise allow to prefetch next tuple
+		 */
+		if (((RemoteQuery *)combiner->ss.ps.plan)->sort)
+			return have_tuple;
 	}
 
 	/* report end of data to the caller */
@@ -1163,14 +2080,20 @@ FetchTuple(RemoteQueryState *combiner, TupleTableSlot *slot)
 
 	return have_tuple;
 }
+#endif
 
 
 /*
  * Handle responses from the Datanode connections
  */
 static int
+#ifdef XCP
+pgxc_node_receive_responses(const int conn_count, PGXCNodeHandle ** connections,
+						 struct timeval * timeout, ResponseCombiner *combiner)
+#else
 pgxc_node_receive_responses(const int conn_count, PGXCNodeHandle ** connections,
 						 struct timeval * timeout, RemoteQueryState *combiner)
+#endif
 {
 	int			count = conn_count;
 	PGXCNodeHandle *to_receive[conn_count];
@@ -1199,6 +2122,14 @@ pgxc_node_receive_responses(const int conn_count, PGXCNodeHandle ** connections,
 					i++;
 					break;
 				case RESPONSE_COMPLETE:
+#ifdef XCP
+					if (to_receive[i]->state != DN_CONNECTION_STATE_ERROR_FATAL)
+						/* Continue read until ReadyForQuery */
+						break;
+					/* fallthru */
+				case RESPONSE_READY:
+					/* fallthru */
+#endif
 				case RESPONSE_COPY:
 					/* Handling is done, do not track this connection */
 					count--;
@@ -1206,6 +2137,11 @@ pgxc_node_receive_responses(const int conn_count, PGXCNodeHandle ** connections,
 					if (i < count)
 						to_receive[i] = to_receive[count];
 					break;
+#ifdef XCP
+				case RESPONSE_ERROR:
+					/* no handling needed, just wait for ReadyForQuery */
+					break;
+#endif
 				default:
 					/* Inconsistent responses */
 					add_error_message(to_receive[i], "Unexpected response from the Datanodes");
@@ -1217,11 +2153,169 @@ pgxc_node_receive_responses(const int conn_count, PGXCNodeHandle ** connections,
 			}
 		}
 	}
+#ifndef XCP
 	pgxc_node_report_error(combiner);
+#endif
 
 	return 0;
 }
 
+#ifdef XCP
+/*
+ * Read next message from the connection and update the combiner
+ * and connection state accordingly
+ * If we are in an error state we just consume the messages, and do not proxy
+ * Long term, we should look into cancelling executing statements
+ * and closing the connections.
+ * It returns if states need to be handled
+ * Return values:
+ * RESPONSE_EOF - need to receive more data for the connection
+ * RESPONSE_READY - got ReadyForQuery
+ * RESPONSE_COMPLETE - done with the connection, but not yet ready for query.
+ * Also this result is output in case of error
+ * RESPONSE_SUSPENDED - got PortalSuspended
+ * RESPONSE_TUPLEDESC - got tuple description
+ * RESPONSE_DATAROW - got data row
+ * RESPONSE_COPY - got copy response
+ * RESPONSE_BARRIER_OK - barrier command completed successfully
+ */
+int
+handle_response(PGXCNodeHandle *conn, ResponseCombiner *combiner)
+{
+	char	   *msg;
+	int			msg_len;
+	char		msg_type;
+
+	for (;;)
+	{
+		/*
+		 * If we are in the process of shutting down, we
+		 * may be rolling back, and the buffer may contain other messages.
+		 * We want to avoid a procarray exception
+		 * as well as an error stack overflow.
+		 */
+		if (proc_exit_inprogress)
+			conn->state = DN_CONNECTION_STATE_ERROR_FATAL;
+
+		/*
+		 * Don't read from from the connection if there is a fatal error.
+		 * We still return RESPONSE_COMPLETE, not RESPONSE_ERROR, since
+		 * Handling of RESPONSE_ERROR assumes sending SYNC message, but
+		 * State DN_CONNECTION_STATE_ERROR_FATAL indicates connection is
+		 * not usable.
+		 */
+		if (conn->state == DN_CONNECTION_STATE_ERROR_FATAL)
+			return RESPONSE_COMPLETE;
+
+		/* No data available, exit */
+		if (!HAS_MESSAGE_BUFFERED(conn))
+			return RESPONSE_EOF;
+
+		Assert(conn->combiner == combiner || conn->combiner == NULL);
+
+		/* TODO handle other possible responses */
+		msg_type = get_message(conn, &msg_len, &msg);
+		switch (msg_type)
+		{
+			case '\0':			/* Not enough data in the buffer */
+				return RESPONSE_EOF;
+			case 'c':			/* CopyToCommandComplete */
+				HandleCopyOutComplete(combiner);
+				break;
+			case 'C':			/* CommandComplete */
+				HandleCommandComplete(combiner, msg, msg_len, conn);
+				conn->combiner = NULL;
+				if (conn->state == DN_CONNECTION_STATE_QUERY)
+					conn->state = DN_CONNECTION_STATE_IDLE;
+				return RESPONSE_COMPLETE;
+			case 'T':			/* RowDescription */
+#ifdef DN_CONNECTION_DEBUG
+				Assert(!conn->have_row_desc);
+				conn->have_row_desc = true;
+#endif
+				if (HandleRowDescription(combiner, msg, msg_len))
+					return RESPONSE_TUPDESC;
+				break;
+			case 'D':			/* DataRow */
+#ifdef DN_CONNECTION_DEBUG
+				Assert(conn->have_row_desc);
+#endif
+				/* Do not return if data row has not been actually handled */
+				if (HandleDataRow(combiner, msg, msg_len, conn->nodeoid))
+					return RESPONSE_DATAROW;
+				break;
+			case 's':			/* PortalSuspended */
+				/* No activity is expected on the connection until next query */
+				conn->state = DN_CONNECTION_STATE_IDLE;
+				conn->combiner = NULL;
+				return RESPONSE_SUSPENDED;
+			case '1': /* ParseComplete */
+			case '2': /* BindComplete */
+			case '3': /* CloseComplete */
+			case 'n': /* NoData */
+				/* simple notifications, continue reading */
+				break;
+			case 'G': /* CopyInResponse */
+				conn->state = DN_CONNECTION_STATE_COPY_IN;
+				HandleCopyIn(combiner);
+				/* Done, return to caller to let it know the data can be passed in */
+				return RESPONSE_COPY;
+			case 'H': /* CopyOutResponse */
+				conn->state = DN_CONNECTION_STATE_COPY_OUT;
+				HandleCopyOut(combiner);
+				return RESPONSE_COPY;
+			case 'd': /* CopyOutDataRow */
+				conn->state = DN_CONNECTION_STATE_COPY_OUT;
+				HandleCopyDataRow(combiner, msg, msg_len);
+				break;
+			case 'E':			/* ErrorResponse */
+				HandleError(combiner, msg, msg_len);
+				add_error_message(conn, combiner->errorMessage);
+				return RESPONSE_ERROR;
+			case 'A':			/* NotificationResponse */
+			case 'N':			/* NoticeResponse */
+			case 'S':			/* SetCommandComplete */
+				/*
+				 * Ignore these to prevent multiple messages, one from each
+				 * node. Coordinator will send one for DDL anyway
+				 */
+				break;
+			case 'Z':			/* ReadyForQuery */
+			{
+				/*
+				 * Return result depends on previous connection state.
+				 * If it was PORTAL_SUSPENDED Coordinator want to send down
+				 * another EXECUTE to fetch more rows, otherwise it is done
+				 * with the connection
+				 */
+				conn->transaction_status = msg[0];
+				conn->state = DN_CONNECTION_STATE_IDLE;
+				conn->combiner = NULL;
+#ifdef DN_CONNECTION_DEBUG
+				conn->have_row_desc = false;
+#endif
+				return RESPONSE_READY;
+			}
+			case 'M':			/* Command Id */
+				HandleDatanodeCommandId(combiner, msg, msg_len);
+				break;
+			case 'b':
+				conn->state = DN_CONNECTION_STATE_IDLE;
+				return RESPONSE_BARRIER_OK;
+			case 'I':			/* EmptyQuery */
+				return RESPONSE_COMPLETE;
+			default:
+				/* sync lost? */
+				elog(WARNING, "Received unsupported message type: %c", msg_type);
+				conn->state = DN_CONNECTION_STATE_ERROR_FATAL;
+				/* stop reading */
+				return RESPONSE_COMPLETE;
+		}
+	}
+	/* never happen, but keep compiler quiet */
+	return RESPONSE_EOF;
+}
+#else
 /*
  * Read next message from the connection and update the combiner accordingly
  * If we are in an error state we just consume the messages, and do not proxy
@@ -1241,7 +2335,6 @@ handle_response(PGXCNodeHandle * conn, RemoteQueryState *combiner)
 	char		*msg;
 	int		msg_len;
 	char		msg_type;
-	bool		suspended = false;
 
 	for (;;)
 	{
@@ -1276,7 +2369,7 @@ handle_response(PGXCNodeHandle * conn, RemoteQueryState *combiner)
 				HandleCopyOutComplete(combiner);
 				break;
 			case 'C':			/* CommandComplete */
-				HandleCommandComplete(combiner, msg, msg_len, conn);
+				HandleCommandComplete(combiner, msg, msg_len);
 				break;
 			case 'T':			/* RowDescription */
 #ifdef DN_CONNECTION_DEBUG
@@ -1335,7 +2428,7 @@ handle_response(PGXCNodeHandle * conn, RemoteQueryState *combiner)
 			{
 				/*
 				 * Return result depends on previous connection state.
-				 * If it was PORTAL_SUSPENDED Coordinator want to send down
+				 * If it was PORTAL_SUSPENDED coordinator want to send down
 				 * another EXECUTE to fetch more rows, otherwise it is done
 				 * with the connection
 				 */
@@ -1352,8 +2445,10 @@ handle_response(PGXCNodeHandle * conn, RemoteQueryState *combiner)
 				HandleDatanodeCommandId(combiner, msg, msg_len);
 				break;
 			case 'b':
-				conn->state = DN_CONNECTION_STATE_IDLE;
-				return RESPONSE_BARRIER_OK;
+				{
+					conn->state = DN_CONNECTION_STATE_IDLE;
+					return RESPONSE_BARRIER_OK;
+				}
 			case 'I':			/* EmptyQuery */
 			default:
 				/* sync lost? */
@@ -1366,10 +2461,11 @@ handle_response(PGXCNodeHandle * conn, RemoteQueryState *combiner)
 	/* never happen, but keep compiler quiet */
 	return RESPONSE_EOF;
 }
+#endif
 
 
 /*
- * Has the Datanode sent Ready For Query
+ * Has the data node sent Ready For Query
  */
 
 bool
@@ -1378,6 +2474,7 @@ is_data_node_ready(PGXCNodeHandle * conn)
 	char		*msg;
 	int		msg_len;
 	char		msg_type;
+	bool		suspended = false;
 
 	for (;;)
 	{
@@ -1402,6 +2499,7 @@ is_data_node_ready(PGXCNodeHandle * conn)
 		switch (msg_type)
 		{
 			case 's':			/* PortalSuspended */
+				suspended = true;
 				break;
 
 			case 'Z':			/* ReadyForQuery */
@@ -1421,6 +2519,8 @@ is_data_node_ready(PGXCNodeHandle * conn)
 	return false;
 }
 
+
+#ifndef XCP
 /*
  * Construct a BEGIN TRANSACTION command after taking into account the
  * current options. The returned string is not palloced and is valid only until
@@ -1452,6 +2552,7 @@ generate_begin_command(void)
 
 	return begin_cmd;
 }
+#endif
 
 /*
  * Send BEGIN command to the Datanodes or Coordinators and receive responses.
@@ -1464,12 +2565,20 @@ pgxc_node_begin(int conn_count, PGXCNodeHandle **connections,
 {
 	int			i;
 	struct timeval *timeout = NULL;
+#ifdef XCP
+	ResponseCombiner combiner;
+#else
 	RemoteQueryState *combiner;
+#endif
 	TimestampTz timestamp = GetCurrentGTMStartTimestamp();
 	PGXCNodeHandle *new_connections[conn_count];
 	int new_count = 0;
+#ifdef XCP
+	char 		   *init_str;
+#else
 	int 			con[conn_count];
 	int				j = 0;
+#endif
 
 	/*
 	 * If no remote connections, we don't have anything to do
@@ -1479,6 +2588,12 @@ pgxc_node_begin(int conn_count, PGXCNodeHandle **connections,
 
 	for (i = 0; i < conn_count; i++)
 	{
+#ifdef XCP
+		if (!readOnly && !IsConnFromDatanode())
+		{
+			connections[i]->read_only = false;
+		}
+#else
 		/*
 		 * If the node is already a participant in the transaction, skip it
 		 */
@@ -1493,7 +2608,7 @@ pgxc_node_begin(int conn_count, PGXCNodeHandle **connections,
 				RegisterTransactionNodes(1, (void **)&connections[i], true);
 			continue;
 		}
-
+#endif
 		/*
 		 * PGXC TODO - A connection should not be in DN_CONNECTION_STATE_QUERY
 		 * state when we are about to send a BEGIN TRANSACTION command to the
@@ -1511,13 +2626,26 @@ pgxc_node_begin(int conn_count, PGXCNodeHandle **connections,
 		if (GlobalTimestampIsValid(timestamp) && pgxc_node_send_timestamp(connections[i], timestamp))
 			return EOF;
 
+#ifdef XCP
+		if (IS_PGXC_DATANODE && GlobalTransactionIdIsValid(gxid))
+			need_tran_block = true;
+		/* Send BEGIN if not already in transaction */
+		if (need_tran_block && connections[i]->transaction_status == 'I')
+#else
 		/* Send BEGIN */
 		if (need_tran_block)
+#endif
 		{
 			/* Send the BEGIN TRANSACTION command and check for errors */
+#ifdef XCP
+			if (pgxc_node_send_query(connections[i], "BEGIN"))
+				return EOF;
+#else
 			if (pgxc_node_send_query(connections[i], generate_begin_command()))
 				return EOF;
+#endif
 
+#ifndef XCP
 			con[j++] = PGXCNodeGetNodeId(connections[i]->nodeoid, node_type);
 			/*
 			 * Register the node as a participant in the transaction. The
@@ -1531,6 +2659,7 @@ pgxc_node_begin(int conn_count, PGXCNodeHandle **connections,
 			 * read-write statement.
 			 */
 			RegisterTransactionNodes(1, (void **)&connections[i], !readOnly);
+#endif
 			new_connections[new_count++] = connections[i];
 		}
 	}
@@ -1542,6 +2671,31 @@ pgxc_node_begin(int conn_count, PGXCNodeHandle **connections,
 	if (new_count == 0)
 		return 0;
 
+#ifdef XCP
+	InitResponseCombiner(&combiner, new_count, COMBINE_TYPE_NONE);
+	/*
+	 * Make sure there are zeroes in unused fields
+	 */
+	memset(&combiner, 0, sizeof(ScanState));
+
+	/* Receive responses */
+	if (pgxc_node_receive_responses(new_count, new_connections, timeout, &combiner))
+		return EOF;
+
+	/* Verify status */
+	if (!ValidateAndCloseCombiner(&combiner))
+		return EOF;
+
+	/* after transactions are started send down local set commands */
+	init_str = PGXCNodeGetTransactionParamStr();
+	if (init_str)
+	{
+		for (i = 0; i < new_count; i++)
+		{
+			pgxc_node_set_query(new_connections[i], init_str);
+		}
+	}
+#else
 	combiner = CreateResponseCombiner(new_count, COMBINE_TYPE_NONE);
 
 	/* Receive responses */
@@ -1568,10 +2722,700 @@ pgxc_node_begin(int conn_count, PGXCNodeHandle **connections,
 		if (res != 0)
 			return EOF;
 	}
+#endif
 
 	/* No problem, let's get going */
 	return 0;
 }
+
+
+#ifdef XCP
+/*
+ * Execute DISCARD ALL command on all allocated nodes to remove all session
+ * specific stuff before releasing them to pool for reuse by other sessions.
+ */
+static void
+pgxc_node_remote_cleanup_all(void)
+{
+	PGXCNodeAllHandles *handles = get_current_handles();
+	PGXCNodeHandle *new_connections[handles->co_conn_count + handles->dn_conn_count];
+	int				new_conn_count = 0;
+	int				i;
+	char		   *resetcmd = "RESET ALL;RESET SESSION AUTHORIZATION;"
+							   "RESET transaction_isolation;";
+
+	/*
+	 * We must handle reader and writer connections both since even a read-only
+	 * needs to be cleaned up.
+	 */
+	if (handles->co_conn_count + handles->dn_conn_count == 0)
+		return;
+
+	/*
+	 * Send down snapshot followed by DISCARD ALL command.
+	 */
+	for (i = 0; i < handles->co_conn_count; i++)
+	{
+		PGXCNodeHandle *handle = handles->coord_handles[i];
+
+		/* At this point connection should be in IDLE state */
+		if (handle->state != DN_CONNECTION_STATE_IDLE)
+		{
+			handle->state = DN_CONNECTION_STATE_ERROR_FATAL;
+			continue;
+		}
+
+		/*
+		 * We must go ahead and release connections anyway, so do not throw
+		 * an error if we have a problem here.
+		 */
+		if (pgxc_node_send_query(handle, resetcmd))
+		{
+			ereport(WARNING,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("Failed to clean up data nodes")));
+			handle->state = DN_CONNECTION_STATE_ERROR_FATAL;
+			continue;
+		}
+		new_connections[new_conn_count++] = handle;
+	}
+	for (i = 0; i < handles->dn_conn_count; i++)
+	{
+		PGXCNodeHandle *handle = handles->datanode_handles[i];
+
+		/* At this point connection should be in IDLE state */
+		if (handle->state != DN_CONNECTION_STATE_IDLE)
+		{
+			handle->state = DN_CONNECTION_STATE_ERROR_FATAL;
+			continue;
+		}
+
+		/*
+		 * We must go ahead and release connections anyway, so do not throw
+		 * an error if we have a problem here.
+		 */
+		if (pgxc_node_send_query(handle, resetcmd))
+		{
+			ereport(WARNING,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("Failed to clean up data nodes")));
+			handle->state = DN_CONNECTION_STATE_ERROR_FATAL;
+			continue;
+		}
+		new_connections[new_conn_count++] = handle;
+	}
+
+	if (new_conn_count)
+	{
+		ResponseCombiner combiner;
+		InitResponseCombiner(&combiner, new_conn_count, COMBINE_TYPE_NONE);
+		/* Receive responses */
+		pgxc_node_receive_responses(new_conn_count, new_connections, NULL, &combiner);
+		CloseCombiner(&combiner);
+	}
+}
+
+
+/*
+ * Prepare nodes which ran write operations during the transaction.
+ * Read only remote transactions are committed and connections are released
+ * back to the pool.
+ * Function returns the list of nodes where transaction is prepared, including
+ * local node, if requested, in format expected by the GTM server.
+ * If something went wrong the function tries to abort prepared transactions on
+ * the nodes where it succeeded and throws error. A warning is emitted if abort
+ * prepared fails.
+ * After completion remote connection handles are released.
+ */
+static char *
+pgxc_node_remote_prepare(char *prepareGID, bool localNode)
+{
+	bool 			isOK = true;
+	StringInfoData 	nodestr;
+	char			prepare_cmd[256];
+	char			abort_cmd[256];
+	GlobalTransactionId auxXid;
+	char		   *commit_cmd = "COMMIT TRANSACTION";
+	int				i;
+	ResponseCombiner combiner;
+	PGXCNodeHandle *connections[MaxDataNodes + MaxCoords];
+	int				conn_count = 0;
+	PGXCNodeAllHandles *handles = get_current_handles();
+
+	initStringInfo(&nodestr);
+	if (localNode)
+		appendStringInfoString(&nodestr, PGXCNodeName);
+
+	sprintf(prepare_cmd, "PREPARE TRANSACTION '%s'", prepareGID);
+
+	for (i = 0; i < handles->dn_conn_count; i++)
+	{
+		PGXCNodeHandle *conn = handles->datanode_handles[i];
+
+		/*
+		 * If something went wrong already we have nothing to do here. The error
+		 * will be reported at the end of the function, and we will rollback
+		 * remotes as part of the error handling.
+		 * Just skip to clean up section and check if we have already prepared
+		 * somewhere, we should abort that prepared transaction.
+		 */
+		if (!isOK)
+			goto prepare_err;
+
+		/*
+		 * Skip empty slots
+		 */
+		if (conn->sock == NO_SOCKET)
+			continue;
+		else if (conn->transaction_status == 'T')
+		{
+			/* Read in any pending input */
+			if (conn->state != DN_CONNECTION_STATE_IDLE)
+				BufferConnection(conn);
+
+			if (conn->read_only)
+			{
+				/* Send down prepare command */
+				if (pgxc_node_send_query(conn, commit_cmd))
+				{
+					/*
+					 * not a big deal, it was read only, the connection will be
+					 * abandoned later.
+					 */
+					ereport(LOG,
+							(errcode(ERRCODE_INTERNAL_ERROR),
+							 errmsg("failed to send COMMIT command to "
+								"the node %u", conn->nodeoid)));
+				}
+				else
+				{
+					/* Read responses from these */
+					connections[conn_count++] = conn;
+				}
+			}
+			else
+			{
+				/* Send down prepare command */
+				if (pgxc_node_send_query(conn, prepare_cmd))
+				{
+					/*
+					 * That is the trouble, we really want to prepare it.
+					 * Just emit warning so far and go to clean up.
+					 */
+					isOK = false;
+					ereport(WARNING,
+							(errcode(ERRCODE_INTERNAL_ERROR),
+							 errmsg("failed to send PREPARE TRANSACTION command to "
+								"the node %u", conn->nodeoid)));
+				}
+				else
+				{
+					char *nodename = get_pgxc_nodename(conn->nodeoid);
+					if (nodestr.len > 0)
+						appendStringInfoChar(&nodestr, ',');
+					appendStringInfoString(&nodestr, nodename);
+					/* Read responses from these */
+					connections[conn_count++] = conn;
+					/*
+					 * If it fails on remote node it would just return ROLLBACK.
+					 * Set the flag for the message handler so the response is
+					 * verified.
+					 */
+					conn->ck_resp_rollback = true;
+				}
+			}
+		}
+		else if (conn->transaction_status == 'E')
+		{
+			/*
+			 * Probably can not happen, if there was a error the engine would
+			 * abort anyway, even in case of explicit PREPARE.
+			 * Anyway, just in case...
+			 */
+			isOK = false;
+			ereport(WARNING,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("remote node %u is in error state", conn->nodeoid)));
+		}
+	}
+
+	for (i = 0; i < handles->co_conn_count; i++)
+	{
+		PGXCNodeHandle *conn = handles->coord_handles[i];
+
+		/*
+		 * If something went wrong already we have nothing to do here. The error
+		 * will be reported at the end of the function, and we will rollback
+		 * remotes as part of the error handling.
+		 * Just skip to clean up section and check if we have already prepared
+		 * somewhere, we should abort that prepared transaction.
+		 */
+		if (!isOK)
+			goto prepare_err;
+
+		/*
+		 * Skip empty slots
+		 */
+		if (conn->sock == NO_SOCKET)
+			continue;
+		else if (conn->transaction_status == 'T')
+		{
+			if (conn->read_only)
+			{
+				/* Send down prepare command */
+				if (pgxc_node_send_query(conn, commit_cmd))
+				{
+					/*
+					 * not a big deal, it was read only, the connection will be
+					 * abandoned later.
+					 */
+					ereport(LOG,
+							(errcode(ERRCODE_INTERNAL_ERROR),
+							 errmsg("failed to send COMMIT command to "
+								"the node %u", conn->nodeoid)));
+				}
+				else
+				{
+					/* Read responses from these */
+					connections[conn_count++] = conn;
+				}
+			}
+			else
+			{
+				/* Send down prepare command */
+				if (pgxc_node_send_query(conn, prepare_cmd))
+				{
+					/*
+					 * That is the trouble, we really want to prepare it.
+					 * Just emit warning so far and go to clean up.
+					 */
+					isOK = false;
+					ereport(WARNING,
+							(errcode(ERRCODE_INTERNAL_ERROR),
+							 errmsg("failed to send PREPARE TRANSACTION command to "
+								"the node %u", conn->nodeoid)));
+				}
+				else
+				{
+					char *nodename = get_pgxc_nodename(conn->nodeoid);
+					if (nodestr.len > 0)
+						appendStringInfoChar(&nodestr, ',');
+					appendStringInfoString(&nodestr, nodename);
+					/* Read responses from these */
+					connections[conn_count++] = conn;
+					/*
+					 * If it fails on remote node it would just return ROLLBACK.
+					 * Set the flag for the message handler so the response is
+					 * verified.
+					 */
+					conn->ck_resp_rollback = true;
+				}
+			}
+		}
+		else if (conn->transaction_status == 'E')
+		{
+			/*
+			 * Probably can not happen, if there was a error the engine would
+			 * abort anyway, even in case of explicit PREPARE.
+			 * Anyway, just in case...
+			 */
+			isOK = false;
+			ereport(WARNING,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("remote node %u is in error state", conn->nodeoid)));
+		}
+	}
+
+	SetSendCommandId(false);
+
+	if (!isOK)
+		goto prepare_err;
+	/* exit if nothing has been prepared */
+	if (conn_count > 0)
+	{
+		int result;
+		/*
+		 * Receive and check for any errors. In case of errors, we don't bail out
+		 * just yet. We first go through the list of connections and look for
+		 * errors on each connection. This is important to ensure that we run
+		 * an appropriate ROLLBACK command later on (prepared transactions must be
+		 * rolled back with ROLLBACK PREPARED commands).
+		 *
+		 * PGXCTODO - There doesn't seem to be a solid mechanism to track errors on
+		 * individual connections. The transaction_status field doesn't get set
+		 * every time there is an error on the connection. The combiner mechanism is
+		 * good for parallel proessing, but I think we should have a leak-proof
+		 * mechanism to track connection status
+		 */
+		InitResponseCombiner(&combiner, conn_count, COMBINE_TYPE_NONE);
+		/* Receive responses */
+		result = pgxc_node_receive_responses(conn_count, connections, NULL, &combiner);
+		if (result || !validate_combiner(&combiner))
+			goto prepare_err;
+		else
+			CloseCombiner(&combiner);
+
+		/* Before exit clean the flag, to avoid unnecessary checks */
+		for (i = 0; i < conn_count; i++)
+			connections[i]->ck_resp_rollback = false;
+
+		pfree_pgxc_all_handles(handles);
+		if (!temp_object_included && !PersistentConnections)
+		{
+			/* Clean up remote sessions */
+			pgxc_node_remote_cleanup_all();
+			release_handles();
+		}
+	}
+
+	return nodestr.data;
+prepare_err:
+	sprintf(abort_cmd, "ROLLBACK PREPARED '%s'", prepareGID);
+
+	auxXid = GetAuxilliaryTransactionId();
+	conn_count = 0;
+	for (i = 0; i < handles->dn_conn_count; i++)
+	{
+		PGXCNodeHandle *conn = handles->datanode_handles[i];
+
+		/*
+		 * PREPARE succeeded on that node, roll it back there
+		 */
+		if (conn->ck_resp_rollback)
+		{
+			conn->ck_resp_rollback = false;
+			/* sanity checks */
+			Assert(conn->sock != NO_SOCKET);
+			Assert(conn->transaction_status == 'I');
+			Assert(conn->state == DN_CONNECTION_STATE_IDLE);
+			/* Send down abort prepared command */
+			if (pgxc_node_send_gxid(conn, auxXid))
+			{
+				/*
+				 * Prepared transaction is left on the node, but we can not
+				 * do anything with that except warn the user.
+				 */
+				ereport(WARNING,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+						 errmsg("failed to send xid to "
+								"the node %u", conn->nodeoid)));
+			}
+			if (pgxc_node_send_query(conn, abort_cmd))
+			{
+				/*
+				 * Prepared transaction is left on the node, but we can not
+				 * do anything with that except warn the user.
+				 */
+				ereport(WARNING,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+						 errmsg("failed to send ABORT PREPARED command to "
+								"the node %u", conn->nodeoid)));
+			}
+			else
+			{
+				/* Read responses from these */
+				connections[conn_count++] = conn;
+			}
+		}
+	}
+	for (i = 0; i < handles->co_conn_count; i++)
+	{
+		PGXCNodeHandle *conn = handles->coord_handles[i];
+
+		if (conn->ck_resp_rollback)
+		{
+			conn->ck_resp_rollback = false;
+			/* sanity checks */
+			Assert(conn->sock != NO_SOCKET);
+			Assert(conn->transaction_status = 'I');
+			Assert(conn->state = DN_CONNECTION_STATE_IDLE);
+			/* Send down abort prepared command */
+			if (pgxc_node_send_gxid(conn, auxXid))
+			{
+				/*
+				 * Prepared transaction is left on the node, but we can not
+				 * do anything with that except warn the user.
+				 */
+				ereport(WARNING,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+						 errmsg("failed to send xid to "
+								"the node %u", conn->nodeoid)));
+			}
+			if (pgxc_node_send_query(conn, abort_cmd))
+			{
+				/*
+				 * Prepared transaction is left on the node, but we can not
+				 * do anything with that except warn the user.
+				 */
+				ereport(WARNING,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+						 errmsg("failed to send ABORT PREPARED command to "
+								"the node %u", conn->nodeoid)));
+			}
+			else
+			{
+				/* Read responses from these */
+				connections[conn_count++] = conn;
+			}
+		}
+	}
+	if (conn_count > 0)
+	{
+		/* Just read out responses, throw error from the first combiner */
+		ResponseCombiner combiner2;
+		InitResponseCombiner(&combiner2, conn_count, COMBINE_TYPE_NONE);
+		/* Receive responses */
+		pgxc_node_receive_responses(conn_count, connections, NULL, &combiner2);
+		CloseCombiner(&combiner2);
+	}
+	/*
+	 * If the flag is set we are here because combiner carries error message
+	 */
+	if (isOK)
+		pgxc_node_report_error(&combiner);
+	else
+		elog(ERROR, "failed to PREPARE transaction on one or more nodes");
+	return NULL;
+}
+
+
+/*
+ * Commit transactions on remote nodes.
+ * If barrier lock is set wait while it is released.
+ * Release remote connection after completion.
+ */
+static void
+pgxc_node_remote_commit(void)
+{
+	int				result = 0;
+	char		   *commitCmd = "COMMIT TRANSACTION";
+	int				i;
+	ResponseCombiner combiner;
+	PGXCNodeHandle *connections[MaxDataNodes + MaxCoords];
+	int				conn_count = 0;
+	PGXCNodeAllHandles *handles = get_current_handles();
+
+	SetSendCommandId(false);
+
+	/*
+	 * Barrier:
+	 *
+	 * We should acquire the BarrierLock in SHARE mode here to ensure that
+	 * there are no in-progress barrier at this point. This mechanism would
+	 * work as long as LWLock mechanism does not starve a EXCLUSIVE lock
+	 * requester
+	 */
+	LWLockAcquire(BarrierLock, LW_SHARED);
+
+	for (i = 0; i < handles->dn_conn_count; i++)
+	{
+		PGXCNodeHandle *conn = handles->datanode_handles[i];
+
+		/* Skip empty slots */
+		if (conn->sock == NO_SOCKET)
+			continue;
+
+		/*
+		 * We do not need to commit remote node if it is not in transaction.
+		 * If transaction is in error state the commit command will cause
+		 * rollback, that is OK
+		 */
+		if (conn->transaction_status != 'I')
+		{
+			/* Read in any pending input */
+			if (conn->state != DN_CONNECTION_STATE_IDLE)
+				BufferConnection(conn);
+
+			if (pgxc_node_send_query(conn, commitCmd))
+			{
+				/*
+				 * Do not bother with clean up, just bomb out. The error handler
+				 * will invoke RollbackTransaction which will do the work.
+				 */
+				ereport(ERROR,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+						 errmsg("failed to send COMMIT command to the node %u",
+								conn->nodeoid)));
+			}
+			else
+			{
+				/* Read responses from these */
+				connections[conn_count++] = conn;
+			}
+		}
+	}
+
+	for (i = 0; i < handles->co_conn_count; i++)
+	{
+		PGXCNodeHandle *conn = handles->coord_handles[i];
+
+		/* Skip empty slots */
+		if (conn->sock == NO_SOCKET)
+			continue;
+
+		/*
+		 * We do not need to commit remote node if it is not in transaction.
+		 * If transaction is in error state the commit command will cause
+		 * rollback, that is OK
+		 */
+		if (conn->transaction_status != 'I')
+		{
+			if (pgxc_node_send_query(conn, commitCmd))
+			{
+				/*
+				 * Do not bother with clean up, just bomb out. The error handler
+				 * will invoke RollbackTransaction which will do the work.
+				 */
+				ereport(ERROR,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+						 errmsg("failed to send COMMIT command to the node %u",
+								conn->nodeoid)));
+			}
+			else
+			{
+				/* Read responses from these */
+				connections[conn_count++] = conn;
+			}
+		}
+	}
+
+	/*
+	 * Release the BarrierLock.
+	 */
+	LWLockRelease(BarrierLock);
+
+	if (conn_count)
+	{
+		InitResponseCombiner(&combiner, conn_count, COMBINE_TYPE_NONE);
+		/* Receive responses */
+		result = pgxc_node_receive_responses(conn_count, connections, NULL, &combiner);
+		if (result || !validate_combiner(&combiner))
+			result = EOF;
+		else
+			CloseCombiner(&combiner);
+	}
+
+	stat_transaction(conn_count);
+
+	if (result)
+	{
+		if (combiner.errorMessage)
+			pgxc_node_report_error(&combiner);
+		else
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("Failed to COMMIT the transaction on one or more nodes")));
+	}
+
+	if (!temp_object_included && !PersistentConnections)
+	{
+		/* Clean up remote sessions */
+		pgxc_node_remote_cleanup_all();
+		release_handles();
+	}
+}
+
+
+/*
+ * Rollback transactions on remote nodes.
+ * Release remote connection after completion.
+ */
+static void
+pgxc_node_remote_abort(void)
+{
+	int				result = 0;
+	char		   *rollbackCmd = "ROLLBACK TRANSACTION";
+	int				i;
+	ResponseCombiner combiner;
+	PGXCNodeHandle *connections[MaxDataNodes + MaxCoords];
+	int				conn_count = 0;
+	PGXCNodeAllHandles *handles = get_current_handles();
+
+	SetSendCommandId(false);
+
+	for (i = 0; i < handles->dn_conn_count; i++)
+	{
+		PGXCNodeHandle *conn = handles->datanode_handles[i];
+
+		/* Skip empty slots */
+		if (conn->sock == NO_SOCKET)
+			continue;
+
+		if (conn->transaction_status != 'I')
+		{
+			/* Read in any pending input */
+			if (conn->state != DN_CONNECTION_STATE_IDLE)
+				BufferConnection(conn);
+
+			/*
+			 * Do not matter, is there committed or failed transaction,
+			 * just send down rollback to finish it.
+			 */
+			if (pgxc_node_send_query(conn, rollbackCmd))
+			{
+				add_error_message(conn,
+						"failed to send ROLLBACK TRANSACTION command");
+			}
+			else
+			{
+				/* Read responses from these */
+				connections[conn_count++] = conn;
+			}
+		}
+	}
+
+	for (i = 0; i < handles->co_conn_count; i++)
+	{
+		PGXCNodeHandle *conn = handles->coord_handles[i];
+
+		/* Skip empty slots */
+		if (conn->sock == NO_SOCKET)
+			continue;
+
+		if (conn->transaction_status != 'I')
+		{
+			/*
+			 * Do not matter, is there committed or failed transaction,
+			 * just send down rollback to finish it.
+			 */
+			if (pgxc_node_send_query(conn, rollbackCmd))
+			{
+				add_error_message(conn,
+						"failed to send ROLLBACK TRANSACTION command");
+			}
+			else
+			{
+				/* Read responses from these */
+				connections[conn_count++] = conn;
+			}
+		}
+	}
+
+	if (conn_count)
+	{
+		InitResponseCombiner(&combiner, conn_count, COMBINE_TYPE_NONE);
+		/* Receive responses */
+		result = pgxc_node_receive_responses(conn_count, connections, NULL, &combiner);
+		if (result || !validate_combiner(&combiner))
+			result = EOF;
+		else
+			CloseCombiner(&combiner);
+	}
+
+	stat_transaction(conn_count);
+
+	if (result)
+	{
+		if (combiner.errorMessage)
+			pgxc_node_report_error(&combiner);
+		else
+			ereport(LOG,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("Failed to ROLLBACK the transaction on one or more nodes")));
+	}
+}
+
+#else
 
 /*
  * Prepare all remote nodes involved in this transaction. The local node is
@@ -1922,6 +3766,8 @@ pgxc_node_remote_commit(void)
 		}
 	}
 
+	stat_transaction(write_conn_count + read_conn_count);
+
 	if (result)
 	{
 		if (combiner)
@@ -2079,11 +3925,133 @@ pgxc_node_remote_abort(void)
 
 	return;
 }
+#endif
+
 
 /*
  * Begin COPY command
  * The copy_connections array must have room for NumDataNodes items
  */
+#ifdef XCP
+void
+DataNodeCopyBegin(RemoteCopyData *rcstate)
+{
+	int i;
+	List *nodelist = rcstate->rel_loc->nodeList;
+	PGXCNodeHandle **connections;
+	bool need_tran_block;
+	GlobalTransactionId gxid;
+	ResponseCombiner combiner;
+	Snapshot snapshot = GetActiveSnapshot();
+	int conn_count = list_length(nodelist);
+
+	/* Get needed datanode connections */
+	if (!rcstate->is_from && IsLocatorReplicated(rcstate->rel_loc->locatorType))
+	{
+		/* Connections is a single handle to read from */
+		connections = (PGXCNodeHandle **) palloc(sizeof(PGXCNodeHandle *));
+		connections[0] = get_any_handle(nodelist);
+		conn_count = 1;
+	}
+	else
+	{
+		PGXCNodeAllHandles *pgxc_handles;
+		pgxc_handles = get_handles(nodelist, NULL, false);
+		connections = pgxc_handles->datanode_handles;
+		Assert(pgxc_handles->dn_conn_count == conn_count);
+		pfree(pgxc_handles);
+	}
+
+	/*
+	 * If more than one nodes are involved or if we are already in a
+	 * transaction block, we must the remote statements in a transaction block
+	 */
+	need_tran_block = (conn_count > 1) || (TransactionBlockStatusCode() == 'T');
+
+	elog(DEBUG1, "conn_count = %d, need_tran_block = %s", conn_count,
+			need_tran_block ? "true" : "false");
+
+	/* Gather statistics */
+	stat_statement();
+	stat_transaction(conn_count);
+
+	gxid = GetCurrentTransactionId();
+
+	/* Start transaction on connections where it is not started */
+	if (pgxc_node_begin(conn_count, connections, gxid, need_tran_block, false, PGXC_NODE_DATANODE))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("Could not begin transaction on data nodes.")));
+	}
+
+	/*
+	 * COPY TO do not use locator, it just takes connections from it, and
+	 * we do not look up distribution data type in this case.
+	 * So always use LOCATOR_TYPE_RROBIN to avoid errors because of not
+	 * defined partType if real locator type is HASH or MODULO.
+	 * Create locator before sending down query, because createLocator may
+	 * fail and we leave with dirty connections.
+	 * If we get an error now datanode connection will be clean and error
+	 * handler will issue transaction abort.
+	 */
+	rcstate->locator = createLocator(
+			rcstate->is_from ? rcstate->rel_loc->locatorType
+					: LOCATOR_TYPE_RROBIN,
+			rcstate->is_from ? RELATION_ACCESS_INSERT : RELATION_ACCESS_READ,
+			rcstate->dist_type,
+			LOCATOR_LIST_POINTER,
+			conn_count,
+			(void *) connections,
+			NULL,
+			false);
+
+	/* Send query to nodes */
+	for (i = 0; i < conn_count; i++)
+	{
+		CHECK_OWNERSHIP(connections[i], NULL);
+
+		if (snapshot && pgxc_node_send_snapshot(connections[i], snapshot))
+		{
+			add_error_message(connections[i], "Can not send request");
+			pfree(connections);
+			freeLocator(rcstate->locator);
+			rcstate->locator = NULL;
+			return;
+		}
+		if (pgxc_node_send_query(connections[i], rcstate->query_buf.data) != 0)
+		{
+			add_error_message(connections[i], "Can not send request");
+			pfree(connections);
+			freeLocator(rcstate->locator);
+			rcstate->locator = NULL;
+			return;
+		}
+	}
+
+	/*
+	 * We are expecting CopyIn response, but do not want to send it to client,
+	 * caller should take care about this, because here we do not know if
+	 * client runs console or file copy
+	 */
+	InitResponseCombiner(&combiner, conn_count, COMBINE_TYPE_NONE);
+	/*
+	 * Make sure there are zeroes in unused fields
+	 */
+	memset(&combiner, 0, sizeof(ScanState));
+
+	/* Receive responses */
+	if (pgxc_node_receive_responses(conn_count, connections, NULL, &combiner)
+			|| !ValidateAndCloseCombiner(&combiner))
+	{
+		DataNodeCopyFinish(conn_count, connections);
+		freeLocator(rcstate->locator);
+		rcstate->locator = NULL;
+		return;
+	}
+	pfree(connections);
+}
+#else
 PGXCNodeHandle**
 DataNodeCopyBegin(const char *query, List *nodelist, Snapshot snapshot)
 {
@@ -2126,6 +4094,10 @@ DataNodeCopyBegin(const char *query, List *nodelist, Snapshot snapshot)
 	i = 0;
 	foreach(nodeitem, nodelist)
 		copy_connections[lfirst_int(nodeitem)] = connections[i++];
+
+	/* Gather statistics */
+	stat_statement();
+	stat_transaction(conn_count);
 
 	gxid = GetCurrentTransactionId();
 
@@ -2185,10 +4157,91 @@ DataNodeCopyBegin(const char *query, List *nodelist, Snapshot snapshot)
 	pfree(connections);
 	return copy_connections;
 }
+#endif
+
 
 /*
  * Send a data row to the specified nodes
  */
+#ifdef XCP
+int
+DataNodeCopyIn(char *data_row, int len, int conn_count, PGXCNodeHandle** copy_connections)
+{
+	/* size + data row + \n */
+	int msgLen = 4 + len + 1;
+	int nLen = htonl(msgLen);
+	int i;
+
+	for(i = 0; i < conn_count; i++)
+	{
+		PGXCNodeHandle *handle = copy_connections[i];
+		if (handle->state == DN_CONNECTION_STATE_COPY_IN)
+		{
+			/* precalculate to speed up access */
+			int bytes_needed = handle->outEnd + 1 + msgLen;
+
+			/* flush buffer if it is almost full */
+			if (bytes_needed > COPY_BUFFER_SIZE)
+			{
+				int to_send = handle->outEnd;
+
+				/* First look if data node has sent a error message */
+				int read_status = pgxc_node_read_data(handle, true);
+				if (read_status == EOF || read_status < 0)
+				{
+					add_error_message(handle, "failed to read data from data node");
+					return EOF;
+				}
+
+				if (handle->inStart < handle->inEnd)
+				{
+					ResponseCombiner combiner;
+					InitResponseCombiner(&combiner, 1, COMBINE_TYPE_NONE);
+					/*
+					 * Make sure there are zeroes in unused fields
+					 */
+					memset(&combiner, 0, sizeof(ScanState));
+					handle_response(handle, &combiner);
+					if (!ValidateAndCloseCombiner(&combiner))
+						return EOF;
+				}
+
+				if (DN_CONNECTION_STATE_ERROR(handle))
+					return EOF;
+
+				/*
+				 * Try to send down buffered data if we have
+				 */
+				if (to_send && send_some(handle, to_send) < 0)
+				{
+					add_error_message(handle, "failed to send data to data node");
+					return EOF;
+				}
+			}
+
+			if (ensure_out_buffer_capacity(bytes_needed, handle) != 0)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_OUT_OF_MEMORY),
+						 errmsg("out of memory")));
+			}
+
+			handle->outBuffer[handle->outEnd++] = 'd';
+			memcpy(handle->outBuffer + handle->outEnd, &nLen, 4);
+			handle->outEnd += 4;
+			memcpy(handle->outBuffer + handle->outEnd, data_row, len);
+			handle->outEnd += len;
+			handle->outBuffer[handle->outEnd++] = '\n';
+		}
+		else
+		{
+			add_error_message(handle, "Invalid data node connection");
+			return EOF;
+		}
+	}
+	return 0;
+}
+#else
 int
 DataNodeCopyIn(char *data_row, int len, ExecNodes *exec_nodes, PGXCNodeHandle** copy_connections)
 {
@@ -2340,7 +4393,81 @@ DataNodeCopyIn(char *data_row, int len, ExecNodes *exec_nodes, PGXCNodeHandle** 
 	}
 	return 0;
 }
+#endif
 
+
+#ifdef XCP
+uint64
+DataNodeCopyOut(PGXCNodeHandle** copy_connections,
+							  int conn_count, FILE* copy_file)
+{
+	ResponseCombiner combiner;
+	uint64		processed;
+	bool 		error;
+
+	InitResponseCombiner(&combiner, conn_count, COMBINE_TYPE_SUM);
+	/*
+	 * Make sure there are zeroes in unused fields
+	 */
+	memset(&combiner, 0, sizeof(ScanState));
+	combiner.processed = 0;
+	/* If there is an existing file where to copy data, pass it to combiner */
+	if (copy_file)
+	{
+		combiner.copy_file = copy_file;
+		combiner.remoteCopyType = REMOTE_COPY_FILE;
+	}
+	else
+	{
+		combiner.copy_file = NULL;
+		combiner.remoteCopyType = REMOTE_COPY_STDOUT;
+	}
+	error = (pgxc_node_receive_responses(conn_count, copy_connections, NULL, &combiner) != 0);
+
+	processed = combiner.processed;
+
+	if (!ValidateAndCloseCombiner(&combiner) || error)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_DATA_CORRUPTED),
+				 errmsg("Unexpected response from the data nodes when combining, request type %d", combiner.request_type)));
+	}
+
+	return processed;
+}
+
+
+uint64
+DataNodeCopyStore(PGXCNodeHandle** copy_connections,
+								int conn_count, Tuplestorestate* store)
+{
+	ResponseCombiner combiner;
+	uint64		processed;
+	bool 		error;
+
+	InitResponseCombiner(&combiner, conn_count, COMBINE_TYPE_SUM);
+	/*
+	 * Make sure there are zeroes in unused fields
+	 */
+	memset(&combiner, 0, sizeof(ScanState));
+	combiner.processed = 0;
+	combiner.remoteCopyType = REMOTE_COPY_TUPLESTORE;
+	combiner.tuplestorestate = store;
+
+	error = (pgxc_node_receive_responses(conn_count, copy_connections, NULL, &combiner) != 0);
+
+	processed = combiner.processed;
+
+	if (!ValidateAndCloseCombiner(&combiner) || error)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_DATA_CORRUPTED),
+				 errmsg("Unexpected response from the data nodes when combining, request type %d", combiner.request_type)));
+	}
+
+	return processed;
+}
+#else
 uint64
 DataNodeCopyOut(ExecNodes *exec_nodes,
 				PGXCNodeHandle** copy_connections,
@@ -2416,16 +4543,28 @@ DataNodeCopyOut(ExecNodes *exec_nodes,
 
 	return processed;
 }
+#endif
+
 
 /*
  * Finish copy process on all connections
  */
+#ifdef XCP
+void
+DataNodeCopyFinish(int conn_count, PGXCNodeHandle** connections)
+#else
 void
 DataNodeCopyFinish(PGXCNodeHandle** copy_connections, int primary_dn_index, CombineType combine_type)
+#endif
 {
 	int		i;
+#ifdef XCP
+	ResponseCombiner combiner;
+#else
 	RemoteQueryState *combiner = NULL;
+#endif
 	bool 		error = false;
+#ifndef XCP
 	struct timeval *timeout = NULL; /* wait forever */
 	PGXCNodeHandle *connections[NumDataNodes];
 	PGXCNodeHandle *primary_handle = NULL;
@@ -2453,6 +4592,7 @@ DataNodeCopyFinish(PGXCNodeHandle** copy_connections, int primary_dn_index, Comb
 		combiner = CreateResponseCombiner(conn_count + 1, combine_type);
 		error = (pgxc_node_receive_responses(1, &primary_handle, timeout, combiner) != 0) || error;
 	}
+#endif
 
 	for (i = 0; i < conn_count; i++)
 	{
@@ -2463,11 +4603,22 @@ DataNodeCopyFinish(PGXCNodeHandle** copy_connections, int primary_dn_index, Comb
 			error = DataNodeCopyEnd(handle, false);
 	}
 
+#ifdef XCP
+	InitResponseCombiner(&combiner, conn_count, COMBINE_TYPE_NONE);
+	/*
+	 * Make sure there are zeroes in unused fields
+	 */
+	memset(&combiner, 0, sizeof(ScanState));
+	error = (pgxc_node_receive_responses(conn_count, connections, NULL, &combiner) != 0) || error;
+
+	if (!ValidateAndCloseCombiner(&combiner) || error)
+#else
 	if (!combiner)
 		combiner = CreateResponseCombiner(conn_count, combine_type);
 	error = (pgxc_node_receive_responses(conn_count, connections, timeout, combiner) != 0) || error;
 
 	if (!ValidateAndCloseCombiner(combiner) || error)
+#endif
 		ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
 				 errmsg("Error while running COPY")));
@@ -2503,6 +4654,8 @@ DataNodeCopyEnd(PGXCNodeHandle *handle, bool is_error)
 	return false;
 }
 
+
+#ifndef XCP
 RemoteQueryState *
 ExecInitRemoteQuery(RemoteQuery *node, EState *estate, int eflags)
 {
@@ -2555,7 +4708,12 @@ ExecInitRemoteQuery(RemoteQuery *node, EState *estate, int eflags)
 	 * If there are parameters supplied, get them into a form to be sent to the
 	 * Datanodes with bind message. We should not have had done this before.
 	 */
-	SetDataRowForExtParams(estate->es_param_list_info, remotestate);
+	if (estate->es_param_list_info)
+	{
+		Assert(!remotestate->paramval_data);
+		remotestate->paramval_len = ParamListToDataRow(estate->es_param_list_info,
+												&remotestate->paramval_data);
+	}
 
 	/*
 	 * Initialize result tuple type and projection info.
@@ -2571,6 +4729,8 @@ ExecInitRemoteQuery(RemoteQuery *node, EState *estate, int eflags)
 
 	return remotestate;
 }
+#endif
+
 
 /*
  * Get Node connections depending on the connection type:
@@ -2596,8 +4756,14 @@ get_exec_connections(RemoteQueryState *planstate,
 	if (exec_type == EXEC_ON_COORDS)
 		is_query_coord_only = true;
 
+#ifdef XCP
+	if (exec_type == EXEC_ON_CURRENT)
+		return get_current_handles();
+#endif
+
 	if (exec_nodes)
 	{
+#ifndef XCP
 		if (exec_nodes->en_expr)
 		{
 			/* execution time determining of target Datanodes */
@@ -2644,10 +4810,7 @@ get_exec_connections(RemoteQueryState *planstate,
 			else if (nodes)
 			{
 				if (exec_type == EXEC_ON_DATANODES || exec_type == EXEC_ON_ALL_NODES)
-				{
 					nodelist = exec_nodes->nodeList;
-					primarynode = exec_nodes->primarynodelist;
-				}
 			}
 
 			if (nodes)
@@ -2655,6 +4818,7 @@ get_exec_connections(RemoteQueryState *planstate,
 			FreeRelationLocInfo(rel_loc_info);
 		}
 		else
+#endif
 		{
 			if (exec_type == EXEC_ON_DATANODES || exec_type == EXEC_ON_ALL_NODES)
 				nodelist = exec_nodes->nodeList;
@@ -2734,22 +4898,31 @@ get_exec_connections(RemoteQueryState *planstate,
 	return pgxc_handles;
 }
 
+
 static bool
 pgxc_start_command_on_connection(PGXCNodeHandle *connection,
 									RemoteQueryState *remotestate,
 									Snapshot snapshot)
 {
 	CommandId	cid;
+#ifdef XCP
+	ResponseCombiner *combiner = (ResponseCombiner *) remotestate;
+	RemoteQuery	*step = (RemoteQuery *) combiner->ss.ps.plan;
+	CHECK_OWNERSHIP(connection, combiner);
+#else
 	RemoteQuery	*step = (RemoteQuery *) remotestate->ss.ps.plan;
 	if (connection->state == DN_CONNECTION_STATE_QUERY)
 		BufferConnection(connection);
+#endif
 
 	/*
 	 * Scan descriptor would be valid and would contain a valid snapshot
 	 * in cases when we need to send out of order command id to data node
 	 * e.g. in case of a fetch
 	 */
-
+#ifdef XCP
+	cid = GetCurrentCommandId(false);
+#else
 	if (remotestate->cursor != NULL &&
 	    remotestate->cursor[0] != '\0' &&
 	    remotestate->ss.ss_currentScanDesc != NULL &&
@@ -2770,29 +4943,26 @@ pgxc_start_command_on_connection(PGXCNodeHandle *connection,
 		else
 			cid = GetCurrentCommandId(false);
 	}
+#endif
 
 	if (pgxc_node_send_cmd_id(connection, cid) < 0 )
 		return false;
 
 	if (snapshot && pgxc_node_send_snapshot(connection, snapshot))
 		return false;
-	if (step->statement || step->cursor || remotestate->rqs_num_params)
+	if (step->statement || step->cursor || step->remote_param_types)
 	{
 		/* need to use Extended Query Protocol */
 		int	fetch = 0;
 		bool	prepared = false;
-		bool	send_desc = false;
 
-		if (step->base_tlist != NULL ||
-		    step->exec_nodes->accesstype == RELATION_ACCESS_READ ||
-		    step->has_row_marks)
-			send_desc = true;
-
+#ifndef XCP
 		/* if prepared statement is referenced see if it is already exist */
 		if (step->statement)
 			prepared = ActivateDatanodeStatementOnNode(step->statement,
 													   PGXCNodeGetNodeId(connection->nodeoid,
 																		 PGXC_NODE_DATANODE));
+#endif
 		/*
 		 * execute and fetch rows only if they will be consumed
 		 * immediately by the sorter
@@ -2800,15 +4970,19 @@ pgxc_start_command_on_connection(PGXCNodeHandle *connection,
 		if (step->cursor)
 			fetch = 1;
 
+#ifdef XCP
+		combiner->extended_query = true;
+#endif
+
 		if (pgxc_node_send_query_extended(connection,
 							prepared ? NULL : step->sql_statement,
 							step->statement,
 							step->cursor,
-							remotestate->rqs_num_params,
-							remotestate->rqs_param_types,
+							step->remote_num_params,
+							step->remote_param_types,
 							remotestate->paramval_len,
 							remotestate->paramval_data,
-							send_desc,
+							step->has_row_marks ? true : step->read_only,
 							fetch) != 0)
 			return false;
 	}
@@ -2821,31 +4995,8 @@ pgxc_start_command_on_connection(PGXCNodeHandle *connection,
 }
 
 
-/*
- * IsReturningDMLOnReplicatedTable
- *
- * This function returns true if the passed RemoteQuery
- * 1. Operates on a table that is replicated
- * 2. Represents a DML
- * 3. Has a RETURNING clause in it
- *
- * If the passed RemoteQuery has a non null base_tlist
- * means that DML has a RETURNING clause.
- */
-
-static bool
-IsReturningDMLOnReplicatedTable(RemoteQuery *rq)
-{
-	if (IsExecNodesReplicated(rq->exec_nodes) &&
-		rq->base_tlist != NULL &&	/* Means DML has RETURNING */
-		(rq->exec_nodes->accesstype == RELATION_ACCESS_UPDATE ||
-		rq->exec_nodes->accesstype == RELATION_ACCESS_INSERT))
-		return true;
-
-	return false;
-}
-
-void
+#ifndef XCP
+static void
 do_query(RemoteQueryState *node)
 {
 	RemoteQuery		*step = (RemoteQuery *) node->ss.ps.plan;
@@ -2857,16 +5008,10 @@ do_query(RemoteQueryState *node)
 	PGXCNodeHandle		**connections = NULL;
 	PGXCNodeHandle		*primaryconnection = NULL;
 	int			i;
-	int			regular_conn_count = 0;
+	int			regular_conn_count;
+	int			total_conn_count;
 	bool			need_tran_block;
 	PGXCNodeAllHandles	*pgxc_connections;
-
-	/*
-	 * A Postgres-XC node cannot run transactions while in recovery as
-	 * this operation needs transaction IDs. This is more a safety guard than anything else.
-	 */
-	if (RecoveryInProgress())
-		elog(ERROR, "cannot run transaction to remote nodes during recovery");
 
 	/*
 	 * Remember if the remote query is accessing a temp object
@@ -2878,22 +5023,6 @@ do_query(RemoteQueryState *node)
 		ExecSetTempObjectIncluded();
 
 	/*
-	 * Consider a test case
-	 *
-	 * create table rf(a int, b int) distributed by replication;
-	 * insert into rf values(1,2),(3,4) returning ctid;
-	 *
-	 * While inserting the first row do_query works fine, receives the returned
-	 * row from the first connection and returns it. In this iteration the other
-	 * datanodes also had returned rows but they have not yet been read from the
-	 * network buffers. On Next Iteration do_query does not enter the data
-	 * receiving loop because it finds that node->connections is not null.
-	 * It is therefore required to set node->connections to null here.
-	 */
-	if (node->conn_count == 0)
-		node->connections = NULL;
-
-	/*
 	 * Get connections for Datanodes only, utilities and DDLs
 	 * are launched in ExecRemoteUtility
 	 */
@@ -2902,17 +5031,19 @@ do_query(RemoteQueryState *node)
 	if (step->exec_type == EXEC_ON_DATANODES)
 	{
 		connections = pgxc_connections->datanode_handles;
-		regular_conn_count = pgxc_connections->dn_conn_count;
+		total_conn_count = regular_conn_count = pgxc_connections->dn_conn_count;
 	}
 	else if (step->exec_type == EXEC_ON_COORDS)
 	{
 		connections = pgxc_connections->coord_handles;
-		regular_conn_count = pgxc_connections->co_conn_count;
+		total_conn_count = regular_conn_count = pgxc_connections->co_conn_count;
 	}
 
 	primaryconnection = pgxc_connections->primary_handle;
 
-	/* Primary connection is counted separately */
+	/*
+	 * Primary connection is counted separately but is included in total_conn_count if used.
+	 */
 	if (primaryconnection)
 		regular_conn_count--;
 
@@ -2950,6 +5081,9 @@ do_query(RemoteQueryState *node)
 	elog(DEBUG1, "has primary = %s, regular_conn_count = %d, "
 				 "need_tran_block = %s", primaryconnection ? "true" : "false",
 				 regular_conn_count, need_tran_block ? "true" : "false");
+
+	stat_statement();
+	stat_transaction(total_conn_count);
 
 	gxid = GetCurrentTransactionId();
 
@@ -2992,30 +5126,6 @@ do_query(RemoteQueryState *node)
 			res = handle_response(primaryconnection, node);
 			if (res == RESPONSE_COMPLETE)
 				break;
-			else if (res == RESPONSE_TUPDESC)
-			{
-				ExecSetSlotDescriptor(scanslot, node->tuple_desc);
-				/*
-				 * Now tuple table slot is responsible for freeing the
-				 * descriptor
-				 */
-				node->tuple_desc = NULL;
-				/*
-				 * RemoteQuery node doesn't support backward scan, so
-				 * randomAccess is false, neither we want this tuple store
-				 * persist across transactions.
-				 */
-				node->tuplestorestate = tuplestore_begin_heap(false, false, work_mem);
-				tuplestore_set_eflags(node->tuplestorestate, node->eflags);
-			}
-			else if (res == RESPONSE_DATAROW)
-			{
-				pfree(node->currentRow.msg);
-				node->currentRow.msg = NULL;
-				node->currentRow.msglen = 0;
-				node->currentRow.msgnode = 0;
-				continue;
-			}
 			else if (res == RESPONSE_EOF)
 				continue;
 			else
@@ -3106,15 +5216,33 @@ do_query(RemoteQueryState *node)
 				 * descriptor
 				 */
 				node->tuple_desc = NULL;
-				if (node->rqs_for_sort)
+				if (step->sort)
 				{
-					/*
-					 * First message is already in the buffer
-					 * Further fetch will be under the control of Sort plan
-					 * above. So, don't wait till first row is fetched.
-					 */
+					SimpleSort *sort = step->sort;
+
 					node->connections = connections;
 					node->conn_count = regular_conn_count;
+					/*
+					 * First message is already in the buffer
+					 * Further fetch will be under tuplesort control
+					 * If query does not produce rows tuplesort will not
+					 * be initialized
+					 */
+					node->tuplesortstate = tuplesort_begin_merge(
+										   scanslot->tts_tupleDescriptor,
+										   sort->numCols,
+										   sort->sortColIdx,
+										   sort->sortOperators,
+										   sort->sortCollations,
+										   sort->nullsFirst,
+										   node,
+										   work_mem);
+					/*
+					 * Break the loop, do not wait for first row.
+					 * Tuplesort module want to control node it is
+					 * fetching rows from, while in this loop first
+					 * row would be got from random node
+					 */
 					break;
 				}
 				else
@@ -3145,15 +5273,6 @@ do_query(RemoteQueryState *node)
 		}
 		/* report error if any */
 		pgxc_node_report_error(node);
-
-		if (node->rqs_for_sort)
-		{
-			/*
-			 * Break the loop, do not wait for first row. See comment above for
-			 * rqs_for_sort.
-			 */
-			break;
-		}
 	}
 
 	if (node->cursor_count)
@@ -3223,6 +5342,13 @@ RemoteQueryNext(ScanState *scan_node)
 		node->update_cursor = NULL;
 		pfree_pgxc_all_handles(all_dn_handles);
 	}
+
+	/* We can't have both tuplesortstate and tuplestorestate */
+	Assert(!(node->tuplesortstate && node->tuplestorestate));
+
+	if (node->tuplesortstate)
+		tuplesort_gettupleslot((Tuplesortstate *) node->tuplesortstate,
+									  true, scanslot);
 	else if(node->tuplestorestate)
 	{
 		/*
@@ -3242,50 +5368,7 @@ RemoteQueryNext(ScanState *scan_node)
 				eof_tuplestore = true;
 		}
 
-		/*
-		 * Consider a test case
-		 *
-		 * create table ta1 (v1 int, v2 int);
-		 * insert into ta1 values(1,2),(2,3),(3,4);
-		 *
-		 * create table ta2 (v1 int, v2 int);
-		 * insert into ta2 values(1,2),(2,3),(3,4);
-		 *
-		 * select t1.ctid, t2.ctid,* from ta1 t1, ta2 t2
-		 * where t2.v2<=3 order by t1.v1;
-		 *          ctid  | ctid  | v1 | v2 | v1 | v2
-		 *         -------+-------+----+----+----+----
-		 * Row_1    (0,1) | (0,1) |  1 |  2 |  1 |  2
-		 * Row_2    (0,1) | (0,2) |  1 |  2 |  2 |  3
-		 * Row_3    (0,2) | (0,1) |  2 |  3 |  1 |  2
-		 * Row_4    (0,2) | (0,2) |  2 |  3 |  2 |  3
-		 * Row_5    (0,1) | (0,1) |  3 |  4 |  1 |  2
-		 * Row_6    (0,1) | (0,2) |  3 |  4 |  2 |  3
-		 *         (6 rows)
-		 *
-		 * Note that in the resulting join, we are getting one row of ta1 twice,
-		 * as shown by the ctid's in the results. Now consider this update
-		 *
-		 * update ta1 t1 set v2=t1.v2+10 from ta2 t2
-		 * where t2.v2<=3 returning t1.ctid,t1.v1 t1_v1, t1.v2 t1_v2;
-		 *
-		 * The first iteration of the update runs for Row_1, succeeds and
-		 * updates its ctid to say (0,3). In the second iteration for Row_2,
-		 * since the ctid of the row has already changed, fails to update any
-		 * row and hence do_query does not return any tuple. The FetchTuple
-		 * call in RemoteQueryNext hence fails and eof_underlying is set to true.
-		 * However in the third iteration for Row_3, the update succeeds and
-		 * returns a row, but since the eof_underlying is already set to true,
-		 * the RemoteQueryNext does not bother calling FetchTuple, we therefore
-		 * do not get more than one row returned as a result of the update
-		 * returning query. It is therefore required in RemoteQueryNext to call
-		 * FetchTuple in case do_query has copied a row in node->currentRow.msg.
-		 * Also we have to reset the eof_underlying flag every time
-		 * FetchTuple succeeds to clear any previously set status.
-		 */
-		if (eof_tuplestore &&
-			(!node->eof_underlying ||
-			(node->currentRow.msg != NULL)))
+		if (eof_tuplestore && !node->eof_underlying)
 		{
 			/*
 			 * If tuplestore has reached its end but the underlying RemoteQueryNext() hasn't
@@ -3293,15 +5376,13 @@ RemoteQueryNext(ScanState *scan_node)
 			 */
 			if (FetchTuple(node, scanslot))
 			{
-				/* See comments a couple of lines above */
-				node->eof_underlying = false;
-				/*
-				 * Append a copy of the returned tuple to tuplestore.  NOTE: because
-				 * the tuplestore is certainly in EOF state, its read position will
-				 * move forward over the added tuple.  This is what we want.
-				 */
-				if (tuplestorestate && !TupIsNull(scanslot))
-					tuplestore_puttupleslot(tuplestorestate, scanslot);
+					/*
+					 * Append a copy of the returned tuple to tuplestore.  NOTE: because
+					 * the tuplestore is certainly in EOF state, its read position will
+					 * move forward over the added tuple.  This is what we want.
+					 */
+					if (tuplestorestate && !TupIsNull(scanslot))
+						tuplestore_puttupleslot(tuplestorestate, scanslot);
 			}
 			else
 				node->eof_underlying = true;
@@ -3310,8 +5391,7 @@ RemoteQueryNext(ScanState *scan_node)
 		if (eof_tuplestore && node->eof_underlying)
 			ExecClearTuple(scanslot);
 	}
-	else if (node->rqs_for_sort)
-		getrow_for_tapesort(node, scanslot);
+	/* No tuple store whatsoever, no result from the datanode */
 	else
 		ExecClearTuple(scanslot);
 
@@ -3368,9 +5448,13 @@ ExecEndRemoteQuery(RemoteQueryState *node)
 		if (res == RESPONSE_EOF)
 		{
 			struct timeval timeout;
+#ifdef XCP
+			timeout.tv_sec = END_QUERY_TIMEOUT / 1000;
+			timeout.tv_usec = (END_QUERY_TIMEOUT % 1000) * 1000;
+#else
 			timeout.tv_sec = END_QUERY_TIMEOUT;
 			timeout.tv_usec = 0;
-
+#endif
 			if (pgxc_node_receive(1, &conn, &timeout))
 				ereport(ERROR,
 						(errcode(ERRCODE_INTERNAL_ERROR),
@@ -3378,8 +5462,14 @@ ExecEndRemoteQuery(RemoteQueryState *node)
 		}
 	}
 
-	if (node->tuplestorestate != NULL)
+	if (node->tuplesortstate != NULL || node->tuplestorestate != NULL)
 		ExecClearTuple(node->ss.ss_ScanTupleSlot);
+	/*
+	 * Release tuplesort resources
+	 */
+	if (node->tuplesortstate != NULL)
+		tuplesort_end((Tuplesortstate *) node->tuplesortstate);
+	node->tuplesortstate = NULL;
 	/*
 	 * Release tuplestore resources
 	 */
@@ -3441,17 +5531,11 @@ ExecEndRemoteQuery(RemoteQueryState *node)
 		node->paramval_len = 0;
 	}
 
-	/* Free the param types if they are newly allocated */
-	if (node->rqs_param_types &&
-	    node->rqs_param_types != ((RemoteQuery*)node->ss.ps.plan)->rq_param_types)
-	{
-		pfree(node->rqs_param_types);
-		node->rqs_param_types = NULL;
-		node->rqs_num_params = 0;
-	}
-
 	if (node->ss.ss_currentRelation)
 		ExecCloseScanRelation(node->ss.ss_currentRelation);
+
+	if (node->tmp_ctx)
+		MemoryContextDelete(node->tmp_ctx);
 
 	CloseCombiner(node);
 }
@@ -3506,52 +5590,35 @@ close_node_cursors(PGXCNodeHandle **connections, int conn_count, char *cursor)
 
 	ValidateAndCloseCombiner(combiner);
 }
+#endif
 
 
 /*
  * Encode parameter values to format of DataRow message (the same format is
  * used in Bind) to prepare for sending down to Datanodes.
- * The data row is copied to RemoteQueryState.paramval_data.
+ * The buffer to store encoded value is palloc'ed and returned as the result
+ * parameter. Function returns size of the result
  */
-void
-SetDataRowForExtParams(ParamListInfo paraminfo, RemoteQueryState *rq_state)
+int
+ParamListToDataRow(ParamListInfo params, char** result)
 {
 	StringInfoData buf;
 	uint16 n16;
 	int i;
 	int real_num_params = 0;
-	RemoteQuery *node = (RemoteQuery*) rq_state->ss.ps.plan;
-
-	/* If there are no parameters, there is no data to BIND. */
-	if (!paraminfo)
-		return;
-
-	/*
-	 * If this query has been generated internally as a part of two-step DML
-	 * statement, it uses only the internal parameters for input values taken
-	 * from the source data, and it never uses external parameters. So even if
-	 * parameters were being set externally, they won't be present in this
-	 * statement (they might be present in the source data query). In such
-	 * case where parameters refer to the values returned by SELECT query, the
-	 * parameter data and parameter types would be set in SetDataRowForIntParams().
-	 */
-	if (node->rq_params_internal)
-		return;
-
-	Assert(!rq_state->paramval_data);
 
 	/*
 	 * It is necessary to fetch parameters
 	 * before looking at the output value.
 	 */
-	for (i = 0; i < paraminfo->numParams; i++)
+	for (i = 0; i < params->numParams; i++)
 	{
 		ParamExternData *param;
 
-		param = &paraminfo->params[i];
+		param = &params->params[i];
 
-		if (!OidIsValid(param->ptype) && paraminfo->paramFetch != NULL)
-			(*paraminfo->paramFetch) (paraminfo, i + 1);
+		if (!OidIsValid(param->ptype) && params->paramFetch != NULL)
+			(*params->paramFetch) (params, i + 1);
 
 		/*
 		 * This is the last parameter found as useful, so we need
@@ -3570,9 +5637,8 @@ SetDataRowForExtParams(ParamListInfo paraminfo, RemoteQueryState *rq_state)
 	 */
 	if (real_num_params == 0)
 	{
-		rq_state->paramval_data = NULL;
-		rq_state->paramval_len = 0;
-		return;
+		*result = NULL;
+		return 0;
 	}
 
 	initStringInfo(&buf);
@@ -3584,7 +5650,7 @@ SetDataRowForExtParams(ParamListInfo paraminfo, RemoteQueryState *rq_state)
 	/* Parameter values */
 	for (i = 0; i < real_num_params; i++)
 	{
-		ParamExternData *param = &paraminfo->params[i];
+		ParamExternData *param = &params->params[i];
 		uint32 n32;
 
 		/*
@@ -3627,38 +5693,15 @@ SetDataRowForExtParams(ParamListInfo paraminfo, RemoteQueryState *rq_state)
 		}
 	}
 
-
-	/*
-	 * If parameter types are not already set, infer them from
-	 * the paraminfo.
-	 */
-	if (node->rq_num_params > 0)
-	{
-		/*
-		 * Use the already known param types for BIND. Parameter types
-		 * can be already known when the same plan is executed multiple
-		 * times.
-		 */
-		if (node->rq_num_params != real_num_params)
-			elog(ERROR, "Number of user-supplied parameters do not match "
-						"the number of remote parameters");
-		rq_state->rqs_num_params = node->rq_num_params;
-		rq_state->rqs_param_types = node->rq_param_types;
-	}
-	else
-	{
-		rq_state->rqs_num_params = real_num_params;
-		rq_state->rqs_param_types = (Oid *) palloc(sizeof(Oid) * real_num_params);
-		for (i = 0; i < real_num_params; i++)
-			rq_state->rqs_param_types[i] = paraminfo->params[i].ptype;
-	}
-
-	/* Assign the newly allocated data row to paramval */
-	rq_state->paramval_data = buf.data;
-	rq_state->paramval_len = buf.len;
+	/* Take data from the buffer */
+	*result = palloc(buf.len);
+	memcpy(*result, buf.data, buf.len);
+	pfree(buf.data);
+	return buf.len;
 }
 
 
+#ifndef XCP
 /* ----------------------------------------------------------------
  *		ExecRemoteQueryReScan
  *
@@ -3673,11 +5716,23 @@ ExecRemoteQueryReScan(RemoteQueryState *node, ExprContext *exprCtxt)
 	 */
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 
-	if (!node->tuplestorestate)
-		return;
+	if (((RemoteQuery *) node->ss.ps.plan)->sort)
+	{
+		if (!node->tuplesortstate)
+			return;
 
-	tuplestore_rescan(node->tuplestorestate);
+		tuplesort_rescan(node->tuplesortstate);
+	}
+	else
+	{
+		if (!node->tuplestorestate)
+			return;
+
+		tuplestore_rescan(node->tuplestorestate);
+	}
+
 }
+#endif
 
 
 /*
@@ -3695,10 +5750,17 @@ void
 ExecRemoteUtility(RemoteQuery *node)
 {
 	RemoteQueryState *remotestate;
+#ifdef XCP
+	ResponseCombiner *combiner;
+#endif
 	bool		force_autocommit = node->force_autocommit;
 	RemoteQueryExecType exec_type = node->exec_type;
 	GlobalTransactionId gxid = InvalidGlobalTransactionId;
+#ifdef XCP
+	Snapshot snapshot = NULL;
+#else
 	Snapshot snapshot = GetActiveSnapshot();
+#endif
 	PGXCNodeAllHandles *pgxc_connections;
 	int			co_conn_count;
 	int			dn_conn_count;
@@ -3709,6 +5771,11 @@ ExecRemoteUtility(RemoteQuery *node)
 	if (!force_autocommit)
 		RegisterTransactionLocalNode(true);
 
+#ifdef XCP
+	remotestate = makeNode(RemoteQueryState);
+	combiner = (ResponseCombiner *)remotestate;
+	InitResponseCombiner(combiner, 0, node->combine_type);
+#else
 	/*
 	 * It is possible to invoke create table with inheritance on
 	 * temporary objects. Remember that we might have accessed a temp object
@@ -3717,11 +5784,17 @@ ExecRemoteUtility(RemoteQuery *node)
 		ExecSetTempObjectIncluded();
 
 	remotestate = CreateResponseCombiner(0, node->combine_type);
+#endif
 
 	pgxc_connections = get_exec_connections(NULL, node->exec_nodes, exec_type);
 
 	dn_conn_count = pgxc_connections->dn_conn_count;
 	co_conn_count = pgxc_connections->co_conn_count;
+#ifdef XCP
+	/* exit right away if no nodes to run command on */
+	if (dn_conn_count == 0 && co_conn_count == 0)
+		return;
+#endif
 
 	if (force_autocommit)
 		need_tran_block = false;
@@ -3741,12 +5814,18 @@ ExecRemoteUtility(RemoteQuery *node)
 	}
 
 	gxid = GetCurrentTransactionId();
+#ifdef XCP
+	if (ActiveSnapshotSet())
+		snapshot = GetActiveSnapshot();
+#endif
 	if (!GlobalTransactionIdIsValid(gxid))
 		ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
 				 errmsg("Failed to get next transaction ID")));
 
+#ifndef XCP
 	if (exec_type == EXEC_ON_ALL_NODES || exec_type == EXEC_ON_DATANODES)
+#endif
 	{
 		if (pgxc_node_begin(dn_conn_count, pgxc_connections->datanode_handles,
 					gxid, need_tran_block, false, PGXC_NODE_DATANODE))
@@ -3774,7 +5853,9 @@ ExecRemoteUtility(RemoteQuery *node)
 		}
 	}
 
+#ifndef XCP
 	if (exec_type == EXEC_ON_ALL_NODES || exec_type == EXEC_ON_COORDS)
+#endif
 	{
 		if (pgxc_node_begin(co_conn_count, pgxc_connections->coord_handles,
 					gxid, need_tran_block, false, PGXC_NODE_COORDINATOR))
@@ -3803,8 +5884,10 @@ ExecRemoteUtility(RemoteQuery *node)
 	 * Stop if all commands are completed or we got a data row and
 	 * initialized state node for subsequent invocations
 	 */
+#ifndef XCP
 	if (exec_type == EXEC_ON_ALL_NODES ||
 		exec_type == EXEC_ON_DATANODES)
+#endif
 	{
 		while (dn_conn_count > 0)
 		{
@@ -3822,12 +5905,26 @@ ExecRemoteUtility(RemoteQuery *node)
 			while (i < dn_conn_count)
 			{
 				PGXCNodeHandle *conn = pgxc_connections->datanode_handles[i];
+#ifdef XCP
+				int res = handle_response(conn, combiner);
+#else
 				int res = handle_response(conn, remotestate);
+#endif
 				if (res == RESPONSE_EOF)
 				{
 					i++;
 				}
 				else if (res == RESPONSE_COMPLETE)
+#ifdef XCP
+				{
+					/* Ignore, wait for ReadyForQuery */
+				}
+				else if (res == RESPONSE_ERROR)
+				{
+					/* Ignore, wait for ReadyForQuery */
+				}
+				else if (res == RESPONSE_READY)
+#endif
 				{
 					if (i < --dn_conn_count)
 						pgxc_connections->datanode_handles[i] =
@@ -3850,8 +5947,10 @@ ExecRemoteUtility(RemoteQuery *node)
 	}
 
 	/* Make the same for Coordinators */
+#ifndef XCP
 	if (exec_type == EXEC_ON_ALL_NODES ||
 		exec_type == EXEC_ON_COORDS)
+#endif
 	{
 		while (co_conn_count > 0)
 		{
@@ -3862,12 +5961,26 @@ ExecRemoteUtility(RemoteQuery *node)
 
 			while (i < co_conn_count)
 			{
+#ifdef XCP
+				int res = handle_response(pgxc_connections->coord_handles[i], combiner);
+#else
 				int res = handle_response(pgxc_connections->coord_handles[i], remotestate);
+#endif
 				if (res == RESPONSE_EOF)
 				{
 					i++;
 				}
 				else if (res == RESPONSE_COMPLETE)
+#ifdef XCP
+				{
+					/* Ignore, wait for ReadyForQuery */
+				}
+				else if (res == RESPONSE_ERROR)
+				{
+					/* Ignore, wait for ReadyForQuery */
+				}
+				else if (res == RESPONSE_READY)
+#endif
 				{
 					if (i < --co_conn_count)
 						pgxc_connections->coord_handles[i] =
@@ -3893,7 +6006,11 @@ ExecRemoteUtility(RemoteQuery *node)
 	 * error message pending we can report it. All connections should be in
 	 * consistent state now and so they can be released to the pool after ROLLBACK.
 	 */
+#ifdef XCP
+	pgxc_node_report_error(combiner);
+#else
 	pgxc_node_report_error(remotestate);
+#endif
 }
 
 
@@ -3903,19 +6020,26 @@ ExecRemoteUtility(RemoteQuery *node)
 void
 PGXCNodeCleanAndRelease(int code, Datum arg)
 {
+#ifndef XCP
 	/* Clean up prepared transactions before releasing connections */
 	DropAllPreparedStatements();
 
 	/* Release Datanode connections */
 	release_handles();
+#endif
 
-	/* Disconnect from Pooler */
+	/* Disconnect from Pooler, if any connection is still held Pooler close it */
 	PoolManagerDisconnect();
 
 	/* Close connection with GTM */
 	CloseGTM();
+
+	/* Dump collected statistics to the log */
+	stat_log();
 }
 
+
+#ifndef XCP
 static int
 pgxc_get_connections(PGXCNodeHandle *connections[], int size, List *connlist)
 {
@@ -3939,13 +6063,19 @@ pgxc_get_transaction_nodes(PGXCNodeHandle *connections[], int size, bool write)
 {
 	return pgxc_get_connections(connections, size, write ? XactWriteNodes : XactReadNodes);
 }
+#endif
+
 
 void
 ExecCloseRemoteStatement(const char *stmt_name, List *nodelist)
 {
 	PGXCNodeAllHandles *all_handles;
 	PGXCNodeHandle	  **connections;
+#ifdef XCP
+	ResponseCombiner	combiner;
+#else
 	RemoteQueryState   *combiner;
+#endif
 	int					conn_count;
 	int 				i;
 
@@ -3983,7 +6113,15 @@ ExecCloseRemoteStatement(const char *stmt_name, List *nodelist)
 		}
 	}
 
+#ifdef XCP
+	InitResponseCombiner(&combiner, conn_count, COMBINE_TYPE_NONE);
+	/*
+	 * Make sure there are zeroes in unused fields
+	 */
+	memset(&combiner, 0, sizeof(ScanState));
+#else
 	combiner = CreateResponseCombiner(conn_count, COMBINE_TYPE_NONE);
+#endif
 
 	while (conn_count > 0)
 	{
@@ -3999,24 +6137,39 @@ ExecCloseRemoteStatement(const char *stmt_name, List *nodelist)
 		i = 0;
 		while (i < conn_count)
 		{
+#ifdef XCP
+			int res = handle_response(connections[i], &combiner);
+#else
 			int res = handle_response(connections[i], combiner);
+#endif
 			if (res == RESPONSE_EOF)
 			{
 				i++;
 			}
+#ifdef XCP
+			else if (res == RESPONSE_READY ||
+					connections[i]->state == DN_CONNECTION_STATE_ERROR_FATAL)
+#else
 			else if (res == RESPONSE_COMPLETE)
+#endif
 			{
 				if (--conn_count > i)
 					connections[i] = connections[conn_count];
 			}
+#ifndef XCP
 			else
 			{
 				connections[i]->state = DN_CONNECTION_STATE_ERROR_FATAL;
 			}
+#endif
 		}
 	}
 
+#ifdef XCP
+	ValidateAndCloseCombiner(&combiner);
+#else
 	ValidateAndCloseCombiner(combiner);
+#endif
 	pfree_pgxc_all_handles(all_handles);
 }
 
@@ -4025,14 +6178,23 @@ ExecCloseRemoteStatement(const char *stmt_name, List *nodelist)
  *
  * In a COPY TO, send to all Datanodes PG_HEADER for a COPY TO in binary mode.
  */
+#ifdef XCP
+int
+DataNodeCopyInBinaryForAll(char *msg_buf, int len, int conn_count,
+									  PGXCNodeHandle** connections)
+#else
 int DataNodeCopyInBinaryForAll(char *msg_buf, int len, PGXCNodeHandle** copy_connections)
+#endif
 {
 	int 		i;
+#ifndef XCP
 	int 		conn_count = 0;
 	PGXCNodeHandle *connections[NumDataNodes];
+#endif
 	int msgLen = 4 + len + 1;
 	int nLen = htonl(msgLen);
 
+#ifndef XCP
 	for (i = 0; i < NumDataNodes; i++)
 	{
 		PGXCNodeHandle *handle = copy_connections[i];
@@ -4042,6 +6204,7 @@ int DataNodeCopyInBinaryForAll(char *msg_buf, int len, PGXCNodeHandle** copy_con
 
 		connections[conn_count++] = handle;
 	}
+#endif
 
 	for (i = 0; i < conn_count; i++)
 	{
@@ -4073,6 +6236,7 @@ int DataNodeCopyInBinaryForAll(char *msg_buf, int len, PGXCNodeHandle** copy_con
 	return 0;
 }
 
+#ifndef XCP
 /*
  * ExecSetTempObjectIncluded
  *
@@ -4106,137 +6270,37 @@ ExecIsTempObjectIncluded(void)
 }
 
 /*
- * ExecProcNodeDMLInXC
- *
- * This function is used by ExecInsert/Update/Delete to execute the
- * Insert/Update/Delete on the datanode using RemoteQuery plan.
- *
- * In XC, a non-FQSed UPDATE/DELETE is planned as a two step process
- * The first step selects the ctid & node id of the row to be modified and the
- * second step creates a parameterized query that is supposed to take the data
- * row returned by the lower plan node as the parameters to modify the affected
- * row. In case of an INSERT however the first step is used to get the new
- * column values to be inserted in the target table and the second step uses
- * those values as parameters of the INSERT query.
- *
- * We use extended query protocol to avoid repeated planning of the query and
- * pass the column values(in case of an INSERT) and ctid & xc_node_id
- * (in case of UPDATE/DELETE) as parameters while executing the query.
- *
- * Parameters:
- * resultRemoteRel:  The RemoteQueryState containing DML statement to be
- *					 executed
- * previousStepSlot: The tuple returned by the first step (described above)
- *					 to be used as parameters in the second step.
- *
- * Returns the result of RETURNING clause if any
+ * Execute given tuple in the remote relation. We use extended query protocol
+ * to avoid repeated planning of the query. So we must pass the column values
+ * as parameters while executing the query.
+ * This is used by queries using a remote query planning of standard planner.
  */
-TupleTableSlot *
-ExecProcNodeDMLInXC(RemoteQueryState *resultRemoteRel,
-					TupleTableSlot *previousStepSlot)
+void
+ExecRemoteQueryStandard(Relation resultRelationDesc,
+						RemoteQueryState *resultRemoteRel,
+						TupleTableSlot *slot)
 {
-	ExprContext	*econtext = resultRemoteRel->ss.ps.ps_ExprContext;
-	TupleTableSlot	*returningResultSlot = NULL;	/* RETURNING clause result */
-	TupleTableSlot	*temp_slot;
-	bool			dml_returning_on_replicated = false;
-	RemoteQuery		*step = (RemoteQuery *) resultRemoteRel->ss.ps.plan;
+	ExprContext		*econtext = resultRemoteRel->ss.ps.ps_ExprContext;
 
 	/*
-	 * If the tuple returned by the previous step was null,
-	 * simply return null tuple, no need to execute the DML
+	 * Use data row returned by the previous step as a parameters for
+	 * the main query.
 	 */
-	if (TupIsNull(previousStepSlot))
-		return NULL;
-
-	/*
-	 * The current implementation of DMLs with RETURNING when run on replicated
-	 * tables returns row from one of the datanodes. In order to achieve this
-	 * ExecProcNode is repeatedly called saving one tuple and rejecting the rest.
-	 * Do we have a DML on replicated table with RETURNING?
-	 */
-	dml_returning_on_replicated = IsReturningDMLOnReplicatedTable(step);
-
-	/*
-	 * Use data row returned by the previous step as parameter for
-	 * the DML to be executed in this step.
-	 */
-	SetDataRowForIntParams(previousStepSlot, resultRemoteRel);
-
-	/*
-	 * do_query calls get_exec_connections to determine target nodes
-	 * at execution time. The function get_exec_connections can decide
-	 * to evaluate en_expr to determine the target nodes. To evaluate en_expr,
-	 * ExecEvalVar is called which picks up values from ecxt_scantuple if Var
-	 * does not refer either OUTER or INNER varno. Hence we should copy the
-	 * tuple returned by previous step in ecxt_scantuple if econtext is set.
-	 * The econtext is set only when en_expr is set for execution time
-	 * determination of the target nodes.
-	 */
-	if (econtext)
-		econtext->ecxt_scantuple = previousStepSlot;
-
-	/*
-	 * Consider the case of a non FQSed INSERT for example. The executor keeps
-	 * track of # of tuples processed in es_processed member of EState structure.
-	 * When a non-FQSed INSERT completes this member is increased once due to
-	 * estate->es_processed += rowcount
-	 * in HandleCommandComplete and once due to
-	 * (estate->es_processed)++
-	 * in ExecInsert. The result is that although only one row is inserted we
-	 * get message as if two rows got inserted INSERT 0 2. Now consider the
-	 * same INSERT case when it is FQSed. In this case the # of tuples processed
-	 * is increased just once in HandleCommandComplete since ExecInsert is never
-	 * called in this case and hence we get correct output i.e. INSERT 0 1
-	 * To handle this error in processed tuple counting we use a variable
-	 * non_fqs_dml which indicates whether this DML is FQSed or not. To indicate
-	 * that this DML is not FQSed non_fqs_dml is set to true here and then if
-	 * it is found true in HandleCommandComplete we skip handling of
-	 * es_processed there and let ExecInsert do the processed tuple counting.
-	 */
-	resultRemoteRel->non_fqs_dml = true;
-
-	/*
-	 * This loop would be required to reject tuples received from datanodes
-	 * when a DML with RETURNING is run on a replicated table otherwise it
-	 * would run once.
-	 * PGXC_TODO: This approach is error prone if the DML statement constructed
-	 * by the planner is such that it updates more than one row (even in case of
-	 * non-replicated data). Fix it.
-	 */
-	do
+	if (!TupIsNull(slot))
 	{
-		temp_slot = ExecProcNode((PlanState *)resultRemoteRel);
-		if (!TupIsNull(temp_slot))
-		{
-			/* Have we already copied the returned tuple? */
-			if (returningResultSlot == NULL)
-			{
-				/* Copy the received tuple to be returned later */
-				returningResultSlot = MakeSingleTupleTableSlot(temp_slot->tts_tupleDescriptor);
-				returningResultSlot = ExecCopySlot(returningResultSlot, temp_slot);
-			}
-			/* Clear the received tuple, the copy required has already been saved */
-			ExecClearTuple(temp_slot);
-		}
-		else
-		{
-			/* Null tuple received, so break the loop */
-			ExecClearTuple(temp_slot);
-			break;
-		}
-	} while (dml_returning_on_replicated);
+		resultRemoteRel->paramval_len = ExecCopySlotDatarow(slot,
+												 &resultRemoteRel->paramval_data);
 
-	/*
-	 * A DML can impact more than one row, e.g. an update without any where
-	 * clause on a table with more than one row. We need to make sure that
-	 * RemoteQueryNext calls do_query for each affected row, hence we reset
-	 * the flag here and finish the DML being executed only when we return
-	 * NULL from ExecModifyTable
-	 */
-	resultRemoteRel->query_Done = false;
-
-	return returningResultSlot;
+		/*
+		 * The econtext is set only when en_expr is set for execution time
+		 * evalulation of the target node.
+		 */
+		if (econtext)
+			econtext->ecxt_scantuple = slot;
+		do_query(resultRemoteRel);
+	}
 }
+
 
 void
 RegisterTransactionNodes(int count, void **connections, bool write)
@@ -4277,6 +6341,7 @@ ForgetTransactionNodes(void)
 	list_free(XactWriteNodes);
 	XactWriteNodes = NIL;
 }
+#endif
 
 /*
  * Clear per transaction remote information
@@ -4284,11 +6349,57 @@ ForgetTransactionNodes(void)
 void
 AtEOXact_Remote(void)
 {
+#ifdef XCP
+	PGXCNodeResetParams(true);
+#else
 	ExecClearTempObjectIncluded();
 	ForgetTransactionNodes();
 	clear_RemoteXactState();
+#endif
 }
 
+#ifdef XCP
+/*
+ * Invoked when local transaction is about to be committed.
+ * If nodestring is specified commit specified prepared transaction on remote
+ * nodes, otherwise commit remote nodes which are in transaction.
+ */
+void
+PreCommit_Remote(char *prepareGID, char *nodestring, bool preparedLocalNode)
+{
+	/*
+	 * Made node connections persistent if we are committing transaction
+	 * that touched temporary tables. We never drop that flag, so after some
+	 * transaction has created a temp table the session's remote connections
+	 * become persistent.
+	 * We do not need to set that flag if transaction that has created a temp
+	 * table finally aborts - remote connections are not holding temporary
+	 * objects in this case.
+	 */
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord() && MyXactAccessedTempRel)
+		temp_object_included = true;
+
+
+	/*
+	 * OK, everything went fine. At least one remote node is in PREPARED state
+	 * and the transaction is successfully prepared on all the involved nodes.
+	 * Now we are ready to commit the transaction. We need a new GXID to send
+	 * down the remote nodes to execute the forthcoming COMMIT PREPARED
+	 * command. So grab one from the GTM and track it. It will be closed along
+	 * with the main transaction at the end.
+	 */
+	if (nodestring)
+	{
+		Assert(preparedLocalNode);
+		pgxc_node_remote_finish(prepareGID, true, nodestring,
+								GetAuxilliaryTransactionId(),
+								GetTopGlobalTransactionId());
+
+	}
+	else
+		pgxc_node_remote_commit();
+}
+#else
 /*
  * Do pre-commit processing for remote nodes which includes Datanodes and
  * Coordinators. If more than one nodes are involved in the transaction write
@@ -4354,6 +6465,7 @@ PreCommit_Remote(char *prepareGID, bool preparedLocalNode)
 	if (!PersistentConnections)
 		release_handles();
 }
+#endif
 
 /*
  * Do abort processing for the transaction. We must abort the transaction on
@@ -4371,6 +6483,104 @@ PreCommit_Remote(char *prepareGID, bool preparedLocalNode)
 bool
 PreAbort_Remote(void)
 {
+#ifdef XCP
+	/*
+	 * We are about to abort current transaction, and there could be an
+	 * unexpected error leaving the node connection in some state requiring
+	 * clean up, like COPY or pending query results.
+	 * If we are running copy we should send down CopyFail message and read
+	 * all possible incoming messages, there could be copy rows (if running
+	 * COPY TO) ErrorResponse, ReadyForQuery.
+	 * If there are pending results (connection state is DN_CONNECTION_STATE_QUERY)
+	 * we just need to read them in and discard, all necessary commands are
+	 * already sent. The end of input could be CommandComplete or
+	 * PortalSuspended, in either case subsequent ROLLBACK closes the portal.
+	 */
+	PGXCNodeAllHandles *all_handles;
+	PGXCNodeHandle	   *clean_nodes[NumCoords + NumDataNodes];
+	int					node_count = 0;
+	int 				i;
+
+	all_handles = get_current_handles();
+	/*
+	 * Find "dirty" coordinator connections.
+	 * COPY is never running on a coordinator connections, we just check for
+	 * pending data.
+	 */
+	for (i = 0; i < all_handles->co_conn_count; i++)
+	{
+		PGXCNodeHandle *handle = all_handles->coord_handles[i];
+
+		if (handle->state == DN_CONNECTION_STATE_QUERY)
+		{
+			/*
+			 * Forget previous combiner if any since input will be handled by
+			 * different one.
+			 */
+			handle->combiner = NULL;
+			clean_nodes[node_count++] = handle;
+		}
+	}
+
+	/*
+	 * The same for data nodes, but cancel COPY if it is running.
+	 */
+	for (i = 0; i < all_handles->dn_conn_count; i++)
+	{
+		PGXCNodeHandle *handle = all_handles->datanode_handles[i];
+
+		if (handle->state == DN_CONNECTION_STATE_QUERY)
+		{
+			/*
+			 * Forget previous combiner if any since input will be handled by
+			 * different one.
+			 */
+			handle->combiner = NULL;
+			clean_nodes[node_count++] = handle;
+		}
+		else if (handle->state == DN_CONNECTION_STATE_COPY_IN ||
+				handle->state == DN_CONNECTION_STATE_COPY_OUT)
+		{
+			DataNodeCopyEnd(handle, true);
+			clean_nodes[node_count++] = handle;
+		}
+	}
+
+	pfree_pgxc_all_handles(all_handles);
+
+	/*
+	 * Now read and discard any data from the connections found "dirty"
+	 */
+	if (node_count > 0)
+	{
+		ResponseCombiner combiner;
+
+		InitResponseCombiner(&combiner, node_count, COMBINE_TYPE_NONE);
+		/*
+		 * Make sure there are zeroes in unused fields
+		 */
+		memset(&combiner, 0, sizeof(ScanState));
+		combiner.connections = clean_nodes;
+		combiner.conn_count = node_count;
+		combiner.request_type = REQUEST_TYPE_ERROR;
+
+		pgxc_connections_cleanup(&combiner);
+
+		/* prevent pfree'ing local variable */
+		combiner.connections = NULL;
+
+		CloseCombiner(&combiner);
+	}
+
+	pgxc_node_remote_abort();
+
+	if (!temp_object_included && !PersistentConnections)
+	{
+		/* Clean up remote sessions */
+		pgxc_node_remote_cleanup_all();
+		release_handles();
+	}
+#else
 	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
 	{
 		cancel_query();
@@ -4423,13 +6633,62 @@ PreAbort_Remote(void)
 
 	if (!PersistentConnections)
 		release_handles();
+#endif
 
 	return true;
 }
 
+
+/*
+ * Invoked when local transaction is about to be prepared.
+ * If invoked on a Datanode just commit transaction on remote connections,
+ * since secondary sessions are read only and never need to be prepared.
+ * Otherwise run PREPARE on remote connections, where writable commands were
+ * sent (connections marked as not read-only).
+ * If that is explicit PREPARE (issued by client) notify GTM.
+ * In case of implicit PREPARE not involving local node (ex. caused by
+ * INSERT, UPDATE or DELETE) commit prepared transaction immediately.
+ * Return list of node names where transaction was actually prepared, include
+ * the name of the local node if localNode is true.
+ */
 char *
 PrePrepare_Remote(char *prepareGID, bool localNode, bool implicit)
 {
+#ifdef XCP
+	/* Always include local node if running explicit prepare */
+	char *nodestring;
+
+	/*
+	 * Primary session is doing 2PC, just commit secondary processes and exit
+	 */
+	if (IS_PGXC_DATANODE)
+	{
+		pgxc_node_remote_commit();
+		return NULL;
+	}
+
+	nodestring = pgxc_node_remote_prepare(prepareGID,
+												!implicit || localNode);
+
+	if (!implicit && IS_PGXC_COORDINATOR && !IsConnFromCoord())
+		/* Save the node list and gid on GTM. */
+		StartPreparedTranGTM(GetTopGlobalTransactionId(), prepareGID,
+							 nodestring);
+
+	/*
+	 * If no need to commit on local node go ahead and commit prepared
+	 * transaction right away.
+	 */
+	if (implicit && !localNode && nodestring)
+	{
+		pgxc_node_remote_finish(prepareGID, true, nodestring,
+								GetAuxilliaryTransactionId(),
+								GetTopGlobalTransactionId());
+		pfree(nodestring);
+		return NULL;
+	}
+	return nodestring;
+#else
 	init_RemoteXactState(false);
 	/*
 	 * PREPARE the transaction on all nodes including remote nodes as well as
@@ -4446,8 +6705,21 @@ PrePrepare_Remote(char *prepareGID, bool localNode, bool implicit)
 		preparedNodes = pgxc_node_get_nodelist(true);
 
 	return preparedNodes;
+#endif
 }
 
+#ifdef XCP
+/*
+ * Invoked immediately after local node is prepared.
+ * Notify GTM about completed prepare.
+ */
+void
+PostPrepare_Remote(char *prepareGID, bool implicit)
+{
+	if (!implicit)
+		PrepareTranGTM(GetTopGlobalTransactionId());
+}
+#else
 void
 PostPrepare_Remote(char *prepareGID, char *nodestring, bool implicit)
 {
@@ -4472,7 +6744,9 @@ PostPrepare_Remote(char *prepareGID, char *nodestring, bool implicit)
 	/* Now forget the transaction nodes */
 	ForgetTransactionNodes();
 }
+#endif
 
+#ifndef XCP
 /*
  * Return the list of nodes where the prepared transaction is not yet committed
  */
@@ -4522,10 +6796,65 @@ pgxc_node_get_nodelist(bool localNode)
 
 	return nodestring;
 }
+#endif
 
+
+#ifdef XCP
+/*
+ * Returns true if 2PC is required for consistent commit: if there was write
+ * activity on two or more nodes within current transaction.
+ */
 bool
 IsTwoPhaseCommitRequired(bool localWrite)
 {
+	PGXCNodeAllHandles *handles;
+	bool				found = localWrite;
+	int 				i;
+
+	/* Never run 2PC on Datanode-to-Datanode connection */
+	if (IS_PGXC_DATANODE)
+		return false;
+
+	if (MyXactAccessedTempRel)
+	{
+		elog(DEBUG1, "Transaction accessed temporary objects - "
+				"2PC will not be used and that can lead to data inconsistencies "
+				"in case of failures");
+		return false;
+	}
+
+	handles = get_current_handles();
+	for (i = 0; i < handles->dn_conn_count; i++)
+	{
+		PGXCNodeHandle *conn = handles->datanode_handles[i];
+		if (conn->sock != NO_SOCKET && !conn->read_only &&
+				conn->transaction_status == 'T')
+		{
+			if (found)
+				return true; /* second found */
+			else
+				found = true; /* first found */
+		}
+	}
+	for (i = 0; i < handles->co_conn_count; i++)
+	{
+		PGXCNodeHandle *conn = handles->coord_handles[i];
+		if (conn->sock != NO_SOCKET && !conn->read_only &&
+				conn->transaction_status == 'T')
+		{
+			if (found)
+				return true; /* second found */
+			else
+				found = true; /* first found */
+		}
+	}
+	return false;
+}
+#else
+bool
+IsTwoPhaseCommitRequired(bool localWrite)
+{
+
 	if ((list_length(XactWriteNodes) > 1) ||
 		((list_length(XactWriteNodes) == 1) && localWrite))
 	{
@@ -4555,21 +6884,12 @@ clear_RemoteXactState(void)
 	if ((remoteXactState.remoteNodeHandles == NULL) ||
 		(remoteXactState.maxRemoteNodes < (NumDataNodes + NumCoords)))
 	{
-		if (!remoteXactState.remoteNodeHandles)
-			remoteXactState.remoteNodeHandles = (PGXCNodeHandle **)
-				malloc(sizeof(PGXCNodeHandle *) * (MaxDataNodes + MaxCoords));
-		else
-			remoteXactState.remoteNodeHandles = (PGXCNodeHandle **)
-				realloc(remoteXactState.remoteNodeHandles,
-						sizeof(PGXCNodeHandle *) * (NumDataNodes + NumCoords));
-		if (!remoteXactState.remoteNodeStatus)
-			remoteXactState.remoteNodeStatus = (RemoteXactNodeStatus *)
-				malloc(sizeof(RemoteXactNodeStatus) * (MaxDataNodes + MaxCoords));
-		else
-			remoteXactState.remoteNodeStatus = (RemoteXactNodeStatus *)
-				realloc (remoteXactState.remoteNodeStatus,
-						sizeof(RemoteXactNodeStatus) * (NumDataNodes + NumCoords));
-
+		remoteXactState.remoteNodeHandles = (PGXCNodeHandle **)
+			realloc (remoteXactState.remoteNodeHandles,
+					sizeof (PGXCNodeHandle *) * (NumDataNodes + NumCoords));
+		remoteXactState.remoteNodeStatus = (RemoteXactNodeStatus *)
+			realloc (remoteXactState.remoteNodeStatus,
+					sizeof (RemoteXactNodeStatus) * (NumDataNodes + NumCoords));
 		remoteXactState.maxRemoteNodes = NumDataNodes + NumCoords;
 	}
 
@@ -4606,16 +6926,30 @@ init_RemoteXactState(bool preparedLocalNode)
 	remoteXactState.numReadRemoteNodes = read_conn_count;
 
 }
+#endif
 
+
+/*
+ * Execute COMMIT/ABORT PREPARED issued by the remote client on remote nodes.
+ * Contacts GTM for the list of involved nodes and for work complete
+ * notification. Returns true if prepared transaction on local node needs to be
+ * finished too.
+ */
 bool
 FinishRemotePreparedTransaction(char *prepareGID, bool commit)
 {
+#ifdef XCP
+	char				   *nodestring;
+	GlobalTransactionId		gxid, prepare_gxid;
+	bool					prepared_local = false;
+#else
 	char					*nodename, *nodestring;
 	List					*nodelist = NIL, *coordlist = NIL;
 	GlobalTransactionId		gxid, prepare_gxid;
 	PGXCNodeAllHandles 		*pgxc_handles;
 	bool					prepared_local = false;
 	int						i;
+#endif
 
 	/*
 	 * Please note that with xc_maintenance_mode = on, COMMIT/ROLLBACK PREPARED will not
@@ -4655,7 +6989,44 @@ FinishRemotePreparedTransaction(char *prepareGID, bool commit)
 				(errcode(ERRCODE_INTERNAL_ERROR),
 				 errmsg("prepared transaction with identifier \"%s\" does not exist",
 						prepareGID)));
+#ifdef XCP
+	prepared_local = pgxc_node_remote_finish(prepareGID, commit, nodestring,
+											 gxid, prepare_gxid);
 
+	if (commit)
+	{
+		CommitPreparedTranGTM(prepare_gxid, gxid);
+	}
+	else
+	{
+		RollbackTranGTM(prepare_gxid);
+		RollbackTranGTM(gxid);
+	}
+
+	return prepared_local;
+}
+
+
+/*
+ * Complete previously prepared transactions on remote nodes.
+ * Release remote connection after completion.
+ */
+static bool
+pgxc_node_remote_finish(char *prepareGID, bool commit,
+						char *nodestring, GlobalTransactionId gxid,
+						GlobalTransactionId prepare_gxid)
+{
+	char				finish_cmd[256];
+	PGXCNodeHandle	   *connections[MaxCoords + MaxDataNodes];
+	int					conn_count = 0;
+	ResponseCombiner	combiner;
+	PGXCNodeAllHandles *pgxc_handles;
+	bool				prepared_local = false;
+	char			   *nodename;
+	List			   *nodelist = NIL;
+	List			   *coordlist = NIL;
+	int					i;
+#endif
 	/*
 	 * Now based on the nodestring, run COMMIT/ROLLBACK PREPARED command on the
 	 * remote nodes and also finish the transaction locally is required
@@ -4663,6 +7034,19 @@ FinishRemotePreparedTransaction(char *prepareGID, bool commit)
 	nodename = strtok(nodestring, ",");
 	while (nodename != NULL)
 	{
+#ifdef XCP
+		int		nodeIndex;
+		char	nodetype;
+
+		/* Get node type and index */
+		nodetype = PGXC_NODE_NONE;
+		nodeIndex = PGXCNodeGetNodeIdFromName(nodename, &nodetype);
+		if (nodetype == PGXC_NODE_NONE)
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("PGXC Node %s: object not defined",
+							nodename)));
+#else
 		Oid		nodeoid;
 		int		nodeIndex;
 		char	nodetype;
@@ -4678,6 +7062,7 @@ FinishRemotePreparedTransaction(char *prepareGID, bool commit)
 		/* Get node type and index */
 		nodetype = get_pgxc_nodetype(nodeoid);
 		nodeIndex = PGXCNodeGetNodeId(nodeoid, get_pgxc_nodetype(nodeoid));
+#endif
 
 		/* Check if node is requested is the self-node or not */
 		if (nodetype == PGXC_NODE_COORDINATOR)
@@ -4693,6 +7078,104 @@ FinishRemotePreparedTransaction(char *prepareGID, bool commit)
 		nodename = strtok(NULL, ",");
 	}
 
+#ifdef XCP
+	if (nodelist == NIL && coordlist == NIL)
+		return prepared_local;
+
+	pgxc_handles = get_handles(nodelist, coordlist, false);
+
+	if (commit)
+		sprintf(finish_cmd, "COMMIT PREPARED '%s'", prepareGID);
+	else
+		sprintf(finish_cmd, "ROLLBACK PREPARED '%s'", prepareGID);
+
+	for (i = 0; i < pgxc_handles->dn_conn_count; i++)
+	{
+		PGXCNodeHandle *conn = pgxc_handles->datanode_handles[i];
+
+		if (pgxc_node_send_gxid(conn, gxid))
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("failed to send GXID for %s PREPARED command",
+							commit ? "COMMIT" : "ROLLBACK")));
+		}
+
+		if (pgxc_node_send_query(conn, finish_cmd))
+		{
+			/*
+			 * Do not bother with clean up, just bomb out. The error handler
+			 * will invoke RollbackTransaction which will do the work.
+			 */
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("failed to send %s PREPARED command to the node %u",
+							commit ? "COMMIT" : "ROLLBACK", conn->nodeoid)));
+		}
+		else
+		{
+			/* Read responses from these */
+			connections[conn_count++] = conn;
+		}
+	}
+
+	for (i = 0; i < pgxc_handles->co_conn_count; i++)
+	{
+		PGXCNodeHandle *conn = pgxc_handles->coord_handles[i];
+
+		if (pgxc_node_send_gxid(conn, gxid))
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("failed to send GXID for %s PREPARED command",
+							commit ? "COMMIT" : "ROLLBACK")));
+		}
+
+		if (pgxc_node_send_query(conn, finish_cmd))
+		{
+			/*
+			 * Do not bother with clean up, just bomb out. The error handler
+			 * will invoke RollbackTransaction which will do the work.
+			 */
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("failed to send %s PREPARED command to the node %u",
+							commit ? "COMMIT" : "ROLLBACK", conn->nodeoid)));
+		}
+		else
+		{
+			/* Read responses from these */
+			connections[conn_count++] = conn;
+		}
+	}
+
+	if (conn_count)
+	{
+		InitResponseCombiner(&combiner, conn_count, COMBINE_TYPE_NONE);
+		/* Receive responses */
+		if (pgxc_node_receive_responses(conn_count, connections, NULL, &combiner) ||
+				!validate_combiner(&combiner))
+		{
+			if (combiner.errorMessage)
+				pgxc_node_report_error(&combiner);
+			else
+				ereport(ERROR,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+						 errmsg("Failed to COMMIT the transaction on one or more nodes")));
+		}
+		else
+			CloseCombiner(&combiner);
+	}
+
+	pfree_pgxc_all_handles(pgxc_handles);
+
+	if (!temp_object_included && !PersistentConnections)
+	{
+		/* Clean up remote sessions */
+		pgxc_node_remote_cleanup_all();
+		release_handles();
+	}
+#else
 	/*
 	 * Now get handles for all the involved Datanodes and the Coordinators
 	 */
@@ -4756,16 +7239,1800 @@ FinishRemotePreparedTransaction(char *prepareGID, bool commit)
 	 */
 	clear_RemoteXactState();
 	ForgetTransactionNodes();
+#endif
 
 	return prepared_local;
 }
+
+
+#ifdef XCP
+/*****************************************************************************
+ *
+ * Simplified versions of ExecInitRemoteQuery, ExecRemoteQuery and
+ * ExecEndRemoteQuery: in XCP they are only used to execute simple queries.
+ *
+ *****************************************************************************/
+RemoteQueryState *
+ExecInitRemoteQuery(RemoteQuery *node, EState *estate, int eflags)
+{
+	RemoteQueryState   *remotestate;
+	ResponseCombiner   *combiner;
+
+	remotestate = makeNode(RemoteQueryState);
+	combiner = (ResponseCombiner *) remotestate;
+	InitResponseCombiner(combiner, 0, COMBINE_TYPE_NONE);
+	combiner->ss.ps.plan = (Plan *) node;
+	combiner->ss.ps.state = estate;
+
+	combiner->ss.ps.qual = NIL;
+
+	combiner->request_type = REQUEST_TYPE_QUERY;
+
+	ExecInitResultTupleSlot(estate, &combiner->ss.ps);
+	if (node->scan.plan.targetlist)
+		ExecAssignResultTypeFromTL((PlanState *) remotestate);
+
+	/*
+	 * If there are parameters supplied, get them into a form to be sent to the
+	 * datanodes with bind message. We should not have had done this before.
+	 */
+	if (estate->es_param_list_info)
+	{
+		Assert(!remotestate->paramval_data);
+		remotestate->paramval_len = ParamListToDataRow(estate->es_param_list_info,
+												&remotestate->paramval_data);
+	}
+
+	/* We need expression context to evaluate */
+	if (node->exec_nodes && node->exec_nodes->en_expr)
+	{
+		Expr *expr = node->exec_nodes->en_expr;
+
+		if (IsA(expr, Var) && ((Var *) expr)->vartype == TIDOID)
+		{
+			/* Special case if expression does not need to be evaluated */
+		}
+		else
+		{
+			/* prepare expression evaluation */
+			ExecAssignExprContext(estate, &combiner->ss.ps);
+		}
+	}
+
+	return remotestate;
+}
+
+
+/*
+ * Execute step of PGXC plan.
+ * The step specifies a command to be executed on specified nodes.
+ * On first invocation connections to the data nodes are initialized and
+ * command is executed. Further, as well as within subsequent invocations,
+ * responses are received until step is completed or there is a tuple to emit.
+ * If there is a tuple it is returned, otherwise returned NULL. The NULL result
+ * from the function indicates completed step.
+ * The function returns at most one tuple per invocation.
+ */
+TupleTableSlot *
+ExecRemoteQuery(RemoteQueryState *node)
+{
+	ResponseCombiner *combiner = (ResponseCombiner *) node;
+	RemoteQuery    *step = (RemoteQuery *) combiner->ss.ps.plan;
+	TupleTableSlot *resultslot = combiner->ss.ps.ps_ResultTupleSlot;
+	if (!node->query_Done)
+	{
+		GlobalTransactionId gxid = InvalidGlobalTransactionId;
+		Snapshot		snapshot = GetActiveSnapshot();
+		PGXCNodeHandle **connections = NULL;
+		PGXCNodeHandle *primaryconnection = NULL;
+		int				i;
+		int				regular_conn_count = 0;
+		int				total_conn_count = 0;
+		bool			need_tran_block;
+		PGXCNodeAllHandles *pgxc_connections;
+
+		/*
+		 * Get connections for Datanodes only, utilities and DDLs
+		 * are launched in ExecRemoteUtility
+		 */
+		pgxc_connections = get_exec_connections(node, step->exec_nodes,
+												step->exec_type);
+
+		if (step->exec_type == EXEC_ON_DATANODES)
+		{
+			connections = pgxc_connections->datanode_handles;
+			total_conn_count = regular_conn_count = pgxc_connections->dn_conn_count;
+		}
+		else if (step->exec_type == EXEC_ON_COORDS)
+		{
+			connections = pgxc_connections->coord_handles;
+			total_conn_count = regular_conn_count = pgxc_connections->co_conn_count;
+		}
+
+		primaryconnection = pgxc_connections->primary_handle;
+
+		/*
+		 * Primary connection is counted separately but is included in total_conn_count if used.
+		 */
+		if (primaryconnection)
+			regular_conn_count--;
+
+		pfree(pgxc_connections);
+
+		/*
+		 * We save only regular connections, at the time we exit the function
+		 * we finish with the primary connection and deal only with regular
+		 * connections on subsequent invocations
+		 */
+		combiner->node_count = regular_conn_count;
+
+		/*
+		 * Start transaction on data nodes if we are in explicit transaction
+		 * or going to use extended query protocol or write to multiple nodes
+		 */
+		if (step->force_autocommit)
+			need_tran_block = false;
+		else
+			need_tran_block = step->cursor ||
+					(!step->read_only && total_conn_count > 1) ||
+					(TransactionBlockStatusCode() == 'T');
+
+		stat_statement();
+		stat_transaction(total_conn_count);
+
+		gxid = GetCurrentTransactionId();
+
+		if (!GlobalTransactionIdIsValid(gxid))
+		{
+			if (primaryconnection)
+				pfree(primaryconnection);
+			pfree(connections);
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("Failed to get next transaction ID")));
+		}
+
+		/* See if we have a primary node, execute on it first before the others */
+		if (primaryconnection)
+		{
+			if (pgxc_node_begin(1, &primaryconnection, gxid, need_tran_block,
+								step->read_only, PGXC_NODE_DATANODE))
+				ereport(ERROR,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+						 errmsg("Could not begin transaction on data node.")));
+
+			/* If explicit transaction is needed gxid is already sent */
+			if (!pgxc_start_command_on_connection(primaryconnection, node, snapshot))
+			{
+				pfree(connections);
+				pfree(primaryconnection);
+				ereport(ERROR,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+						 errmsg("Failed to send command to data nodes")));
+			}
+			Assert(combiner->combine_type == COMBINE_TYPE_SAME);
+
+			pgxc_node_receive(1, &primaryconnection, NULL);
+			/* Make sure the command is completed on the primary node */
+			while (true)
+			{
+				int res = handle_response(primaryconnection, combiner);
+				if (res == RESPONSE_READY)
+					break;
+				else if (res == RESPONSE_EOF)
+					pgxc_node_receive(1, &primaryconnection, NULL);
+				else if (res == RESPONSE_COMPLETE || res == RESPONSE_ERROR)
+				    /* Get ReadyForQuery */
+					continue;
+				else
+					ereport(ERROR,
+							(errcode(ERRCODE_INTERNAL_ERROR),
+							 errmsg("Unexpected response from data node")));
+			}
+			if (combiner->errorMessage)
+			{
+				char *code = combiner->errorCode;
+				if (combiner->errorDetail != NULL)
+					ereport(ERROR,
+							(errcode(MAKE_SQLSTATE(code[0], code[1], code[2], code[3], code[4])),
+							 errmsg("%s", combiner->errorMessage), errdetail("%s", combiner->errorDetail) ));
+				else
+					ereport(ERROR,
+							(errcode(MAKE_SQLSTATE(code[0], code[1], code[2], code[3], code[4])),
+							 errmsg("%s", combiner->errorMessage)));
+			}
+		}
+
+		for (i = 0; i < regular_conn_count; i++)
+		{
+			if (pgxc_node_begin(1, &connections[i], gxid, need_tran_block,
+								step->read_only, PGXC_NODE_DATANODE))
+				ereport(ERROR,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+						 errmsg("Could not begin transaction on data node.")));
+
+			/* If explicit transaction is needed gxid is already sent */
+			if (!pgxc_start_command_on_connection(connections[i], node, snapshot))
+			{
+				pfree(connections);
+				if (primaryconnection)
+					pfree(primaryconnection);
+				ereport(ERROR,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+						 errmsg("Failed to send command to data nodes")));
+			}
+			connections[i]->combiner = combiner;
+		}
+
+		if (step->cursor)
+		{
+			combiner->cursor = step->cursor;
+			combiner->cursor_count = regular_conn_count;
+			combiner->cursor_connections = (PGXCNodeHandle **) palloc(regular_conn_count * sizeof(PGXCNodeHandle *));
+			memcpy(combiner->cursor_connections, connections, regular_conn_count * sizeof(PGXCNodeHandle *));
+		}
+
+		combiner->connections = connections;
+		combiner->conn_count = regular_conn_count;
+		combiner->current_conn = 0;
+
+		if (combiner->cursor_count)
+		{
+			combiner->conn_count = combiner->cursor_count;
+			memcpy(connections, combiner->cursor_connections,
+				   combiner->cursor_count * sizeof(PGXCNodeHandle *));
+			combiner->connections = connections;
+		}
+
+		node->query_Done = true;
+
+		if (step->sort)
+		{
+			SimpleSort *sort = step->sort;
+
+			/*
+			 * First message is already in the buffer
+			 * Further fetch will be under tuplesort control
+			 * If query does not produce rows tuplesort will not
+			 * be initialized
+			 */
+			combiner->tuplesortstate = tuplesort_begin_merge(
+								   resultslot->tts_tupleDescriptor,
+								   sort->numCols,
+								   sort->sortColIdx,
+								   sort->sortOperators,
+								   sort->sortCollations,
+								   sort->nullsFirst,
+								   combiner,
+								   work_mem);
+		}
+	}
+
+	if (combiner->tuplesortstate)
+ 	{
+		if (tuplesort_gettupleslot((Tuplesortstate *) combiner->tuplesortstate,
+									  true, resultslot))
+			return resultslot;
+		else
+			ExecClearTuple(resultslot);
+	}
+	else
+	{
+		TupleTableSlot *slot = FetchTuple(combiner);
+		if (!TupIsNull(slot))
+			return slot;
+	}
+
+	if (combiner->errorMessage)
+ 	{
+		char *code = combiner->errorCode;
+		if (combiner->errorDetail != NULL)
+ 			ereport(ERROR,
+ 					(errcode(MAKE_SQLSTATE(code[0], code[1], code[2], code[3], code[4])),
+						errmsg("%s", combiner->errorMessage), errdetail("%s", combiner->errorDetail) ));
+ 		else
+ 			ereport(ERROR,
+ 					(errcode(MAKE_SQLSTATE(code[0], code[1], code[2], code[3], code[4])),
+						errmsg("%s", combiner->errorMessage)));
+	}
+
+	return NULL;
+}
+
+
+/*
+ * Clean up and discard any data on the data node connections that might not
+ * handled yet, including pending on the remote connection.
+ */
+static void
+pgxc_connections_cleanup(ResponseCombiner *combiner)
+{
+	/* clean up the buffer */
+	list_free_deep(combiner->rowBuffer);
+	combiner->rowBuffer = NIL;
+
+	/*
+	 * Read in and discard remaining data from the connections, if any
+	 */
+	combiner->current_conn = 0;
+	while (combiner->conn_count > 0)
+	{
+		int res;
+		PGXCNodeHandle *conn = combiner->connections[combiner->current_conn];
+
+		/*
+		 * Possible if we are doing merge sort.
+		 * We can do usual procedure and move connections around since we are
+		 * cleaning up and do not care what connection at what position
+		 */
+		if (conn == NULL)
+		{
+			REMOVE_CURR_CONN(combiner);
+			continue;
+		}
+
+		/* throw away current message that may be in the buffer */
+		if (combiner->currentRow)
+		{
+			pfree(combiner->currentRow);
+			combiner->currentRow = NULL;
+		}
+
+		/* no data is expected */
+		if (conn->state == DN_CONNECTION_STATE_IDLE ||
+				conn->state == DN_CONNECTION_STATE_ERROR_FATAL)
+		{
+			REMOVE_CURR_CONN(combiner);
+			continue;
+		}
+
+		/*
+		 * Connection owner is different, so no our data pending at
+		 * the connection, nothing to read in.
+		 */
+		if (conn->combiner && conn->combiner != combiner)
+		{
+			REMOVE_CURR_CONN(combiner);
+			continue;
+		}
+
+		res = handle_response(conn, combiner);
+		if (res == RESPONSE_EOF)
+		{
+			struct timeval timeout;
+#ifdef XCP
+			timeout.tv_sec = END_QUERY_TIMEOUT / 1000;
+			timeout.tv_usec = (END_QUERY_TIMEOUT % 1000) * 1000;
+#else
+			timeout.tv_sec = END_QUERY_TIMEOUT;
+			timeout.tv_usec = 0;
+#endif
+
+			if (pgxc_node_receive(1, &conn, &timeout))
+				ereport(ERROR,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+						 errmsg("Failed to read response from data nodes when ending query")));
+		}
+	}
+
+	/*
+	 * Release tuplesort resources
+	 */
+	if (combiner->tuplesortstate)
+	{
+		/*
+		 * Free these before tuplesort_end, because these arrays may appear
+		 * in the tuplesort's memory context, tuplesort_end deletes this
+		 * context and may invalidate the memory.
+		 * We still want to free them here, because these may be in different
+		 * context.
+		 */
+		if (combiner->tapenodes)
+		{
+			pfree(combiner->tapenodes);
+			combiner->tapenodes = NULL;
+		}
+		if (combiner->tapemarks)
+		{
+			pfree(combiner->tapemarks);
+			combiner->tapemarks = NULL;
+		}
+		/*
+		 * tuplesort_end invalidates minimal tuple if it is in the slot because
+		 * deletes the TupleSort memory context, causing seg fault later when
+		 * releasing tuple table
+		 */
+		ExecClearTuple(combiner->ss.ps.ps_ResultTupleSlot);
+		tuplesort_end((Tuplesortstate *) combiner->tuplesortstate);
+		combiner->tuplesortstate = NULL;
+	}
+}
+
+
+/*
+ * End the remote query
+ */
+void
+ExecEndRemoteQuery(RemoteQueryState *node)
+{
+	ResponseCombiner *combiner = (ResponseCombiner *) node;
+
+	/*
+	 * Clean up remote connections
+	 */
+	pgxc_connections_cleanup(combiner);
+
+	/*
+	 * Clean up parameters if they were set, since plan may be reused
+	 */
+	if (node->paramval_data)
+	{
+		pfree(node->paramval_data);
+		node->paramval_data = NULL;
+		node->paramval_len = 0;
+	}
+
+	CloseCombiner(combiner);
+	pfree(node);
+}
+
+
+/**********************************************
+ *
+ * Routines to support RemoteSubplan plan node
+ *
+ **********************************************/
+
+
+/*
+ * The routine walks recursively over the plan tree and changes cursor names of
+ * RemoteSubplan nodes to make them different from launched from the other
+ * datanodes. The routine changes cursor names in place, so caller should
+ * take writable copy of the plan tree.
+ */
+void
+RemoteSubplanMakeUnique(Node *plan, int unique)
+{
+	if (plan == NULL)
+		return;
+
+	if (IsA(plan, List))
+	{
+		ListCell *lc;
+		foreach(lc, (List *) plan)
+		{
+			RemoteSubplanMakeUnique(lfirst(lc), unique);
+		}
+		return;
+	}
+
+	/*
+	 * Transform SharedQueue name
+	 */
+	if (IsA(plan, RemoteSubplan))
+	{
+		((RemoteSubplan *)plan)->unique = unique;
+	}
+	/* Otherwise it is a Plan descendant */
+	RemoteSubplanMakeUnique((Node *) ((Plan *) plan)->initPlan, unique);
+	RemoteSubplanMakeUnique((Node *) ((Plan *) plan)->lefttree, unique);
+	RemoteSubplanMakeUnique((Node *) ((Plan *) plan)->righttree, unique);
+	/* Tranform special cases */
+	switch (nodeTag(plan))
+	{
+		case T_Append:
+			RemoteSubplanMakeUnique((Node *) ((Append *) plan)->appendplans,
+									unique);
+			break;
+		case T_MergeAppend:
+			RemoteSubplanMakeUnique((Node *) ((MergeAppend *) plan)->mergeplans,
+									unique);
+			break;
+		case T_BitmapAnd:
+			RemoteSubplanMakeUnique((Node *) ((BitmapAnd *) plan)->bitmapplans,
+									unique);
+			break;
+		case T_BitmapOr:
+			RemoteSubplanMakeUnique((Node *) ((BitmapOr *) plan)->bitmapplans,
+									unique);
+			break;
+		case T_SubqueryScan:
+			RemoteSubplanMakeUnique((Node *) ((SubqueryScan *) plan)->subplan,
+									unique);
+			break;
+		default:
+			break;
+	}
+}
+
+struct find_params_context
+{
+	RemoteParam *rparams;
+	Bitmapset *defineParams;
+};
+
+static bool
+determine_param_types_walker(Node *node, struct find_params_context *context)
+{
+	if (node == NULL)
+		return false;
+
+	if (IsA(node, Param))
+	{
+		Param *param = (Param *) node;
+		int paramno = param->paramid;
+
+		if (param->paramkind == PARAM_EXEC &&
+				bms_is_member(paramno, context->defineParams))
+		{
+			RemoteParam *cur = context->rparams;
+			while (cur->paramkind != PARAM_EXEC || cur->paramid != paramno)
+				cur++;
+			cur->paramtype = param->paramtype;
+			context->defineParams = bms_del_member(context->defineParams,
+												   paramno);
+			return bms_is_empty(context->defineParams);
+		}
+	}
+	return expression_tree_walker(node, determine_param_types_walker,
+								  (void *) context);
+
+}
+
+/*
+ * Scan expressions in the plan tree to find Param nodes and get data types
+ * from them
+ */
+static bool
+determine_param_types(Plan *plan,  struct find_params_context *context)
+{
+	Bitmapset *intersect;
+
+	if (plan == NULL)
+		return false;
+
+	intersect = bms_intersect(plan->allParam, context->defineParams);
+	if (bms_is_empty(intersect))
+	{
+		/* the subplan does not depend on params we are interested in */
+		bms_free(intersect);
+		return false;
+	}
+	bms_free(intersect);
+
+	/* scan target list */
+	if (expression_tree_walker((Node *) plan->targetlist,
+							   determine_param_types_walker,
+							   (void *) context))
+		return true;
+	/* scan qual */
+	if (expression_tree_walker((Node *) plan->qual,
+							   determine_param_types_walker,
+							   (void *) context))
+		return true;
+
+	/* Check additional node-type-specific fields */
+	switch (nodeTag(plan))
+	{
+		case T_Result:
+			if (expression_tree_walker((Node *) ((Result *) plan)->resconstantqual,
+									   determine_param_types_walker,
+									   (void *) context))
+				return true;
+			break;
+
+		case T_SeqScan:
+			break;
+
+		case T_IndexScan:
+			if (expression_tree_walker((Node *) ((IndexScan *) plan)->indexqual,
+									   determine_param_types_walker,
+									   (void *) context))
+				return true;
+			break;
+
+		case T_IndexOnlyScan:
+			if (expression_tree_walker((Node *) ((IndexOnlyScan *) plan)->indexqual,
+									   determine_param_types_walker,
+									   (void *) context))
+				return true;
+			break;
+
+		case T_BitmapIndexScan:
+			if (expression_tree_walker((Node *) ((BitmapIndexScan *) plan)->indexqual,
+									   determine_param_types_walker,
+									   (void *) context))
+				return true;
+			break;
+
+		case T_BitmapHeapScan:
+			if (expression_tree_walker((Node *) ((BitmapHeapScan *) plan)->bitmapqualorig,
+									   determine_param_types_walker,
+									   (void *) context))
+				return true;
+			break;
+
+		case T_TidScan:
+			if (expression_tree_walker((Node *) ((TidScan *) plan)->tidquals,
+									   determine_param_types_walker,
+									   (void *) context))
+				return true;
+			break;
+
+		case T_SubqueryScan:
+			if (determine_param_types(((SubqueryScan *) plan)->subplan, context))
+				return true;
+			break;
+
+		case T_FunctionScan:
+			if (expression_tree_walker((Node *) ((FunctionScan *) plan)->funcexpr,
+									   determine_param_types_walker,
+									   (void *) context))
+				return true;
+			break;
+
+		case T_ValuesScan:
+			if (expression_tree_walker((Node *) ((ValuesScan *) plan)->values_lists,
+									   determine_param_types_walker,
+									   (void *) context))
+				return true;
+			break;
+
+		case T_ModifyTable:
+			{
+				ListCell   *l;
+
+				foreach(l, ((ModifyTable *) plan)->plans)
+				{
+					if (determine_param_types((Plan *) lfirst(l), context))
+						return true;
+				}
+			}
+			break;
+
+		case T_RemoteSubplan:
+			break;
+
+		case T_Append:
+			{
+				ListCell   *l;
+
+				foreach(l, ((Append *) plan)->appendplans)
+				{
+					if (determine_param_types((Plan *) lfirst(l), context))
+						return true;
+				}
+			}
+			break;
+
+		case T_BitmapAnd:
+			{
+				ListCell   *l;
+
+				foreach(l, ((BitmapAnd *) plan)->bitmapplans)
+				{
+					if (determine_param_types((Plan *) lfirst(l), context))
+						return true;
+				}
+			}
+			break;
+
+		case T_BitmapOr:
+			{
+				ListCell   *l;
+
+				foreach(l, ((BitmapOr *) plan)->bitmapplans)
+				{
+					if (determine_param_types((Plan *) lfirst(l), context))
+						return true;
+				}
+			}
+			break;
+
+		case T_NestLoop:
+			if (expression_tree_walker((Node *) ((Join *) plan)->joinqual,
+									   determine_param_types_walker,
+									   (void *) context))
+				return true;
+			break;
+
+		case T_MergeJoin:
+			if (expression_tree_walker((Node *) ((Join *) plan)->joinqual,
+									   determine_param_types_walker,
+									   (void *) context))
+				return true;
+			if (expression_tree_walker((Node *) ((MergeJoin *) plan)->mergeclauses,
+									   determine_param_types_walker,
+									   (void *) context))
+				return true;
+			break;
+
+		case T_HashJoin:
+			if (expression_tree_walker((Node *) ((Join *) plan)->joinqual,
+									   determine_param_types_walker,
+									   (void *) context))
+				return true;
+			if (expression_tree_walker((Node *) ((HashJoin *) plan)->hashclauses,
+									   determine_param_types_walker,
+									   (void *) context))
+				return true;
+			break;
+
+		case T_Limit:
+			if (expression_tree_walker((Node *) ((Limit *) plan)->limitOffset,
+									   determine_param_types_walker,
+									   (void *) context))
+				return true;
+			if (expression_tree_walker((Node *) ((Limit *) plan)->limitCount,
+									   determine_param_types_walker,
+									   (void *) context))
+				return true;
+			break;
+
+		case T_RecursiveUnion:
+			break;
+
+		case T_LockRows:
+			break;
+
+		case T_WindowAgg:
+			if (expression_tree_walker((Node *) ((WindowAgg *) plan)->startOffset,
+									   determine_param_types_walker,
+									   (void *) context))
+			if (expression_tree_walker((Node *) ((WindowAgg *) plan)->endOffset,
+									   determine_param_types_walker,
+									   (void *) context))
+			break;
+
+		case T_Hash:
+		case T_Agg:
+		case T_Material:
+		case T_Sort:
+		case T_Unique:
+		case T_SetOp:
+		case T_Group:
+			break;
+
+		default:
+			elog(ERROR, "unrecognized node type: %d",
+				 (int) nodeTag(plan));
+	}
+
+
+	/* recurse into subplans */
+	return determine_param_types(plan->lefttree, context) ||
+			determine_param_types(plan->righttree, context);
+}
+
+
+RemoteSubplanState *
+ExecInitRemoteSubplan(RemoteSubplan *node, EState *estate, int eflags)
+{
+	RemoteStmt			rstmt;
+	RemoteSubplanState *remotestate;
+	ResponseCombiner   *combiner;
+	CombineType			combineType;
+
+	remotestate = makeNode(RemoteSubplanState);
+	combiner = (ResponseCombiner *) remotestate;
+	/*
+	 * We do not need to combine row counts if we will receive intermediate
+	 * results or if we won't return row count.
+	 */
+	if (IS_PGXC_DATANODE || estate->es_plannedstmt->commandType == CMD_SELECT)
+	{
+		combineType = COMBINE_TYPE_NONE;
+		remotestate->execOnAll = node->execOnAll;
+	}
+	else
+	{
+		if (node->execOnAll)
+			combineType = COMBINE_TYPE_SUM;
+		else
+			combineType = COMBINE_TYPE_SAME;
+		/*
+		 * If we are updating replicated table we should run plan on all nodes.
+		 * We are choosing single node only to read
+		 */
+		remotestate->execOnAll = true;
+	}
+	remotestate->execNodes = list_copy(node->nodeList);
+	InitResponseCombiner(combiner, 0, combineType);
+	combiner->ss.ps.plan = (Plan *) node;
+	combiner->ss.ps.state = estate;
+
+	combiner->ss.ps.qual = NIL;
+
+	combiner->request_type = REQUEST_TYPE_QUERY;
+
+	ExecInitResultTupleSlot(estate, &combiner->ss.ps);
+	ExecAssignResultTypeFromTL((PlanState *) remotestate);
+
+	/*
+	 * We optimize execution if we going to send down query to next level
+	 */
+	remotestate->local_exec = false;
+	if (IS_PGXC_DATANODE)
+	{
+		if (remotestate->execNodes == NIL)
+		{
+			/*
+			 * Special case, if subplan is not distributed, like Result, or
+			 * query against catalog tables only.
+			 * We are only interested in filtering out the subplan results and
+			 * get only those we are interested in.
+			 * XXX we may want to prevent multiple executions in this case
+			 * either, to achieve this we will set single execNode on planning
+			 * time and this case would never happen, this code branch could
+			 * be removed.
+			 */
+			remotestate->local_exec = true;
+		}
+		else if (!remotestate->execOnAll)
+		{
+			/*
+			 * XXX We should change planner and remove this flag.
+			 * We want only one node is producing the replicated result set,
+			 * and planner should choose that node - it is too hard to determine
+			 * right node at execution time, because it should be guaranteed
+			 * that all consumers make the same decision.
+			 * For now always execute replicated plan on local node to save
+			 * resources.
+			 */
+
+			/*
+			 * Make sure local node is in execution list
+			 */
+			if (list_member_int(remotestate->execNodes, PGXCNodeId-1))
+			{
+				list_free(remotestate->execNodes);
+				remotestate->execNodes = NIL;
+				remotestate->local_exec = true;
+			}
+			else
+			{
+				/*
+				 * To support, we need to connect to some producer, so
+				 * each producer should be prepared to serve rows for random
+				 * number of consumers. It is hard, because new consumer may
+				 * connect after producing is started, on the other hand,
+				 * absence of expected consumer is a problem too.
+				 */
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("Getting replicated results from remote node is not supported")));
+			}
+		}
+	}
+
+	/*
+	 * If we are going to execute subplan locally or doing explain initialize
+	 * the subplan. Otherwise have remote node doing that.
+	 */
+	if (remotestate->local_exec || (eflags & EXEC_FLAG_EXPLAIN_ONLY))
+	{
+		outerPlanState(remotestate) = ExecInitNode(outerPlan(node), estate,
+												   eflags);
+		if (node->distributionNodes)
+		{
+			Oid 		distributionType = InvalidOid;
+			TupleDesc 	typeInfo;
+
+			typeInfo = combiner->ss.ps.ps_ResultTupleSlot->tts_tupleDescriptor;
+			if (node->distributionKey != InvalidAttrNumber)
+			{
+				Form_pg_attribute attr;
+				attr = typeInfo->attrs[node->distributionKey - 1];
+				distributionType = attr->atttypid;
+			}
+			/* Set up locator */
+			remotestate->locator = createLocator(node->distributionType,
+												 RELATION_ACCESS_INSERT,
+												 distributionType,
+												 LOCATOR_LIST_LIST,
+												 0,
+												 (void *) node->distributionNodes,
+												 (void **) &remotestate->dest_nodes,
+												 false);
+		}
+		else
+			remotestate->locator = NULL;
+	}
+
+	/*
+	 * Encode subplan if it will be sent to remote nodes
+	 */
+	if (remotestate->execNodes && !(eflags & EXEC_FLAG_EXPLAIN_ONLY))
+	{
+		ParamListInfo ext_params;
+		/* Encode plan if we are going to execute it on other nodes */
+		rstmt.type = T_RemoteStmt;
+		if (node->distributionType == LOCATOR_TYPE_NONE && IS_PGXC_DATANODE)
+		{
+			/*
+			 * There are cases when planner can not determine distribution of a
+			 * subplan, in particular it does not determine distribution of
+			 * subquery nodes. Such subplans executed from current location
+			 * (node) and combine all results, like from coordinator nodes.
+			 * However, if there are multiple locations where distributed
+			 * executor is running this node, and there are more of
+			 * RemoteSubplan plan nodes in the subtree there will be a problem -
+			 * Instances of the inner RemoteSubplan nodes will be using the same
+			 * SharedQueue, causing error. To avoid this problem we should
+			 * traverse the subtree and change SharedQueue name to make it
+			 * unique.
+			 */
+			RemoteSubplanMakeUnique((Node *) outerPlan(node), PGXCNodeId);
+		}
+		rstmt.planTree = outerPlan(node);
+		/*
+		 * If datanode launch further execution of a command it should tell
+		 * it is a SELECT, otherwise secondary data nodes won't return tuples
+		 * expecting there will be nothing to return.
+		 */
+		if (IsA(outerPlan(node), ModifyTable))
+		{
+			rstmt.commandType = estate->es_plannedstmt->commandType;
+			rstmt.hasReturning = estate->es_plannedstmt->hasReturning;
+			rstmt.resultRelations = estate->es_plannedstmt->resultRelations;
+		}
+		else
+		{
+			rstmt.commandType = CMD_SELECT;
+			rstmt.hasReturning = false;
+			rstmt.resultRelations = NIL;
+		}
+		rstmt.rtable = estate->es_range_table;
+		rstmt.subplans = estate->es_plannedstmt->subplans;
+		rstmt.nParamExec = estate->es_plannedstmt->nParamExec;
+		ext_params = estate->es_param_list_info;
+		rstmt.nParamRemote = (ext_params ? ext_params->numParams : 0) +
+				bms_num_members(node->scan.plan.allParam);
+		if (rstmt.nParamRemote > 0)
+		{
+			Bitmapset *tmpset;
+			int i;
+			int paramno;
+
+			/* Allocate enough space */
+			rstmt.remoteparams = (RemoteParam *) palloc(rstmt.nParamRemote *
+														sizeof(RemoteParam));
+			paramno = 0;
+			if (ext_params)
+			{
+				for (i = 0; i < ext_params->numParams; i++)
+				{
+					ParamExternData *param = &ext_params->params[i];
+					/*
+					 * If parameter type is not yet defined but can be defined
+					 * do that
+					 */
+					if (!OidIsValid(param->ptype) && ext_params->paramFetch)
+						(*ext_params->paramFetch) (ext_params, i + 1);
+					/*
+					 * If parameter type is still not defined assume it is
+					 * unused
+					 */
+					if (!OidIsValid(param->ptype))
+						continue;
+
+					rstmt.remoteparams[paramno].paramkind = PARAM_EXTERN;
+					rstmt.remoteparams[paramno].paramid = i + 1;
+					rstmt.remoteparams[paramno].paramtype = param->ptype;
+					paramno++;
+				}
+				/* store actual number of parameters */
+				rstmt.nParamRemote = paramno;
+			}
+
+			if (!bms_is_empty(node->scan.plan.allParam))
+			{
+				Bitmapset *defineParams = NULL;
+				tmpset = bms_copy(node->scan.plan.allParam);
+				while ((i = bms_first_member(tmpset)) >= 0)
+				{
+					ParamExecData *prmdata;
+
+					prmdata = &(estate->es_param_exec_vals[i]);
+					rstmt.remoteparams[paramno].paramkind = PARAM_EXEC;
+					rstmt.remoteparams[paramno].paramid = i;
+					rstmt.remoteparams[paramno].paramtype = prmdata->ptype;
+					/* Will scan plan tree to find out data type of the param */
+					if (prmdata->ptype == InvalidOid)
+						defineParams = bms_add_member(defineParams, i);
+					paramno++;
+				}
+				/* store actual number of parameters */
+				rstmt.nParamRemote = paramno;
+				bms_free(tmpset);
+				if (!bms_is_empty(defineParams))
+				{
+					struct find_params_context context;
+					bool all_found;
+
+					context.rparams = rstmt.remoteparams;
+					context.defineParams = defineParams;
+
+					all_found = determine_param_types(node->scan.plan.lefttree,
+													  &context);
+					/*
+					 * Remove not defined params from the list of remote params.
+					 * If they are not referenced no need to send them down
+					 */
+					if (!all_found)
+					{
+						for (i = 0; i < rstmt.nParamRemote; i++)
+						{
+							if (rstmt.remoteparams[i].paramkind == PARAM_EXEC &&
+									bms_is_member(rstmt.remoteparams[i].paramid,
+												  context.defineParams))
+							{
+								/* Copy last parameter inplace */
+								rstmt.nParamRemote--;
+								if (i < rstmt.nParamRemote)
+									rstmt.remoteparams[i] =
+										rstmt.remoteparams[rstmt.nParamRemote];
+								/* keep current in the same position */
+								i--;
+							}
+						}
+					}
+					bms_free(context.defineParams);
+				}
+			}
+			remotestate->nParamRemote = rstmt.nParamRemote;
+			remotestate->remoteparams = rstmt.remoteparams;
+		}
+		else
+			rstmt.remoteparams = NULL;
+		rstmt.rowMarks = estate->es_plannedstmt->rowMarks;
+		rstmt.distributionKey = node->distributionKey;
+		rstmt.distributionType = node->distributionType;
+		rstmt.distributionNodes = node->distributionNodes;
+		rstmt.distributionRestrict = node->distributionRestrict;
+
+		set_portable_output(true);
+		remotestate->subplanstr = nodeToString(&rstmt);
+		set_portable_output(false);
+
+		/*
+		 * Connect to remote nodes and send down subplan
+		 */
+		if (!(eflags & EXEC_FLAG_SUBPLAN))
+			ExecFinishInitRemoteSubplan(remotestate);
+	}
+	remotestate->bound = false;
+	/*
+	 * It does not makes sense to merge sort if there is only one tuple source.
+	 * By the contract it is already sorted
+	 */
+	if (node->sort && remotestate->execOnAll &&
+			list_length(remotestate->execNodes) > 1)
+		combiner->merge_sort = true;
+
+	return remotestate;
+}
+
+
+void
+ExecFinishInitRemoteSubplan(RemoteSubplanState *node)
+{
+	ResponseCombiner   *combiner = (ResponseCombiner *) node;
+	RemoteSubplan  	   *plan = (RemoteSubplan *) combiner->ss.ps.plan;
+	Oid        		   *paramtypes = NULL;
+	GlobalTransactionId gxid = InvalidGlobalTransactionId;
+	Snapshot			snapshot;
+	TimestampTz			timestamp;
+	int 				i;
+	bool				is_read_only;
+	char				cursor[NAMEDATALEN];
+
+	/*
+	 * Name is required to store plan as a statement
+	 */
+	Assert(plan->cursor);
+
+	if (plan->unique)
+		snprintf(cursor, NAMEDATALEN, "%s_%d", plan->cursor, plan->unique);
+	else
+		strncpy(cursor, plan->cursor, NAMEDATALEN);
+
+	/* If it is alreaty fully initialized nothing to do */
+	if (combiner->connections)
+		return;
+
+	/* local only or explain only execution */
+	if (node->subplanstr == NULL)
+		return;
+
+	/*
+	 * Acquire connections and send down subplan where it will be stored
+	 * as a prepared statement.
+	 * That does not require transaction id or snapshot, so does not send them
+	 * here, postpone till bind.
+	 */
+	if (node->execOnAll)
+	{
+		PGXCNodeAllHandles *pgxc_connections;
+		pgxc_connections = get_handles(node->execNodes, NIL, false);
+		combiner->conn_count = pgxc_connections->dn_conn_count;
+		combiner->connections = pgxc_connections->datanode_handles;
+		combiner->current_conn = 0;
+		pfree(pgxc_connections);
+	}
+	else
+	{
+		combiner->connections = (PGXCNodeHandle **) palloc(sizeof(PGXCNodeHandle *));
+		combiner->connections[0] = get_any_handle(node->execNodes);
+		combiner->conn_count = 1;
+		combiner->current_conn = 0;
+	}
+
+	gxid = GetCurrentTransactionId();
+	if (!GlobalTransactionIdIsValid(gxid))
+	{
+		combiner->conn_count = 0;
+		pfree(combiner->connections);
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("Failed to get next transaction ID")));
+	}
+
+	/* extract parameter data types */
+	if (node->nParamRemote > 0)
+	{
+		paramtypes = (Oid *) palloc(node->nParamRemote * sizeof(Oid));
+		for (i = 0; i < node->nParamRemote; i++)
+			paramtypes[i] = node->remoteparams[i].paramtype;
+	}
+	/* send down subplan */
+	snapshot = GetActiveSnapshot();
+	timestamp = GetCurrentGTMStartTimestamp();
+	/*
+	 * Datanode should not send down statements that may modify
+	 * the database. Potgres assumes that all sessions under the same
+	 * postmaster have different xids. That may cause a locking problem.
+	 * Shared locks acquired for reading still work fine.
+	 */
+	is_read_only = IS_PGXC_DATANODE ||
+			!IsA(outerPlan(plan), ModifyTable);
+
+	for (i = 0; i < combiner->conn_count; i++)
+	{
+		PGXCNodeHandle *connection = combiner->connections[i];
+
+		if (pgxc_node_begin(1, &connection, gxid, true,
+							is_read_only, PGXC_NODE_DATANODE))
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("Could not begin transaction on data node.")));
+
+		if (pgxc_node_send_timestamp(connection, timestamp))
+		{
+			combiner->conn_count = 0;
+			pfree(combiner->connections);
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("Failed to send command to data nodes")));
+		}
+		if (snapshot && pgxc_node_send_snapshot(connection, snapshot))
+		{
+			combiner->conn_count = 0;
+			pfree(combiner->connections);
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("Failed to send command to data nodes")));
+		}
+		pgxc_node_send_plan(connection, cursor, "Remote Subplan",
+							node->subplanstr, node->nParamRemote, paramtypes);
+		if (pgxc_node_flush(connection))
+		{
+			combiner->conn_count = 0;
+			pfree(combiner->connections);
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("Failed to send subplan to data nodes")));
+		}
+	}
+}
+
+
+static void
+append_param_data(StringInfo buf, Oid ptype, Datum value, bool isnull)
+{
+	uint32 n32;
+
+	if (isnull)
+	{
+		n32 = htonl(-1);
+		appendBinaryStringInfo(buf, (char *) &n32, 4);
+	}
+	else
+	{
+		Oid		typOutput;
+		bool	typIsVarlena;
+		Datum	pval;
+		char   *pstring;
+		int		len;
+
+		/* Get info needed to output the value */
+		getTypeOutputInfo(ptype, &typOutput, &typIsVarlena);
+
+		/*
+		 * If we have a toasted datum, forcibly detoast it here to avoid
+		 * memory leakage inside the type's output routine.
+		 */
+		if (typIsVarlena)
+			pval = PointerGetDatum(PG_DETOAST_DATUM(value));
+		else
+			pval = value;
+
+		/* Convert Datum to string */
+		pstring = OidOutputFunctionCall(typOutput, pval);
+
+		/* copy data to the buffer */
+		len = strlen(pstring);
+		n32 = htonl(len);
+		appendBinaryStringInfo(buf, (char *) &n32, 4);
+		appendBinaryStringInfo(buf, pstring, len);
+	}
+}
+
+
+static int encode_parameters(int nparams, RemoteParam *remoteparams,
+							 PlanState *planstate, char** result)
+{
+	EState 		   *estate = planstate->state;
+	StringInfoData	buf;
+	uint16 			n16;
+	int 			i;
+	ExprContext	   *econtext;
+	MemoryContext 	oldcontext;
+
+	if (planstate->ps_ExprContext == NULL)
+		ExecAssignExprContext(estate, planstate);
+
+	econtext = planstate->ps_ExprContext;
+	oldcontext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
+	MemoryContextReset(econtext->ecxt_per_tuple_memory);
+
+	initStringInfo(&buf);
+
+	/* Number of parameter values */
+	n16 = htons(nparams);
+	appendBinaryStringInfo(&buf, (char *) &n16, 2);
+
+	/* Parameter values */
+	for (i = 0; i < nparams; i++)
+	{
+		RemoteParam *rparam = &remoteparams[i];
+		int ptype = rparam->paramtype;
+		if (rparam->paramkind == PARAM_EXTERN)
+		{
+			ParamExternData *param;
+			param = &(estate->es_param_list_info->params[rparam->paramid - 1]);
+			append_param_data(&buf, ptype, param->value, param->isnull);
+		}
+		else
+		{
+			ParamExecData *param;
+			param = &(estate->es_param_exec_vals[rparam->paramid]);
+			if (param->execPlan)
+			{
+				/* Parameter not evaluated yet, so go do it */
+				ExecSetParamPlan((SubPlanState *) param->execPlan,
+								 planstate->ps_ExprContext);
+				/* ExecSetParamPlan should have processed this param... */
+				Assert(param->execPlan == NULL);
+			}
+			append_param_data(&buf, ptype, param->value, param->isnull);
+		}
+	}
+
+	/* Take data from the buffer */
+	*result = palloc(buf.len);
+	memcpy(*result, buf.data, buf.len);
+	MemoryContextSwitchTo(oldcontext);
+	return buf.len;
+}
+
+
+TupleTableSlot *
+ExecRemoteSubplan(RemoteSubplanState *node)
+{
+	ResponseCombiner *combiner = (ResponseCombiner *) node;
+	RemoteSubplan  *plan = (RemoteSubplan *) combiner->ss.ps.plan;
+	EState		   *estate = combiner->ss.ps.state;
+	TupleTableSlot *resultslot = combiner->ss.ps.ps_ResultTupleSlot;
+
+primary_mode_phase_two:
+	if (!node->bound)
+	{
+		int fetch = 0;
+		int paramlen = 0;
+		char *paramdata = NULL;
+		/*
+		 * Conditions when we want to execute query on the primary node first:
+		 * Coordinator running replicated ModifyTable on multiple nodes
+		 */
+		bool primary_mode = combiner->probing_primary ||
+				(IS_PGXC_COORDINATOR &&
+				 combiner->combine_type == COMBINE_TYPE_SAME &&
+				 OidIsValid(primary_data_node) &&
+				 combiner->conn_count > 1);
+		char cursor[NAMEDATALEN];
+
+		if (plan->cursor)
+		{
+			fetch = 1000;
+			if (plan->unique)
+				snprintf(cursor, NAMEDATALEN, "%s_%d", plan->cursor, plan->unique);
+			else
+				strncpy(cursor, plan->cursor, NAMEDATALEN);
+		}
+		else
+			cursor[0] = '\0';
+
+		/*
+		 * Send down all available parameters, if any is used by the plan
+		 */
+		if (estate->es_param_list_info ||
+				!bms_is_empty(plan->scan.plan.allParam))
+			paramlen = encode_parameters(node->nParamRemote,
+										 node->remoteparams,
+										 &combiner->ss.ps,
+										 &paramdata);
+
+		/*
+		 * The subplan being rescanned, need to restore connections and
+		 * re-bind the portal
+		 */
+		if (combiner->cursor)
+		{
+			int i;
+
+			/*
+			 * On second phase of primary mode connections are properly set,
+			 * so do not copy.
+			 */
+			if (!combiner->probing_primary)
+			{
+				combiner->conn_count = combiner->cursor_count;
+				memcpy(combiner->connections, combiner->cursor_connections,
+							combiner->cursor_count * sizeof(PGXCNodeHandle *));
+			}
+
+			for (i = 0; i < combiner->conn_count; i++)
+			{
+				PGXCNodeHandle *conn = combiner->connections[i];
+
+				CHECK_OWNERSHIP(conn, combiner);
+
+				/* close previous cursor only on phase 1 */
+				if (!primary_mode || !combiner->probing_primary)
+					pgxc_node_send_close(conn, false, combiner->cursor);
+
+				/*
+				 * If we now should probe primary, skip execution on non-primary
+				 * nodes
+				 */
+				if (primary_mode && !combiner->probing_primary &&
+						conn->nodeoid != primary_data_node)
+					continue;
+
+				/* rebind */
+				pgxc_node_send_bind(conn, combiner->cursor, combiner->cursor,
+									paramlen, paramdata);
+				/* execute */
+				pgxc_node_send_execute(conn, combiner->cursor, fetch);
+				/* submit */
+				if (pgxc_node_send_flush(conn))
+				{
+					combiner->conn_count = 0;
+					pfree(combiner->connections);
+					ereport(ERROR,
+							(errcode(ERRCODE_INTERNAL_ERROR),
+							 errmsg("Failed to send command to data nodes")));
+				}
+
+				/*
+				 * There could be only one primary node, but can not leave the
+				 * loop now, because we need to close cursors.
+				 */
+				if (primary_mode && !combiner->probing_primary)
+				{
+					combiner->current_conn = i;
+				}
+			}
+		}
+		else if (node->execNodes)
+		{
+			CommandId		cid;
+			int 			i;
+
+			/*
+			 * There are prepared statement, connections should be already here
+			 */
+			Assert(combiner->conn_count > 0);
+
+			combiner->extended_query = true;
+			cid = estate->es_snapshot->curcid;
+
+			for (i = 0; i < combiner->conn_count; i++)
+			{
+				PGXCNodeHandle *conn = combiner->connections[i];
+
+				CHECK_OWNERSHIP(conn, combiner);
+
+				/*
+				 * If we now should probe primary, skip execution on non-primary
+				 * nodes
+				 */
+				if (primary_mode && !combiner->probing_primary &&
+						conn->nodeoid != primary_data_node)
+					continue;
+
+				/*
+				 * Update Command Id. Other command may be executed after we
+				 * prepare and advanced Command Id. We should use one that
+				 * was active at the moment when command started.
+				 */
+				if (pgxc_node_send_cmd_id(conn, cid))
+				{
+					combiner->conn_count = 0;
+					pfree(combiner->connections);
+					ereport(ERROR,
+							(errcode(ERRCODE_INTERNAL_ERROR),
+							 errmsg("Failed to send command to data nodes")));
+				}
+
+				/* bind */
+				pgxc_node_send_bind(conn, cursor, cursor, paramlen, paramdata);
+				/* execute */
+				pgxc_node_send_execute(conn, cursor, fetch);
+				/* submit */
+				if (pgxc_node_send_flush(conn))
+				{
+					combiner->conn_count = 0;
+					pfree(combiner->connections);
+					ereport(ERROR,
+							(errcode(ERRCODE_INTERNAL_ERROR),
+							 errmsg("Failed to send command to data nodes")));
+				}
+
+				/*
+				 * There could be only one primary node, so if we executed
+				 * subquery on the phase one of primary mode we can leave the
+				 * loop now.
+				 */
+				if (primary_mode && !combiner->probing_primary)
+				{
+					combiner->current_conn = i;
+					break;
+				}
+			}
+
+			/*
+			 * On second phase of primary mode connections are backed up
+			 * already, so do not copy.
+			 */
+			if (primary_mode)
+			{
+				if (combiner->probing_primary)
+				{
+					combiner->cursor = pstrdup(cursor);
+				}
+				else
+				{
+					combiner->cursor_count = combiner->conn_count;
+					combiner->cursor_connections = (PGXCNodeHandle **) palloc(
+								combiner->conn_count * sizeof(PGXCNodeHandle *));
+					memcpy(combiner->cursor_connections, combiner->connections,
+								combiner->conn_count * sizeof(PGXCNodeHandle *));
+				}
+			}
+			else
+			{
+				combiner->cursor = pstrdup(cursor);
+				combiner->cursor_count = combiner->conn_count;
+				combiner->cursor_connections = (PGXCNodeHandle **) palloc(
+							combiner->conn_count * sizeof(PGXCNodeHandle *));
+				memcpy(combiner->cursor_connections, combiner->connections,
+							combiner->conn_count * sizeof(PGXCNodeHandle *));
+			}
+		}
+
+		if (combiner->merge_sort)
+		{
+			/*
+			 * Requests are already made and sorter can fetch tuples to populate
+			 * sort buffer.
+			 */
+			combiner->tuplesortstate = tuplesort_begin_merge(
+									   resultslot->tts_tupleDescriptor,
+									   plan->sort->numCols,
+									   plan->sort->sortColIdx,
+									   plan->sort->sortOperators,
+									   plan->sort->sortCollations,
+									   plan->sort->nullsFirst,
+									   combiner,
+									   work_mem);
+		}
+		if (primary_mode)
+		{
+			if (combiner->probing_primary)
+			{
+				combiner->probing_primary = false;
+				node->bound = true;
+			}
+			else
+				combiner->probing_primary = true;
+		}
+		else
+			node->bound = true;
+	}
+
+	if (combiner->tuplesortstate)
+	{
+		if (tuplesort_gettupleslot((Tuplesortstate *) combiner->tuplesortstate,
+								   true, resultslot))
+			return resultslot;
+	}
+	else
+	{
+		TupleTableSlot *slot = FetchTuple(combiner);
+		if (!TupIsNull(slot))
+			return slot;
+		else if (combiner->probing_primary)
+			/* phase1 is successfully completed, run on other nodes */
+			goto primary_mode_phase_two;
+	}
+	if (combiner->errorMessage)
+	{
+		char *code = combiner->errorCode;
+		if (combiner->errorDetail)
+			ereport(ERROR,
+					(errcode(MAKE_SQLSTATE(code[0], code[1], code[2], code[3], code[4])),
+					 errmsg("%s", combiner->errorMessage), errdetail("%s", combiner->errorDetail) ));
+		else
+			ereport(ERROR,
+					(errcode(MAKE_SQLSTATE(code[0], code[1], code[2], code[3], code[4])),
+					 errmsg("%s", combiner->errorMessage)));
+	}
+	return NULL;
+}
+
+
+void
+ExecReScanRemoteSubplan(RemoteSubplanState *node)
+{
+	ResponseCombiner *combiner = (ResponseCombiner *)node;
+
+	/*
+	 * If we haven't queried remote nodes yet, just return. If outerplan'
+	 * chgParam is not NULL then it will be re-scanned by ExecProcNode,
+	 * else - no reason to re-scan it at all.
+	 */
+	if (!node->bound)
+		return;
+
+	/*
+	 * If we execute locally rescan local copy of the plan
+	 */
+	if (outerPlanState(node))
+		ExecReScan(outerPlanState(node));
+
+	/*
+	 * Consume any possible pending input
+	 */
+	pgxc_connections_cleanup(combiner);
+
+	/* misc cleanup */
+	combiner->command_complete_count = 0;
+	combiner->description_count = 0;
+
+	/*
+	 * Force query is re-bound with new parameters
+	 */
+	node->bound = false;
+}
+
+
+void
+ExecEndRemoteSubplan(RemoteSubplanState *node)
+{
+	ResponseCombiner *combiner = (ResponseCombiner *)node;
+	RemoteSubplan    *plan = (RemoteSubplan *) combiner->ss.ps.plan;
+	int i;
+
+	if (outerPlanState(node))
+		ExecEndNode(outerPlanState(node));
+	if (node->locator)
+		freeLocator(node->locator);
+
+	/*
+	 * Consume any possible pending input
+	 */
+	if (node->bound)
+		pgxc_connections_cleanup(combiner);
+
+	/*
+	 * Update coordinator statistics
+	 */
+	if (IS_PGXC_COORDINATOR)
+	{
+		EState *estate = combiner->ss.ps.state;
+
+		if (estate->es_num_result_relations > 0 && estate->es_processed > 0)
+		{
+			switch (estate->es_plannedstmt->commandType)
+			{
+				case CMD_INSERT:
+					/* One statement can insert into only one relation */
+					pgstat_count_remote_insert(
+								estate->es_result_relations[0].ri_RelationDesc,
+								estate->es_processed);
+					break;
+				case CMD_UPDATE:
+				case CMD_DELETE:
+					{
+						/*
+						 * We can not determine here how many row were updated
+						 * or delete in each table, so assume same number of
+						 * affected row in each table.
+						 * If resulting number of rows is 0 because of rounding,
+						 * increment each counter at least on 1.
+						 */
+						int		i;
+						int 	n;
+						bool 	update;
+
+						update = (estate->es_plannedstmt->commandType == CMD_UPDATE);
+						n = estate->es_processed / estate->es_num_result_relations;
+						if (n == 0)
+							n = 1;
+						for (i = 0; i < estate->es_num_result_relations; i++)
+						{
+							Relation r;
+							r = estate->es_result_relations[i].ri_RelationDesc;
+							if (update)
+								pgstat_count_remote_update(r, n);
+							else
+								pgstat_count_remote_delete(r, n);
+						}
+					}
+					break;
+				default:
+					/* nothing to count */
+					break;
+			}
+		}
+	}
+
+	/*
+	 * Close portals. While cursors_connections exist there are open portals
+	 */
+	if (combiner->cursor)
+	{
+		/* Restore connections where there are active statements */
+		combiner->conn_count = combiner->cursor_count;
+		memcpy(combiner->connections, combiner->cursor_connections,
+					combiner->cursor_count * sizeof(PGXCNodeHandle *));
+		for (i = 0; i < combiner->cursor_count; i++)
+		{
+			PGXCNodeHandle *conn;
+
+			conn = combiner->cursor_connections[i];
+
+			CHECK_OWNERSHIP(conn, combiner);
+
+			if (pgxc_node_send_close(conn, false, combiner->cursor) != 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+						 errmsg("Failed to close data node cursor")));
+		}
+		/* The cursor stuff is not needed */
+		combiner->cursor = NULL;
+		combiner->cursor_count = 0;
+		pfree(combiner->cursor_connections);
+		combiner->cursor_connections = NULL;
+	}
+
+	/* Close statements, even if they never were bound */
+	for (i = 0; i < combiner->conn_count; i++)
+	{
+		PGXCNodeHandle *conn;
+		char			cursor[NAMEDATALEN];
+
+		if (plan->cursor)
+		{
+			if (plan->unique)
+				snprintf(cursor, NAMEDATALEN, "%s_%d", plan->cursor, plan->unique);
+			else
+				strncpy(cursor, plan->cursor, NAMEDATALEN);
+		}
+		else
+			cursor[0] = '\0';
+
+		conn = combiner->connections[i];
+
+		CHECK_OWNERSHIP(conn, combiner);
+
+		if (pgxc_node_send_close(conn, true, cursor) != 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("Failed to close data node statement")));
+		/* Send SYNC and wait for ReadyForQuery */
+		if (pgxc_node_send_sync(conn) != 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("Failed to synchronize data node")));
+		/*
+		 * Formally connection is not in QUERY state, we set the state to read
+		 * CloseDone and ReadyForQuery responses. Upon receiving ReadyForQuery
+		 * state will be changed back to IDLE and conn->coordinator will be
+		 * cleared.
+		 */
+		conn->state = DN_CONNECTION_STATE_CLOSE;
+	}
+
+	while (combiner->conn_count > 0)
+	{
+		if (pgxc_node_receive(combiner->conn_count,
+							  combiner->connections, NULL))
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("Failed to close remote subplan")));
+		i = 0;
+		while (i < combiner->conn_count)
+		{
+			int res = handle_response(combiner->connections[i], combiner);
+			if (res == RESPONSE_EOF)
+			{
+				i++;
+			}
+			else if (res == RESPONSE_READY)
+			{
+				/* Done, connection is reade for query */
+				if (--combiner->conn_count > i)
+					combiner->connections[i] =
+							combiner->connections[combiner->conn_count];
+			}
+			else if (res == RESPONSE_DATAROW)
+			{
+				/*
+				 * If we are finishing slowly running remote subplan while it
+				 * is still working (because of Limit, for example) it may
+				 * produce one or more tuples between connection cleanup and
+				 * handling Close command. One tuple does not cause any problem,
+				 * but if it will not be read the next tuple will trigger
+				 * assertion failure. So if we got a tuple, just read and
+				 * discard it here.
+				 */
+				pfree(combiner->currentRow);
+				combiner->currentRow = NULL;
+			}
+			/* Ignore other possible responses */
+		}
+	}
+
+	ValidateAndCloseCombiner(combiner);
+	pfree(node);
+}
+#endif
+
 
 /*
  * pgxc_node_report_error
  * Throw error from Datanode if any.
  */
+#ifdef XCP
+static void
+pgxc_node_report_error(ResponseCombiner *combiner)
+#else
 static void
 pgxc_node_report_error(RemoteQueryState *combiner)
+#endif
 {
 	/* If no combiner, nothing to do */
 	if (!combiner)
@@ -4883,233 +9150,5 @@ void AtEOXact_DBCleanup(bool isCommit)
 	{
 		pfree(dbcleanup_info.fparams);
 		dbcleanup_info.fparams = NULL;
-	}
-}
-
-static TupleTableSlot *
-getrow_for_tapesort(RemoteQueryState *combiner, TupleTableSlot *scanslot)
-{
-	int	tapenum = combiner->rqs_tapenum;
-	PGXCNodeHandle *conn = combiner->connections[tapenum];
-	/*
-	 * If connection is active (potentially has data to read) we can get node
-	 * number from the connection. If connection is not active (we have read all
-	 * available data rows) and if we have buffered data from that connection
-	 * the node number is stored in combiner->tapenodes[tapenum].
-	 * If connection is inactive and no buffered data we have EOF condition
-	 */
-	int		nid;
-	ListCell	*lc;
-	ListCell	*prev = NULL;
-
-	/* May it ever happen ?! */
-	if (!conn && !combiner->tapenodes)
-		ereport(ERROR,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("Failed to fetch from data node cursor")));
-
-	nid = conn ? PGXCNodeGetNodeId(conn->nodeoid, PGXC_NODE_DATANODE) : combiner->tapenodes[tapenum];
-
-	if (nid < 0)
-		ereport(ERROR,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("Node id %d is incorrect", nid)));
-
-	/*
-	 * If there are buffered rows iterate over them and get first from
-	 * the requested tape
-	 */
-	foreach (lc, combiner->rowBuffer)
-	{
-		RemoteDataRow dataRow = (RemoteDataRow) lfirst(lc);
-		if (dataRow->msgnode == nid)
-		{
-			combiner->currentRow = *dataRow;
-			combiner->rowBuffer = list_delete_cell(combiner->rowBuffer, lc, prev);
-			CopyDataRowTupleToSlot(combiner, scanslot);
-			return scanslot;
-		}
-		prev = lc;
-	}
-
-	/* Nothing is found in the buffer, check for EOF */
-	if (conn == NULL)
-	{
-		ExecClearTuple(scanslot);
-		return scanslot;
-	}
-
-	/* The connection is executing a query but not for this RemoteQueryState.
-	 * Before sending the query, it must have buffered the rows for the query of
-	 * this RemoteQueryState, which we have consumed already. So nothing do
-	 * here. Just return a NULL tuple and mark the connection as done
-	 */
-	if (conn->state == DN_CONNECTION_STATE_QUERY && conn->combiner != combiner)
-	{
-		combiner->connections[tapenum] = NULL;
-		ExecClearTuple(scanslot);
-		return scanslot;
-	}
-
-	/* Read data from the connection until get a row or EOF */
-	for (;;)
-	{
-		switch (handle_response(conn, combiner))
-		{
-			case RESPONSE_SUSPENDED:
-				/* Send Execute to request next row */
-				Assert(combiner->cursor);
-				if (pgxc_node_send_execute(conn, combiner->cursor, 1) != 0)
-					ereport(ERROR,
-							(errcode(ERRCODE_INTERNAL_ERROR),
-							 errmsg("Failed to fetch from data node cursor")));
-				if (pgxc_node_send_sync(conn) != 0)
-					ereport(ERROR,
-							(errcode(ERRCODE_INTERNAL_ERROR),
-							 errmsg("Failed to fetch from data node cursor")));
-				conn->state = DN_CONNECTION_STATE_QUERY;
-				conn->combiner = combiner;
-				/* fallthru */
-			case RESPONSE_EOF:
-				/* receive more data */
-				if (pgxc_node_receive(1, &conn, NULL))
-					ereport(ERROR,
-							(errcode(ERRCODE_INTERNAL_ERROR),
-							 errmsg("%s", conn->error)));
-				break;
-
-			case RESPONSE_COMPLETE:
-				combiner->connections[tapenum] = NULL;
-				ExecClearTuple(scanslot);
-				return scanslot;
-				break;
-
-			case RESPONSE_DATAROW:
-				CopyDataRowTupleToSlot(combiner, scanslot);
-				return scanslot;
-				break;
-
-			default:
-				ereport(ERROR,
-						(errcode(ERRCODE_INTERNAL_ERROR),
-						 errmsg("Unexpected response from the data nodes")));
-		}
-	}
-
-	/*
-	 * Didn't get any row and also didn't get a RESPONSE_COMPLETE (otherwise we
-	 * would have returned from there with this tape nullified). This should
-	 * never happen. Throw an error.
-	 */
-	ereport(ERROR,
-			(errcode(ERRCODE_INTERNAL_ERROR),
-			 errmsg("Did not get response complete message for the connection.")));
-}
-
-
-/* --------------------------------
- * SetDataRowForIntParams: Form a BIND data row for internal parameters.
- * This function is called when the data for the parameters of remote
- * statement resides in some plan slot of an internally generated remote
- * statement rather than from some extern params supplied by the caller of the
- * query. Currently DML is the only case where we generate a query with
- * internal parameters.
- * The parameter data is constructed from the slot data, and stored in
- * RemoteQueryState.paramval_data.
- * At the same time, remote parameter types are inferred from the slot
- * tuple descriptor, and stored in RemoteQueryState.rqs_param_types.
- * On subsequent calls, these param types are re-used.
- * The slot itself is undisturbed.
- * --------------------------------
- */
-static void
-SetDataRowForIntParams(TupleTableSlot *slot, RemoteQueryState *rq_state)
-{
-	TupleDesc	tdesc = slot->tts_tupleDescriptor;
-	int			att_index;
-
-	Assert(tdesc != NULL);
-
-	/*
-	 * Infer param types from the tuple desc. But we have to do it only the
-	 * first time: the interal parameters remain the same while processing all
-	 * the source data rows because the data slot tupdesc never changes.
-	 * Even though we can determine the internal param types during planning, we
-	 * want to do it here: we don't want to set the param types and param data
-	 * at two different places. Doing them together here helps us to make sure
-	 * that the order of param types are in line with the order of the param
-	 * data.
-	 */
-	if (rq_state->rqs_num_params == 0)
-	{
-		rq_state->rqs_num_params = tdesc->natts;
-		rq_state->rqs_param_types =
-			(Oid *) palloc(sizeof(Oid) * rq_state->rqs_num_params);
-		for (att_index = 0; att_index < rq_state->rqs_num_params; att_index++)
-			rq_state->rqs_param_types[att_index] = tdesc->attrs[att_index]->atttypid;
-	}
-
-	/* if we already have datarow make a copy */
-	if (slot->tts_dataRow)
-	{
-		rq_state->paramval_data = (char *)palloc(slot->tts_dataLen);
-		memcpy(rq_state->paramval_data, slot->tts_dataRow, slot->tts_dataLen);
-		rq_state->paramval_len = slot->tts_dataLen;
-	}
-	else
-	{
-		StringInfoData	buf;
-		uint16			n16;
-
-		initStringInfo(&buf);
-		/* Number of parameter values */
-		n16 = htons(tdesc->natts);
-		appendBinaryStringInfo(&buf, (char *) &n16, 2);
-
-		/* ensure we have all values */
-		slot_getallattrs(slot);
-		for (att_index = 0; att_index < tdesc->natts; att_index++)
-		{
-			uint32 n32;
-
-			if (slot->tts_isnull[att_index])
-			{
-				n32 = htonl(-1);
-				appendBinaryStringInfo(&buf, (char *) &n32, 4);
-			}
-			else
-			{
-				Form_pg_attribute attr = tdesc->attrs[att_index];
-				Oid		typOutput;
-				bool	typIsVarlena;
-				Datum	pval;
-				char   *pstring;
-				int		len;
-
-				/* Get info needed to output the value */
-				getTypeOutputInfo(attr->atttypid, &typOutput, &typIsVarlena);
-				/*
-				 * If we have a toasted datum, forcibly detoast it here to avoid
-				 * memory leakage inside the type's output routine.
-				 */
-				if (typIsVarlena)
-					pval = PointerGetDatum(PG_DETOAST_DATUM(slot->tts_values[att_index]));
-				else
-					pval = slot->tts_values[att_index];
-
-				/* Convert Datum to string */
-				pstring = OidOutputFunctionCall(typOutput, pval);
-
-				/* copy data to the buffer */
-				len = strlen(pstring);
-				n32 = htonl(len);
-				appendBinaryStringInfo(&buf, (char *) &n32, 4);
-				appendBinaryStringInfo(&buf, pstring, len);
-			}
-		}
-
-		/* Assign the newly allocated data row to paramval */
-		rq_state->paramval_data = buf.data;
-		rq_state->paramval_len = buf.len;
 	}
 }

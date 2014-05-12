@@ -41,8 +41,6 @@ SELECT * FROM aggtest order by a, b;
 (4 rows)
 
 -- Read-only tests
--- Enforce use of COMMIT instead of 2PC for temporary objects
-SET enforce_two_phase_commit TO off;
 CREATE TABLE writetest (a int);
 CREATE TEMPORARY TABLE temptest (a int);
 BEGIN;
@@ -125,10 +123,12 @@ SELECT * FROM writetest; -- ok
 
 DELETE FROM temptest; -- ok
 UPDATE temptest SET a = 0 FROM writetest WHERE temptest.a = 1 AND writetest.a = temptest.a; -- ok
-ERROR:  Partition column can't be updated in current version
+ERROR:  could not plan this distributed update
+DETAIL:  correlated UPDATE or updating distribution column currently not supported in Postgres-XL.
 PREPARE test AS UPDATE writetest SET a = 0; -- ok
 EXECUTE test; -- fail
-ERROR:  Partition column can't be updated in current version
+ERROR:  could not plan this distributed update
+DETAIL:  correlated UPDATE or updating distribution column currently not supported in Postgres-XL.
 SELECT * FROM writetest, temptest; -- ok
  a | a 
 ---+---
@@ -490,7 +490,8 @@ create or replace function max_xacttest() returns smallint language sql as
 'select max(a) from xacttest' stable;
 begin;
 update xacttest set a = max_xacttest() + 10 where a > 0;
-ERROR:  Partition column can't be updated in current version
+ERROR:  could not plan this distributed update
+DETAIL:  correlated UPDATE or updating distribution column currently not supported in Postgres-XL.
 select * from xacttest order by a, b;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 rollback;
@@ -499,7 +500,8 @@ create or replace function max_xacttest() returns smallint language sql as
 'select max(a) from xacttest' volatile;
 begin;
 update xacttest set a = max_xacttest() + 10 where a > 0;
-ERROR:  Partition column can't be updated in current version
+ERROR:  could not plan this distributed update
+DETAIL:  correlated UPDATE or updating distribution column currently not supported in Postgres-XL.
 select * from xacttest order by a, b;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 rollback;
@@ -508,7 +510,8 @@ create or replace function max_xacttest() returns smallint language plpgsql as
 'begin return max(a) from xacttest; end' stable;
 begin;
 update xacttest set a = max_xacttest() + 10 where a > 0;
-ERROR:  Partition column can't be updated in current version
+ERROR:  could not plan this distributed update
+DETAIL:  correlated UPDATE or updating distribution column currently not supported in Postgres-XL.
 select * from xacttest order by a, b;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 rollback;
@@ -516,7 +519,8 @@ create or replace function max_xacttest() returns smallint language plpgsql as
 'begin return max(a) from xacttest; end' volatile;
 begin;
 update xacttest set a = max_xacttest() + 10 where a > 0;
-ERROR:  Partition column can't be updated in current version
+ERROR:  could not plan this distributed update
+DETAIL:  correlated UPDATE or updating distribution column currently not supported in Postgres-XL.
 select * from xacttest order by a, b;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 rollback;

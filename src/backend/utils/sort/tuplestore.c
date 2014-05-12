@@ -43,6 +43,11 @@
  * before switching to the other state or activating a different read pointer.
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -72,6 +77,27 @@ typedef enum
 	TSS_READFILE				/* Reading from temp file */
 } TupStoreStatus;
 
+
+#ifdef XCP
+/*
+ * Supported tuplestore formats
+ */
+typedef enum
+{
+	TSF_MINIMAL,				/* Minimal tuples */
+	TSF_DATAROW,				/* Datarow tuples */
+	TSF_MESSAGE					/* A Postgres protocol message data */
+} TupStoreFormat;
+
+
+typedef struct
+{
+	int32 	msglen;
+	char   *msg;
+} msg_data;
+#endif
+
+
 /*
  * State for a single read pointer.  If we are in state INMEM then all the
  * read pointers' "current" fields denote the read positions.  In state
@@ -99,6 +125,9 @@ typedef struct
 struct Tuplestorestate
 {
 	TupStoreStatus status;		/* enumerated value as shown above */
+#ifdef XCP
+	TupStoreFormat format;		/* enumerated value as shown above */
+#endif
 	int			eflags;			/* capability flags (OR of pointers' flags) */
 	bool		backward;		/* store extra length words in file? */
 	bool		interXact;		/* keep open through transactions? */
@@ -106,6 +135,9 @@ struct Tuplestorestate
 	long		availMem;		/* remaining memory available, in bytes */
 	BufFile    *myfile;			/* underlying file, or NULL if none */
 	MemoryContext context;		/* memory context for holding tuples */
+#ifdef XCP
+	MemoryContext tmpcxt;		/* memory context for holding temporary data */
+#endif
 	ResourceOwner resowner;		/* resowner for holding temp files */
 
 	/*
@@ -171,6 +203,12 @@ struct Tuplestorestate
 
 	int			writepos_file;	/* file# (valid if READFILE state) */
 	off_t		writepos_offset;	/* offset (valid if READFILE state) */
+
+	char	   *stat_name;
+	long		stat_read_count;
+	long 		stat_write_count;
+	long		stat_spill_read;
+	long		stat_spill_write;
 };
 
 #define COPYTUP(state,tup)	((*(state)->copytup) (state, tup))
@@ -235,7 +273,14 @@ static unsigned int getlen(Tuplestorestate *state, bool eofOK);
 static void *copytup_heap(Tuplestorestate *state, void *tup);
 static void writetup_heap(Tuplestorestate *state, void *tup);
 static void *readtup_heap(Tuplestorestate *state, unsigned int len);
-
+#ifdef XCP
+static void *copytup_datarow(Tuplestorestate *state, void *tup);
+static void writetup_datarow(Tuplestorestate *state, void *tup);
+static void *readtup_datarow(Tuplestorestate *state, unsigned int len);
+static void *copytup_message(Tuplestorestate *state, void *tup);
+static void writetup_message(Tuplestorestate *state, void *tup);
+static void *readtup_message(Tuplestorestate *state, unsigned int len);
+#endif
 
 /*
  *		tuplestore_begin_xxx
@@ -275,6 +320,12 @@ tuplestore_begin_common(int eflags, bool interXact, int maxKBytes)
 	state->readptrs[0].eof_reached = false;
 	state->readptrs[0].current = 0;
 
+	state->stat_name = NULL;
+	state->stat_write_count = 0;
+	state->stat_read_count = 0;
+	state->stat_spill_write = 0;
+	state->stat_spill_read = 0;
+
 	return state;
 }
 
@@ -313,9 +364,15 @@ tuplestore_begin_heap(bool randomAccess, bool interXact, int maxKBytes)
 
 	state = tuplestore_begin_common(eflags, interXact, maxKBytes);
 
+#ifdef XCP
+	state->format = TSF_MINIMAL;
+#endif
 	state->copytup = copytup_heap;
 	state->writetup = writetup_heap;
 	state->readtup = readtup_heap;
+#ifdef XCP
+	state->tmpcxt = NULL;
+#endif
 
 	return state;
 }
@@ -436,6 +493,16 @@ tuplestore_end(Tuplestorestate *state)
 {
 	int			i;
 
+	if (state->stat_name)
+	{
+		elog(LOG, "Tuplestore %s did %ld writes and %ld reads, "
+				  "it spilled to disk after %ld writes and %ld reads, "
+				  "now deleted %d memtuples out of %d", state->stat_name,
+				  state->stat_write_count, state->stat_read_count,
+				  state->stat_spill_write, state->stat_spill_read,
+				  state->memtupdeleted, state->memtupcount);
+	}
+
 	if (state->myfile)
 		BufFileClose(state->myfile);
 	if (state->memtuples)
@@ -548,6 +615,10 @@ tuplestore_puttupleslot(Tuplestorestate *state,
 	MinimalTuple tuple;
 	MemoryContext oldcxt = MemoryContextSwitchTo(state->context);
 
+#ifdef XCP
+	if (state->format == TSF_MINIMAL)
+	{
+#endif
 	/*
 	 * Form a MinimalTuple in working memory
 	 */
@@ -555,6 +626,20 @@ tuplestore_puttupleslot(Tuplestorestate *state,
 	USEMEM(state, GetMemoryChunkSpace(tuple));
 
 	tuplestore_puttuple_common(state, (void *) tuple);
+#ifdef XCP
+	}
+	else if (state->format == TSF_DATAROW)
+	{
+		RemoteDataRow tuple = ExecCopySlotDatarow(slot, state->tmpcxt);
+		USEMEM(state, GetMemoryChunkSpace(tuple));
+
+		tuplestore_puttuple_common(state, (void *) tuple);
+	}
+	else
+	{
+		elog(ERROR, "Unsupported datastore format");
+	}
+#endif
 
 	MemoryContextSwitchTo(oldcxt);
 }
@@ -567,6 +652,10 @@ void
 tuplestore_puttuple(Tuplestorestate *state, HeapTuple tuple)
 {
 	MemoryContext oldcxt = MemoryContextSwitchTo(state->context);
+
+#ifdef XCP
+	Assert(state->format == TSF_MINIMAL);
+#endif
 
 	/*
 	 * Copy the tuple.	(Must do this even in WRITEFILE case.  Note that
@@ -590,6 +679,10 @@ tuplestore_putvalues(Tuplestorestate *state, TupleDesc tdesc,
 	MinimalTuple tuple;
 	MemoryContext oldcxt = MemoryContextSwitchTo(state->context);
 
+#ifdef XCP
+	Assert(state->format == TSF_MINIMAL);
+#endif
+
 	tuple = heap_form_minimal_tuple(tdesc, values, isnull);
 	USEMEM(state, GetMemoryChunkSpace(tuple));
 
@@ -604,6 +697,9 @@ tuplestore_puttuple_common(Tuplestorestate *state, void *tuple)
 	TSReadPointer *readptr;
 	int			i;
 	ResourceOwner oldowner;
+
+	if (state->stat_name)
+		state->stat_write_count++;
 
 	switch (state->status)
 	{
@@ -654,6 +750,12 @@ tuplestore_puttuple_common(Tuplestorestate *state, void *tuple)
 			 */
 			if (state->memtupcount < state->memtupsize && !LACKMEM(state))
 				return;
+
+			if (state->stat_name)
+			{
+				state->stat_spill_read = state->stat_read_count;
+				state->stat_spill_write = state->stat_write_count;
+			}
 
 			/*
 			 * Nope; time to switch to tape-based operation.  Make sure that
@@ -764,6 +866,9 @@ tuplestore_gettuple(Tuplestorestate *state, bool forward,
 					return NULL;
 				if (readptr->current < state->memtupcount)
 				{
+					if (state->stat_name)
+						state->stat_read_count++;
+
 					/* We have another tuple, so return it */
 					return state->memtuples[readptr->current++];
 				}
@@ -795,6 +900,9 @@ tuplestore_gettuple(Tuplestorestate *state, bool forward,
 					Assert(!state->truncated);
 					return NULL;
 				}
+				if (state->stat_name)
+					state->stat_read_count++;
+
 				return state->memtuples[readptr->current - 1];
 			}
 			break;
@@ -824,6 +932,9 @@ tuplestore_gettuple(Tuplestorestate *state, bool forward,
 				if ((tuplen = getlen(state, true)) != 0)
 				{
 					tup = READTUP(state, tuplen);
+					if (state->stat_name && tup)
+						state->stat_read_count++;
+
 					return tup;
 				}
 				else
@@ -892,6 +1003,9 @@ tuplestore_gettuple(Tuplestorestate *state, bool forward,
 							SEEK_CUR) != 0)
 				elog(ERROR, "bogus tuple length in backward scan");
 			tup = READTUP(state, tuplen);
+			if (state->stat_name && tup)
+				state->stat_read_count++;
+
 			return tup;
 
 		default:
@@ -924,12 +1038,37 @@ tuplestore_gettupleslot(Tuplestorestate *state, bool forward,
 
 	if (tuple)
 	{
+#ifdef XCP
+		if (state->format == TSF_MINIMAL)
+		{
+#endif
 		if (copy && !should_free)
 		{
 			tuple = heap_copy_minimal_tuple(tuple);
 			should_free = true;
 		}
 		ExecStoreMinimalTuple(tuple, slot, should_free);
+#ifdef XCP
+		}
+		else if (state->format == TSF_DATAROW)
+		{
+			RemoteDataRow datarow = (RemoteDataRow) tuple;
+			if (copy && !should_free)
+			{
+				RemoteDataRow dup = (RemoteDataRow) palloc(sizeof(RemoteDataRowData) + datarow->msglen);
+				dup->msgnode = datarow->msgnode;
+				dup->msglen = datarow->msglen;
+				memcpy(dup->msg, datarow->msg, datarow->msglen);
+				datarow = dup;
+				should_free = true;
+			}
+			ExecStoreDataRowTuple(datarow, slot, should_free);
+		}
+		else
+		{
+			elog(ERROR, "Unsupported datastore format");
+		}
+#endif
 		return true;
 	}
 	else
@@ -1310,4 +1449,219 @@ readtup_heap(Tuplestorestate *state, unsigned int len)
 						sizeof(tuplen)) != sizeof(tuplen))
 			elog(ERROR, "unexpected end of data");
 	return (void *) tuple;
+}
+
+
+#ifdef XCP
+/*
+ * Routines to support Datarow tuple format, used for exchange between nodes
+ * as well as send data to client
+ */
+Tuplestorestate *
+tuplestore_begin_datarow(bool interXact, int maxKBytes,
+						 MemoryContext tmpcxt)
+{
+	Tuplestorestate *state;
+
+	state = tuplestore_begin_common(0, interXact, maxKBytes);
+
+	state->format = TSF_DATAROW;
+	state->copytup = copytup_datarow;
+	state->writetup = writetup_datarow;
+	state->readtup = readtup_datarow;
+	state->tmpcxt = tmpcxt;
+
+	return state;
+}
+
+
+/*
+ * Do we need this at all?
+ */
+static void *
+copytup_datarow(Tuplestorestate *state, void *tup)
+{
+	Assert(false);
+	return NULL;
+}
+
+static void
+writetup_datarow(Tuplestorestate *state, void *tup)
+{
+	RemoteDataRow tuple = (RemoteDataRow) tup;
+
+	/* the part of the MinimalTuple we'll write: */
+	char	   *tupbody = tuple->msg;
+	unsigned int tupbodylen = tuple->msglen;
+
+	/* total on-disk footprint: */
+	unsigned int tuplen = tupbodylen + sizeof(int) + sizeof(tuple->msgnode);
+
+	if (BufFileWrite(state->myfile, (void *) &tuplen,
+					 sizeof(int)) != sizeof(int))
+		elog(ERROR, "write failed");
+	if (BufFileWrite(state->myfile, (void *) &tuple->msgnode,
+					 sizeof(tuple->msgnode)) != sizeof(tuple->msgnode))
+		elog(ERROR, "write failed");
+	if (BufFileWrite(state->myfile, (void *) tupbody,
+					 tupbodylen) != (size_t) tupbodylen)
+		elog(ERROR, "write failed");
+	if (state->backward)		/* need trailing length word? */
+		if (BufFileWrite(state->myfile, (void *) &tuplen,
+						 sizeof(tuplen)) != sizeof(tuplen))
+			elog(ERROR, "write failed");
+
+	FREEMEM(state, GetMemoryChunkSpace(tuple));
+	pfree(tuple);
+}
+
+static void *
+readtup_datarow(Tuplestorestate *state, unsigned int len)
+{
+	RemoteDataRow tuple = (RemoteDataRow) palloc(len);
+	unsigned int tupbodylen = len - sizeof(int) - sizeof(tuple->msgnode);
+
+	USEMEM(state, GetMemoryChunkSpace(tuple));
+	/* read in the tuple proper */
+	tuple->msglen = tupbodylen;
+	if (BufFileRead(state->myfile, (void *) &tuple->msgnode,
+					sizeof(tuple->msgnode)) != sizeof(tuple->msgnode))
+		elog(ERROR, "unexpected end of data");
+	if (BufFileRead(state->myfile, (void *) tuple->msg,
+					tupbodylen) != (size_t) tupbodylen)
+		elog(ERROR, "unexpected end of data");
+	if (state->backward)		/* need trailing length word? */
+		if (BufFileRead(state->myfile, (void *) &len,
+						sizeof(len)) != sizeof(len))
+			elog(ERROR, "unexpected end of data");
+	return (void *) tuple;
+}
+
+
+/*
+ * Routines to support storage of protocol message data
+ */
+Tuplestorestate *
+tuplestore_begin_message(bool interXact, int maxKBytes)
+{
+	Tuplestorestate *state;
+
+	state = tuplestore_begin_common(0, interXact, maxKBytes);
+
+	state->format = TSF_MESSAGE;
+	state->copytup = copytup_message;
+	state->writetup = writetup_message;
+	state->readtup = readtup_message;
+	state->tmpcxt = NULL;
+
+	return state;
+}
+
+
+void
+tuplestore_putmessage(Tuplestorestate *state, int len, char* msg)
+{
+	msg_data m;
+	void *tuple;
+	MemoryContext oldcxt = MemoryContextSwitchTo(state->context);
+
+	Assert(state->format == TSF_MESSAGE);
+
+	m.msglen = len;
+	m.msg = msg;
+
+	tuple = COPYTUP(state, &m);
+	tuplestore_puttuple_common(state, tuple);
+
+	MemoryContextSwitchTo(oldcxt);
+}
+
+
+char *
+tuplestore_getmessage(Tuplestorestate *state, int *len)
+{
+	bool should_free;
+	void *result;
+	void *tuple = tuplestore_gettuple(state, true, &should_free);
+
+	Assert(state->format == TSF_MESSAGE);
+
+	/* done? */
+	if (!tuple)
+		return NULL;
+
+	*len = *((int *) tuple);
+
+	result = palloc(*len);
+	memcpy(result, ((char *) tuple) + sizeof(int), *len);
+	if (should_free)
+		pfree(tuple);
+
+	return (char *) result;
+}
+
+
+static void *
+copytup_message(Tuplestorestate *state, void *tup)
+{
+	msg_data *m = (msg_data *) tup;
+	void *tuple;
+
+	tuple = palloc(m->msglen + sizeof(int));
+	*((int *) tuple) = m->msglen;
+	memcpy(((char *) tuple) + sizeof(int), m->msg, m->msglen);
+	USEMEM(state, GetMemoryChunkSpace(tuple));
+	return tuple;
+}
+
+
+static void
+writetup_message(Tuplestorestate *state, void *tup)
+{
+	int *msglen = (int *) tup;
+	/* total on-disk footprint: */
+	unsigned int tuplen = *msglen;
+
+	if (BufFileWrite(state->myfile, tup, tuplen) != tuplen)
+		elog(ERROR, "write failed");
+	if (state->backward)		/* need trailing length word? */
+		if (BufFileWrite(state->myfile, (void *) &tuplen,
+						 sizeof(tuplen)) != sizeof(tuplen))
+			elog(ERROR, "write failed");
+
+	FREEMEM(state, GetMemoryChunkSpace(tup));
+	pfree(tup);
+}
+
+static void *
+readtup_message(Tuplestorestate *state, unsigned int len)
+{
+	void *tuple = palloc(len + sizeof(int));
+	*((int *) tuple) = len;
+
+	USEMEM(state, GetMemoryChunkSpace(tuple));
+	/* read in the tuple proper */
+	if (BufFileRead(state->myfile, ((char *) tuple) + sizeof(int),
+					len) != (size_t) len)
+		elog(ERROR, "unexpected end of data");
+	if (state->backward)		/* need trailing length word? */
+		if (BufFileRead(state->myfile, (void *) &len,
+						sizeof(len)) != sizeof(len))
+			elog(ERROR, "unexpected end of data");
+	return tuple;
+}
+#endif
+
+
+void
+tuplestore_collect_stat(Tuplestorestate *state, char *name)
+{
+	if (state->status != TSS_INMEM || state->memtupcount != 0)
+	{
+		elog(WARNING, "tuplestore %s is already in use, to late to get statistics",
+			 name);
+		return;
+	}
+
+	state->stat_name = pstrdup(name);
 }

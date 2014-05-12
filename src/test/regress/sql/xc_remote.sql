@@ -2,10 +2,7 @@
 -- XC_REMOTE
 --
 
--- Test cases for Postgres-XC remote queries
--- Disable fast query shipping, all the queries go through standard planner
-SET enable_fast_query_shipping TO false;
-
+-- Test cases for Postgres-XL remote queries
 -- Create of non-Coordinator quals
 CREATE FUNCTION func_stable (int) RETURNS int AS $$ SELECT $1 $$ LANGUAGE SQL STABLE;
 CREATE FUNCTION func_volatile (int) RETURNS int AS $$ SELECT $1 $$ LANGUAGE SQL VOLATILE;

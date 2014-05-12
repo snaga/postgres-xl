@@ -32,6 +32,11 @@
  *	  clients.
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
@@ -340,7 +345,11 @@ static DNSServiceRef bonjour_sdref = NULL;
 
 #ifdef PGXC
 char			*PGXCNodeName = NULL;
+#ifdef XCP
+int			PGXCNodeId = 0;
+#else
 int			PGXCNodeId = -1;
+#endif
 /*
  * When a particular node starts up, store the node identifier in this variable
  * so that we dont have to calculate it OR do a search in cache any where else
@@ -348,7 +357,9 @@ int			PGXCNodeId = -1;
  */
 uint32			PGXCNodeIdentifier = 0;
 
+#ifndef XCP
 static bool isNodeRegistered = false;
+#endif
 #endif
 
 /*
@@ -465,6 +476,7 @@ typedef struct
 	pid_t		PostmasterPid;
 	TimestampTz PgStartTime;
 	TimestampTz PgReloadTime;
+	pg_time_t	first_syslogger_file_time;
 	bool		redirection_done;
 	bool		IsBinaryUpgrade;
 	int			max_safe_fds;
@@ -495,10 +507,34 @@ static void ShmemBackendArrayAdd(Backend *bn);
 static void ShmemBackendArrayRemove(Backend *bn);
 #endif   /* EXEC_BACKEND */
 
+#ifdef XCP
+char *parentPGXCNode = NULL;
+#endif
+
 #ifdef PGXC
 bool isPGXCCoordinator = false;
 bool isPGXCDataNode = false;
+
+/*
+ * While adding a new node to the cluster we need to restore the schema of
+ * an existing database to the new node.
+ * If the new node is a datanode and we connect directly to it,
+ * it does not allow DDL, because it is in read only mode &
+ * If the new node is a coordinator it will send DDLs to all the other
+ * coordinators which we do not want it to do
+ * To provide ability to restore on the new node a new command line
+ * argument is provided called --restoremode
+ * It is to be provided in place of --coordinator OR --datanode.
+ * In restore mode both coordinator and datanode are internally
+ * treated as a datanode.
+ */
+bool isRestoreMode = false;
+
 int remoteConnType = REMOTE_CONN_APP;
+
+/* key pair to be used as object id while using advisory lock for backup */
+Datum xc_lockForBackupKey1;
+Datum xc_lockForBackupKey2;
 
 #define StartPoolManager()		StartChildProcess(PoolerProcess)
 #endif
@@ -740,6 +776,15 @@ PostmasterMain(int argc, char *argv[])
 					else if (strcmp(name, "datanode") == 0 &&
 						!value)
 						isPGXCDataNode = true;
+					else if (strcmp(name, "restoremode") == 0 && !value)
+					{
+						/*
+						 * In restore mode both coordinator and datanode
+						 * are internally treeated as datanodes
+						 */
+						isRestoreMode = true;
+						isPGXCDataNode = true;
+					}
 					else /* default case */
 					{
 #endif
@@ -777,7 +822,11 @@ PostmasterMain(int argc, char *argv[])
 #ifdef PGXC
 	if (!IS_PGXC_COORDINATOR && !IS_PGXC_DATANODE)
 	{
-		write_stderr("%s: Postgres-XC: must start as either a Coordinator (--coordinator) or Datanode (--datanode)\n",
+#ifdef XCP
+		write_stderr("%s: Postgres-XL: must start as either a Coordinator (--coordinator) or Data Node (--datanode)\n",
+#else
+		write_stderr("%s: Postgres-XC: must start as either a Coordinator (--coordinator) or Data Node (--datanode)\n",
+#endif
 					 progname);
 		ExitPostmaster(1);
 	}
@@ -820,9 +869,14 @@ PostmasterMain(int argc, char *argv[])
 	/*
 	 * Check for invalid combinations of GUC settings.
 	 */
-	if (ReservedBackends >= MaxBackends)
+	if (ReservedBackends >= MaxConnections)
 	{
 		write_stderr("%s: superuser_reserved_connections must be less than max_connections\n", progname);
+		ExitPostmaster(1);
+	}
+	if (max_wal_senders >= MaxConnections)
+	{
+		write_stderr("%s: max_wal_senders must be less than max_connections\n", progname);
 		ExitPostmaster(1);
 	}
 	if (XLogArchiveMode && wal_level == WAL_LEVEL_MINIMAL)
@@ -1181,6 +1235,16 @@ PostmasterMain(int argc, char *argv[])
 	pmState = PM_STARTUP;
 
 #ifdef PGXC /* PGXC_COORD */
+#ifdef XCP
+	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+
+	/*
+	 * Initialize the Data Node connection pool
+	 */
+	PgPoolerPID = StartPoolManager();
+
+	MemoryContextSwitchTo(oldcontext);
+#else
 	if (IS_PGXC_COORDINATOR)
 	{
 		oldcontext = MemoryContextSwitchTo(TopMemoryContext);
@@ -1192,7 +1256,8 @@ PostmasterMain(int argc, char *argv[])
 
 		MemoryContextSwitchTo(oldcontext);
 	}
-#endif
+#endif /* XCP */
+#endif /* PGXC */
 
 	status = ServerLoop();
 
@@ -1496,11 +1561,15 @@ ServerLoop(void)
 		if (PgStatPID == 0 && pmState == PM_RUN)
 			PgStatPID = pgstat_start();
 
-#ifdef PGXC /* PGXC_COORD */
+#ifdef PGXC
 		/* If we have lost the pooler, try to start a new one */
+#ifdef XCP
+		if (PgPoolerPID == 0 && pmState == PM_RUN)
+#else
 		if (IS_PGXC_COORDINATOR && PgPoolerPID == 0 && pmState == PM_RUN)
+#endif /* XCP */
 			PgPoolerPID = StartPoolManager();
-#endif
+#endif /* PGXC */
 		/* If we need to signal the autovacuum launcher, do so now */
 		if (avlauncher_needs_signal)
 		{
@@ -2147,9 +2216,13 @@ SIGHUP_handler(SIGNAL_ARGS)
 		if (StartupPID != 0)
 			signal_child(StartupPID, SIGHUP);
 #ifdef PGXC /* PGXC_COORD */
+#ifdef XCP
+		if (PgPoolerPID != 0)
+#else
 		if (IS_PGXC_COORDINATOR && PgPoolerPID != 0)
+#endif /* XCP */
 			signal_child(PgPoolerPID, SIGHUP);
-#endif
+#endif /* PGXC */
 		if (BgWriterPID != 0)
 			signal_child(BgWriterPID, SIGHUP);
 		if (CheckpointerPID != 0)
@@ -2232,9 +2305,14 @@ pmdie(SIGNAL_ARGS)
 
 #ifdef PGXC /* PGXC_COORD */
 				/* and the pool manager too */
+#ifdef XCP
+				if (PgPoolerPID != 0)
+#else
 				if (IS_PGXC_COORDINATOR && PgPoolerPID != 0)
+#endif
 					signal_child(PgPoolerPID, SIGTERM);
 
+#ifndef XCP
 				/* Unregister Node on GTM */
 				if (isNodeRegistered)
 				{
@@ -2243,6 +2321,7 @@ pmdie(SIGNAL_ARGS)
 					else if (IS_PGXC_DATANODE)
 						UnregisterGTM(GTM_NODE_DATANODE);
 				}
+#endif
 #endif
 
 				/*
@@ -2286,12 +2365,17 @@ pmdie(SIGNAL_ARGS)
 				signal_child(BgWriterPID, SIGTERM);
 			if (WalReceiverPID != 0)
 				signal_child(WalReceiverPID, SIGTERM);
+#ifdef XCP
+			/* and the pool manager too */
+			if (PgPoolerPID != 0)
+				signal_child(PgPoolerPID, SIGTERM);
+#endif /* XCP */
 			if (pmState == PM_RECOVERY)
 			{
 				/*
-				 * Only startup, bgwriter, and checkpointer should be active
-				 * in this state; we just signaled the first two, and we don't
-				 * want to kill checkpointer yet.
+				 * Only startup, bgwriter, walreceiver, and/or checkpointer
+				 * should be active in this state; we just signaled the first
+				 * three, and we don't want to kill checkpointer yet.
 				 */
 				pmState = PM_WAIT_BACKENDS;
 			}
@@ -2312,7 +2396,8 @@ pmdie(SIGNAL_ARGS)
 				/* and the walwriter too */
 				if (WalWriterPID != 0)
 					signal_child(WalWriterPID, SIGTERM);
-#ifdef PGXC /* PGXC_COORD */
+#ifdef PGXC
+#ifndef XCP
 				/* and the pool manager too */
 				if (IS_PGXC_COORDINATOR && PgPoolerPID != 0)
 					signal_child(PgPoolerPID, SIGTERM);
@@ -2325,7 +2410,8 @@ pmdie(SIGNAL_ARGS)
 					else if (IS_PGXC_DATANODE)
 						UnregisterGTM(GTM_NODE_DATANODE);
 				}
-#endif
+#endif /* XCP */
+#endif /* PGXC */
 				pmState = PM_WAIT_BACKENDS;
 			}
 
@@ -2350,7 +2436,11 @@ pmdie(SIGNAL_ARGS)
 			if (StartupPID != 0)
 				signal_child(StartupPID, SIGQUIT);
 #ifdef PGXC /* PGXC_COORD */
+#ifdef XCP
+			if (PgPoolerPID != 0)
+#else
 			if (IS_PGXC_COORDINATOR && PgPoolerPID != 0)
+#endif /* XCP */
 				signal_child(PgPoolerPID, SIGQUIT);
 
 #endif
@@ -2422,6 +2512,18 @@ reaper(SIGNAL_ARGS)
 			StartupPID = 0;
 
 			/*
+			 * Startup process exited in response to a shutdown request (or it
+			 * completed normally regardless of the shutdown request).
+			 */
+			if (Shutdown > NoShutdown &&
+				(EXIT_STATUS_0(exitstatus) || EXIT_STATUS_1(exitstatus)))
+			{
+				pmState = PM_WAIT_BACKENDS;
+				/* PostmasterStateMachine logic does the rest */
+				continue;
+			}
+
+			/*
 			 * Unexpected exit of startup process (including FATAL exit)
 			 * during PM_STARTUP is treated as catastrophic. There are no
 			 * other processes running yet, so we can just exit.
@@ -2433,18 +2535,6 @@ reaper(SIGNAL_ARGS)
 				ereport(LOG,
 				(errmsg("aborting startup due to startup process failure")));
 				ExitPostmaster(1);
-			}
-
-			/*
-			 * Startup process exited in response to a shutdown request (or it
-			 * completed normally regardless of the shutdown request).
-			 */
-			if (Shutdown > NoShutdown &&
-				(EXIT_STATUS_0(exitstatus) || EXIT_STATUS_1(exitstatus)))
-			{
-				pmState = PM_WAIT_BACKENDS;
-				/* PostmasterStateMachine logic does the rest */
-				continue;
 			}
 
 			/*
@@ -2515,10 +2605,14 @@ reaper(SIGNAL_ARGS)
 				PgArchPID = pgarch_start();
 			if (PgStatPID == 0)
 				PgStatPID = pgstat_start();
-#ifdef PGXC /* PGXC_COORD */
+#ifdef PGXC
+#ifdef XCP
+			if (PgPoolerPID == 0)
+#else
 			if (IS_PGXC_COORDINATOR && PgPoolerPID == 0)
+#endif /* XCP */
 				PgPoolerPID = StartPoolManager();
-#endif
+#endif /* PGXC */
 
 			/* at this point we are really open for business */
 			ereport(LOG,
@@ -2691,7 +2785,11 @@ reaper(SIGNAL_ARGS)
 		 * Was it the pool manager?  TODO decide how to handle
 		 * Probably we should restart the system
 		 */
+#ifdef XCP
+		if (pid == PgPoolerPID)
+#else
 		if (IS_PGXC_COORDINATOR && pid == PgPoolerPID)
+#endif /* XCP */
 		{
 			PgPoolerPID = 0;
 			if (!EXIT_STATUS_0(exitstatus))
@@ -2932,8 +3030,20 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 		signal_child(AutoVacPID, (SendStop ? SIGSTOP : SIGQUIT));
 	}
 
-#ifdef PGXC /* PGXC_COORD */
+#ifdef PGXC
 	/* Take care of the pool manager too */
+#ifdef XCP
+	if (pid == PgPoolerPID)
+		PgPoolerPID = 0;
+	else if (PgPoolerPID != 0 && !FatalError)
+	{
+		ereport(DEBUG2,
+			(errmsg_internal("sending %s to process %d",
+							 (SendStop ? "SIGSTOP" : "SIGQUIT"),
+							 (int) PgPoolerPID)));
+		signal_child(PgPoolerPID, (SendStop ? SIGSTOP : SIGQUIT));
+	}
+#else
 	if (IS_PGXC_COORDINATOR)
 	{
 		if (pid == PgPoolerPID)
@@ -2947,7 +3057,8 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 			signal_child(PgPoolerPID, (SendStop ? SIGSTOP : SIGQUIT));
 		}
 	}
-#endif
+#endif /* XCP */
+#endif /* PGXC */
 
 	/*
 	 * Force a power-cycle of the pgarch process too.  (This isn't absolutely
@@ -3120,7 +3231,7 @@ PostmasterStateMachine(void)
 		 */
 		if (CountChildren(BACKEND_TYPE_NORMAL | BACKEND_TYPE_AUTOVAC) == 0 &&
 			StartupPID == 0 &&
-#ifdef PGXC /* PGXC_COORD */
+#ifdef PGXC
 			PgPoolerPID == 0 &&
 #endif
 			WalReceiverPID == 0 &&
@@ -3218,7 +3329,7 @@ PostmasterStateMachine(void)
 			PgArchPID == 0 && PgStatPID == 0)
 		{
 			/* These other guys should be dead already */
-#ifdef PGXC /* PGXC_COORD */
+#ifdef PGXC
 			Assert(PgPoolerPID == 0);
 #endif
 			Assert(StartupPID == 0);
@@ -3728,7 +3839,7 @@ BackendRun(Port *port)
 	 * from ExtraOptions is (strlen(ExtraOptions) + 1) / 2; see
 	 * pg_split_opts().
 	 */
-	maxac = 5;					/* for fixed args supplied below */
+	maxac = 2;					/* for fixed args supplied below */
 	maxac += (strlen(ExtraOptions) + 1) / 2;
 
 	av = (char **) MemoryContextAlloc(TopMemoryContext,
@@ -3743,11 +3854,6 @@ BackendRun(Port *port)
 	 * ExtraOptions now, since we're safely inside a subprocess.)
 	 */
 	pg_split_opts(av, &ac, ExtraOptions);
-
-	/*
-	 * Tell the backend which database to use.
-	 */
-	av[ac++] = port->database_name;
 
 	av[ac] = NULL;
 
@@ -3771,7 +3877,7 @@ BackendRun(Port *port)
 	 */
 	MemoryContextSwitchTo(TopMemoryContext);
 
-	return (PostgresMain(ac, av, port->user_name));
+	return (PostgresMain(ac, av, port->database_name, port->user_name));
 }
 
 
@@ -4398,7 +4504,7 @@ sigusr1_handler(SIGNAL_ARGS)
 	 * first. We don't want to go back to recovery in that case.
 	 */
 	if (CheckPostmasterSignal(PMSIGNAL_RECOVERY_STARTED) &&
-		pmState == PM_STARTUP)
+		pmState == PM_STARTUP && Shutdown == NoShutdown)
 	{
 		/* WAL redo has started. We're out of reinitialization. */
 		FatalError = false;
@@ -4415,7 +4521,7 @@ sigusr1_handler(SIGNAL_ARGS)
 		pmState = PM_RECOVERY;
 	}
 	if (CheckPostmasterSignal(PMSIGNAL_BEGIN_HOT_STANDBY) &&
-		pmState == PM_RECOVERY)
+		pmState == PM_RECOVERY && Shutdown == NoShutdown)
 	{
 		/*
 		 * Likewise, start other special children as needed.
@@ -4430,6 +4536,7 @@ sigusr1_handler(SIGNAL_ARGS)
 	}
 
 #ifdef PGXC
+#ifndef XCP
 	/*
 	 * Register node to GTM.
 	 * A node can only be registered if it has reached a stable recovery state
@@ -4475,6 +4582,7 @@ sigusr1_handler(SIGNAL_ARGS)
 		}
 	}
 #endif
+#endif
 
 	if (CheckPostmasterSignal(PMSIGNAL_WAKEN_ARCHIVER) &&
 		PgArchPID != 0)
@@ -4493,7 +4601,8 @@ sigusr1_handler(SIGNAL_ARGS)
 		signal_child(SysLoggerPID, SIGUSR1);
 	}
 
-	if (CheckPostmasterSignal(PMSIGNAL_START_AUTOVAC_LAUNCHER))
+	if (CheckPostmasterSignal(PMSIGNAL_START_AUTOVAC_LAUNCHER) &&
+		Shutdown == NoShutdown)
 	{
 		/*
 		 * Start one iteration of the autovacuum daemon, even if autovacuuming
@@ -4507,7 +4616,8 @@ sigusr1_handler(SIGNAL_ARGS)
 		start_autovac_launcher = true;
 	}
 
-	if (CheckPostmasterSignal(PMSIGNAL_START_AUTOVAC_WORKER))
+	if (CheckPostmasterSignal(PMSIGNAL_START_AUTOVAC_WORKER) &&
+		Shutdown == NoShutdown)
 	{
 		/* The autovacuum launcher wants us to start a worker process. */
 		StartAutovacuumWorker();
@@ -4516,7 +4626,8 @@ sigusr1_handler(SIGNAL_ARGS)
 	if (CheckPostmasterSignal(PMSIGNAL_START_WALRECEIVER) &&
 		WalReceiverPID == 0 &&
 		(pmState == PM_STARTUP || pmState == PM_RECOVERY ||
-		 pmState == PM_HOT_STANDBY || pmState == PM_WAIT_READONLY))
+		 pmState == PM_HOT_STANDBY || pmState == PM_WAIT_READONLY) &&
+		Shutdown == NoShutdown)
 	{
 		/* Startup Process wants us to start the walreceiver process. */
 		WalReceiverPID = StartWalReceiver();
@@ -4918,7 +5029,7 @@ MaxLivePostmasterChildren(void)
 
 /*
  * The following need to be available to the save/restore_backend_variables
- * functions
+ * functions.  They are marked NON_EXEC_STATIC in their home modules.
  */
 extern slock_t *ShmemLock;
 extern LWLock *LWLockArray;
@@ -4926,6 +5037,7 @@ extern slock_t *ProcStructLock;
 extern PGPROC *AuxiliaryProcs;
 extern PMSignalData *PMSignalState;
 extern pgsocket pgStatSock;
+extern pg_time_t first_syslogger_file_time;
 
 #ifndef WIN32
 #define write_inheritable_socket(dest, src, childpid) ((*(dest) = (src)), true)
@@ -4978,6 +5090,7 @@ save_backend_variables(BackendParameters *param, Port *port,
 	param->PostmasterPid = PostmasterPid;
 	param->PgStartTime = PgStartTime;
 	param->PgReloadTime = PgReloadTime;
+	param->first_syslogger_file_time = first_syslogger_file_time;
 
 	param->redirection_done = redirection_done;
 	param->IsBinaryUpgrade = IsBinaryUpgrade;
@@ -5202,6 +5315,7 @@ restore_backend_variables(BackendParameters *param, Port *port)
 	PostmasterPid = param->PostmasterPid;
 	PgStartTime = param->PgStartTime;
 	PgReloadTime = param->PgReloadTime;
+	first_syslogger_file_time = param->first_syslogger_file_time;
 
 	redirection_done = param->redirection_done;
 	IsBinaryUpgrade = param->IsBinaryUpgrade;

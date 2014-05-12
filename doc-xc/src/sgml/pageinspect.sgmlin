@@ -15,8 +15,8 @@
   debugging purposes.  All of these functions may be used only by superusers.
  </para>
 
-&xconly; 
 <!## XC>
+&xconly; 
  <para>
   Functions of this module returns information about connecting
   Coordinators locally.  To get information of a Datanode, you can
@@ -24,6 +24,14 @@
   statements will be handled by local transaction control without GTM,
   you will have warnings and the visibility could be somewhat
   inconsistent.
+ </para>
+<!## end>
+<!## XL>
+&xlonly; 
+ <para>
+  Functions of this module returns information about connecting
+  Coordinators locally.  To get information of a Datanode, you can
+  use EXECUTE DIRECT from a Coordinator. 
  </para>
 <!## end>
 

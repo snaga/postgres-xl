@@ -21,6 +21,9 @@
 <!## XC>
    <productname>Postgres-XC</>
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</>
+<!## end>
    programs (server and client) can issue their messages in
    your favorite language &mdash; if the messages have been translated.
    Creating and maintaining translated message sets needs the help of
@@ -30,6 +33,9 @@
 <!## end>
 <!## XC>
    the <productname>Postgres-XC</> effort.  You do not have to be a
+<!## end>
+<!## XL>
+   the <productname>Postgres-XL</> effort.  You do not have to be a
 <!## end>
    programmer at all
    to do this.  This section explains how to help.
@@ -329,6 +335,9 @@ msgstr "Die Datei %2$s hat %1$u Zeichen."
 <!## end>
 <!## XC>
    <productname>Postgres-XC</> distribution.
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</> distribution.
 <!## end>
    Currently, it only applies to C programs.
   </para>

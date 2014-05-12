@@ -176,7 +176,7 @@ ORDER BY enumsortorder;
 --
 -- Basic table creation, row selection
 --
-CREATE TABLE enumtest (col rainbow);
+CREATE TABLE enumtest (col rainbow) distribute by replication;
 INSERT INTO enumtest values ('red'), ('orange'), ('yellow'), ('green');
 COPY enumtest FROM stdin;
 SELECT * FROM enumtest ORDER BY col;
@@ -288,7 +288,6 @@ SET enable_bitmapscan = off;
 -- Btree index / opclass with the various operators
 --
 CREATE UNIQUE INDEX enumtest_btree ON enumtest USING btree (col);
-ERROR:  Cannot create index whose evaluation cannot be enforced to remote nodes
 SELECT * FROM enumtest WHERE col = 'orange';
   col   
 --------
@@ -358,7 +357,6 @@ SELECT max(col) FROM enumtest WHERE col < 'green';
 (1 row)
 
 DROP INDEX enumtest_btree;
-ERROR:  index "enumtest_btree" does not exist
 --
 -- Hash index / opclass with the = operator
 --
@@ -518,39 +516,29 @@ DROP FUNCTION echo_me(rainbow);
 -- RI triggers on enum types
 --
 CREATE TABLE enumtest_parent (id rainbow PRIMARY KEY);
-ERROR:  Column id is not a hash distributable data type
+NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "enumtest_parent_pkey" for table "enumtest_parent"
 CREATE TABLE enumtest_child (parent rainbow REFERENCES enumtest_parent);
-ERROR:  relation "enumtest_parent" does not exist
 INSERT INTO enumtest_parent VALUES ('red');
-ERROR:  relation "enumtest_parent" does not exist
-LINE 1: INSERT INTO enumtest_parent VALUES ('red');
-                    ^
 INSERT INTO enumtest_child VALUES ('red');
-ERROR:  relation "enumtest_child" does not exist
-LINE 1: INSERT INTO enumtest_child VALUES ('red');
-                    ^
 INSERT INTO enumtest_child VALUES ('blue');  -- fail
-ERROR:  relation "enumtest_child" does not exist
-LINE 1: INSERT INTO enumtest_child VALUES ('blue');
-                    ^
+ERROR:  insert or update on table "enumtest_child" violates foreign key constraint "enumtest_child_parent_fkey"
+DETAIL:  Key (parent)=(blue) is not present in table "enumtest_parent".
 DELETE FROM enumtest_parent;  -- fail
-ERROR:  relation "enumtest_parent" does not exist
-LINE 1: DELETE FROM enumtest_parent;
-                    ^
+ERROR:  update or delete on table "enumtest_parent" violates foreign key constraint "enumtest_child_parent_fkey" on table "enumtest_child"
+DETAIL:  Key (id)=(red) is still referenced from table "enumtest_child".
 --
 -- cross-type RI should fail
 --
 CREATE TYPE bogus AS ENUM('good', 'bad', 'ugly');
 CREATE TABLE enumtest_bogus_child(parent bogus REFERENCES enumtest_parent);
-ERROR:  relation "enumtest_parent" does not exist
+ERROR:  foreign key constraint "enumtest_bogus_child_parent_fkey" cannot be implemented
+DETAIL:  Key columns "parent" and "id" are of incompatible types: bogus and rainbow.
 DROP TYPE bogus;
 --
 -- Cleanup
 --
 DROP TABLE enumtest_child;
-ERROR:  table "enumtest_child" does not exist
 DROP TABLE enumtest_parent;
-ERROR:  table "enumtest_parent" does not exist
 DROP TABLE enumtest;
 DROP TYPE rainbow;
 --

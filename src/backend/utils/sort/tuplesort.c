@@ -87,6 +87,11 @@
  * above.  Nonetheless, with large workMem we can have many tapes.
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -224,8 +229,12 @@ struct Tuplesortstate
 	MemoryContext sortcontext;	/* memory context holding all sort data */
 	LogicalTapeSet *tapeset;	/* logtape.c object for tapes in a temp file */
 #ifdef PGXC
+#ifdef XCP
+	ResponseCombiner *combiner; /* tuple source, alternate to tapeset */
+#else
 	RemoteQueryState *combiner; /* tuple source, alternate to tapeset */
-#endif
+#endif /* XCP */
+#endif /* PGXC */
 
 	/*
 	 * These function pointers decouple the routines that must know what kind
@@ -903,7 +912,11 @@ Tuplesortstate *
 tuplesort_begin_merge(TupleDesc tupDesc,
 					 int nkeys, AttrNumber *attNums,
 					 Oid *sortOperators, Oid *sortCollations, bool *nullsFirstFlags,
+#ifdef XCP
+					 ResponseCombiner *combiner,
+#else
 					 RemoteQueryState *combiner,
+#endif
 					 int workMem)
 {
 	Tuplesortstate *state = tuplesort_begin_common(workMem, false);
@@ -2958,23 +2971,17 @@ reversedirection_heap(Tuplesortstate *state)
 }
 
 #ifdef PGXC
+#ifdef XCP
 static unsigned int
 getlen_datanode(Tuplesortstate *state, int tapenum, bool eofOK)
 {
-	RemoteQueryState	*combiner = state->combiner;
-	TupleTableSlot		*temp_tts;
+	ResponseCombiner *combiner = state->combiner;
+	TupleTableSlot   *dstslot = combiner->ss.ps.ps_ResultTupleSlot;
+	TupleTableSlot   *slot;
 
-	if (combiner->rqs_tapedata)
-		elog(ERROR, "wrong state of datanode tape");
-
-	combiner->rqs_tapenum = tapenum;
-	temp_tts = ExecProcNode((PlanState *)combiner);
-	if (!TupIsNull(temp_tts))
-	{
-		combiner->rqs_tapedata = temp_tts;
-		return temp_tts->tts_dataLen;
-	}
-	else
+	combiner->current_conn = tapenum;
+	slot = FetchTuple(combiner);
+	if (TupIsNull(slot))
 	{
 		if (eofOK)
 			return 0;
@@ -2982,22 +2989,22 @@ getlen_datanode(Tuplesortstate *state, int tapenum, bool eofOK)
 			elog(ERROR, "unexpected end of data");
 	}
 
-	/* Keep compiler happy */
-	return 0;
+	if (slot != dstslot)
+		ExecCopySlot(dstslot, slot);
+
+	return 1;
 }
 
 static void
 readtup_datanode(Tuplesortstate *state, SortTuple *stup,
 				 int tapenum, unsigned int len)
 {
-	TupleTableSlot *slot = state->combiner->rqs_tapedata;
+	TupleTableSlot *slot = state->combiner->ss.ps.ps_ResultTupleSlot;
 	MinimalTuple tuple;
 	HeapTupleData htup;
 
 	Assert(!TupIsNull(slot));
-	if (slot->tts_dataLen != len)
-		elog(ERROR, "Expected a tuple with length %d but got one with length %d",
-					len, slot->tts_dataLen);
+
 	/* copy the tuple into sort storage */
 	tuple = ExecCopySlotMinimalTuple(slot);
 	stup->tuple = (void *) tuple;
@@ -3009,10 +3016,169 @@ readtup_datanode(Tuplesortstate *state, SortTuple *stup,
 								state->sortKeys[0].ssup_attno,
 								state->tupDesc,
 								&stup->isnull1);
-	/* Reset the buffer for next read */
-	state->combiner->rqs_tapedata = NULL;
 }
-#endif
+#else
+static unsigned int
+getlen_datanode(Tuplesortstate *state, int tapenum, bool eofOK)
+{
+	RemoteQueryState *combiner = state->combiner;
+	PGXCNodeHandle *conn = combiner->connections[tapenum];
+	/*
+	 * If connection is active (potentially has data to read) we can get node
+	 * number from the connection. If connection is not active (we have read all
+	 * available data rows) and if we have buffered data from that connection
+	 * the node number is stored in combiner->tapenodes[tapenum].
+	 * If connection is inactive and no buffered data we have EOF condition
+	 */
+	int		nid;
+	unsigned int 	len = 0;
+	ListCell	*lc;
+	ListCell	*prev = NULL;
+
+	/* May it ever happen ?! */
+	if (!conn && !combiner->tapenodes)
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("Failed to fetch from data node cursor")));
+
+	nid = conn ? PGXCNodeGetNodeId(conn->nodeoid, PGXC_NODE_DATANODE) : combiner->tapenodes[tapenum];
+
+	if (nid < 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("Node id %d is incorrect", nid)));
+
+	/*
+	 * If there are buffered rows iterate over them and get first from
+	 * the requested tape
+	 */
+	foreach (lc, combiner->rowBuffer)
+	{
+		RemoteDataRow dataRow = (RemoteDataRow) lfirst(lc);
+		if (dataRow->msgnode == nid)
+		{
+			combiner->currentRow = *dataRow;
+			combiner->rowBuffer = list_delete_cell(combiner->rowBuffer, lc, prev);
+			return dataRow->msglen;
+		}
+		prev = lc;
+	}
+
+	/* Nothing is found in the buffer, check for EOF */
+	if (conn == NULL)
+	{
+		if (eofOK)
+			return 0;
+		else
+			elog(ERROR, "unexpected end of data");
+	}
+
+	/* Going to get data from connection, buffer if needed */
+	if (conn->state == DN_CONNECTION_STATE_QUERY && conn->combiner != combiner)
+		BufferConnection(conn);
+
+	/* Request more rows if needed */
+	if (conn->state == DN_CONNECTION_STATE_IDLE)
+	{
+		Assert(combiner->cursor);
+		if (pgxc_node_send_execute(conn, combiner->cursor, 1000) != 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("Failed to fetch from data node cursor")));
+		if (pgxc_node_send_sync(conn) != 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("Failed to fetch from data node cursor")));
+		conn->state = DN_CONNECTION_STATE_QUERY;
+		conn->combiner = combiner;
+	}
+	/* Read data from the connection until get a row or EOF */
+	for (;;)
+	{
+		switch (handle_response(conn, combiner))
+		{
+			case RESPONSE_SUSPENDED:
+				/* Send Execute to request next row */
+				Assert(combiner->cursor);
+				if (len)
+					return len;
+				if (pgxc_node_send_execute(conn, combiner->cursor, 1000) != 0)
+					ereport(ERROR,
+							(errcode(ERRCODE_INTERNAL_ERROR),
+							 errmsg("Failed to fetch from data node cursor")));
+				if (pgxc_node_send_sync(conn) != 0)
+					ereport(ERROR,
+							(errcode(ERRCODE_INTERNAL_ERROR),
+							 errmsg("Failed to fetch from data node cursor")));
+				conn->state = DN_CONNECTION_STATE_QUERY;
+				conn->combiner = combiner;
+				/* fallthru */
+			case RESPONSE_EOF:
+				/* receive more data */
+				if (pgxc_node_receive(1, &conn, NULL))
+					ereport(ERROR,
+							(errcode(ERRCODE_INTERNAL_ERROR),
+							 errmsg(conn->error)));
+				break;
+			case RESPONSE_COMPLETE:
+				/* EOF encountered, close the tape and report EOF */
+				if (combiner->cursor)
+				{
+					combiner->connections[tapenum] = NULL;
+					if (len)
+						return len;
+				}
+				if (eofOK)
+					return 0;
+				else
+					elog(ERROR, "unexpected end of data");
+				break;
+			case RESPONSE_DATAROW:
+				Assert(len == 0);
+				if (state->combiner->cursor)
+				{
+					/*
+					 * We fetching one row at a time when running EQP
+					 * so read following PortalSuspended or ResponseComplete
+					 * to leave connection clean between the calls
+					 */
+					len = state->combiner->currentRow.msglen;
+					break;
+				}
+				else
+					return state->combiner->currentRow.msglen;
+			default:
+				ereport(ERROR,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+						 errmsg("Unexpected response from the data nodes")));
+		}
+	}
+}
+
+static void
+readtup_datanode(Tuplesortstate *state, SortTuple *stup,
+				 int tapenum, unsigned int len)
+{
+	TupleTableSlot *slot = state->combiner->ss.ss_ScanTupleSlot;
+	MinimalTuple tuple;
+	HeapTupleData htup;
+
+	FetchTuple(state->combiner, slot);
+
+	/* copy the tuple into sort storage */
+	tuple = ExecCopySlotMinimalTuple(slot);
+	stup->tuple = (void *) tuple;
+	USEMEM(state, GetMemoryChunkSpace(tuple));
+	/* set up first-column key value */
+	htup.t_len = tuple->t_len + MINIMAL_TUPLE_OFFSET;
+	htup.t_data = (HeapTupleHeader) ((char *) tuple - MINIMAL_TUPLE_OFFSET);
+	stup->datum1 = heap_getattr(&htup,
+								state->sortKeys[0].ssup_attno,
+								state->tupDesc,
+								&stup->isnull1);
+}
+#endif /* XCP */
+#endif /* PGXC */
 
 /*
  * Routines specialized for the CLUSTER case (HeapTuple data, with

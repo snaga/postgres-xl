@@ -62,6 +62,9 @@ ALTER OPERATOR FAMILY <replaceable>name</replaceable> USING <replaceable class="
 <!## XC>
    <productname>Postgres-XC</productname> will allow loose members of a
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> will allow loose members of a
+<!## end>
    family to be dropped from the family at any time, but members of an
    operator class cannot be dropped without dropping the whole class and
    any indexes that depend on it.

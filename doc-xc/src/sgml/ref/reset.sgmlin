@@ -107,6 +107,9 @@ RESET timezone;
 <!## XC>
    <command>RESET</command> is a <productname>Postgres-XC</productname> extension.
 <!## end>
+<!## XL>
+   <command>RESET</command> is a <productname>Postgres-XL</productname> extension.
+<!## end>
   </para>
  </refsect1>
 

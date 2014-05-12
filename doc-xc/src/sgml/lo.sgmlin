@@ -6,11 +6,19 @@
  <indexterm zone="lo">
   <primary>lo</primary>
  </indexterm>
-&xconly;
 
 <!## XC>
+&xconly;
  <para>
   <productname>Postgres-XC</> doesn't support the
+  module <filename>lo</> because it depends upon
+  consistent <literal>OID</> and triggers.
+ </para>
+<!## end>
+<!## XL>
+&xlonly;
+ <para>
+  <productname>Postgres-XL</> doesn't support the
   module <filename>lo</> because it depends upon
   consistent <literal>OID</> and triggers.
  </para>

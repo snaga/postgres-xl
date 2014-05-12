@@ -18,6 +18,9 @@ PostgreSQL documentation
 <!## XC>
   <refpurpose>remove a <productname>Postgres-XC</productname> user account</refpurpose>
 <!## end>
+<!## XL>
+  <refpurpose>remove a <productname>Postgres-XL</productname> user account</refpurpose>
+<!## end>
  </refnamediv>
 
  <indexterm zone="app-dropuser">
@@ -47,12 +50,18 @@ PostgreSQL documentation
 <!## XC>
    <productname>Postgres-XC</productname> user.
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> user.
+<!## end>
    Only superusers and users with the <literal>CREATEROLE</> privilege can
 <!## PG>
    remove <productname>PostgreSQL</productname> users.  (To remove a
 <!## end>
 <!## XC>
    remove <productname>Postgres-XC</productname> users.  (To remove a
+<!## end>
+<!## XL>
+   remove <productname>Postgres-XL</productname> users.  (To remove a
 <!## end>
    superuser, you must yourself be a superuser.)
   </para>
@@ -83,6 +92,9 @@ PostgreSQL documentation
 <!## end>
 <!## XC>
         Specifies the name of the <productname>Postgres-XC</productname> user to be removed.
+<!## end>
+<!## XL>
+        Specifies the name of the <productname>Postgres-XL</productname> user to be removed.
 <!## end>
         You will be prompted for a name if none is specified on the command line.
        </para>
@@ -237,6 +249,9 @@ PostgreSQL documentation
 <!## end>
 <!## XC>
    This utility, like most other <productname>Postgres-XC</> utilities,
+<!## end>
+<!## XL>
+   This utility, like most other <productname>Postgres-XL</> utilities,
 <!## end>
    also uses the environment variables supported by <application>libpq</>
    (see <xref linkend="libpq-envars">).

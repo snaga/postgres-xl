@@ -4,6 +4,11 @@
  *	  prototypes for various files in optimizer/plan
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -16,6 +21,9 @@
 
 #include "nodes/plannodes.h"
 #include "nodes/relation.h"
+#ifdef XCP
+#include "pgxc/planner.h"
+#endif
 
 /* GUC parameters */
 #define DEFAULT_CURSOR_TUPLE_FRACTION 0.1
@@ -103,13 +111,15 @@ extern void process_implied_equality(PlannerInfo *root,
 						 Expr *item1,
 						 Expr *item2,
 						 Relids qualscope,
+						 Relids nullable_relids,
 						 bool below_outer_join,
 						 bool both_const);
 extern RestrictInfo *build_implied_join_equality(Oid opno,
 							Oid collation,
 							Expr *item1,
 							Expr *item2,
-							Relids qualscope);
+							Relids qualscope,
+							Relids nullable_relids);
 
 /*
  * prototypes for plan/analyzejoins.c
@@ -129,19 +139,22 @@ extern void extract_query_dependencies(Node *query,
 						   List **invalItems);
 
 #ifdef PGXC
-/*
- * prototypes for plan/pgxcplan.c
- */
-extern Plan *create_remotedml_plan(PlannerInfo *root, Plan *topplan,
-									CmdType cmdtyp);
+#ifdef XCP
+extern RemoteSubplan *find_push_down_plan(Plan *plan, bool force);
+extern RemoteSubplan *make_remotesubplan(PlannerInfo *root,
+				   Plan *lefttree,
+				   Distribution *resultDistribution,
+				   Distribution *execDistribution,
+				   List *pathkeys);
+#else
+extern Var *search_tlist_for_var(Var *var, List *jtlist);
+extern Plan *create_remoteinsert_plan(PlannerInfo *root, Plan *topplan);
+extern Plan *create_remoteupdate_plan(PlannerInfo *root, Plan *topplan);
+extern Plan *create_remotedelete_plan(PlannerInfo *root, Plan *topplan);
 extern Plan *create_remotegrouping_plan(PlannerInfo *root, Plan *local_plan);
-extern Plan *create_remotequery_plan(PlannerInfo *root, RemoteQueryPath *best_path);
-extern Plan *create_remotesort_plan(PlannerInfo *root, Plan *local_plan);
-extern Plan *create_remotelimit_plan(PlannerInfo *root, Plan *local_plan);
-extern List *pgxc_order_qual_clauses(PlannerInfo *root, List *clauses);
-extern List *pgxc_build_relation_tlist(RelOptInfo *rel);
-extern void pgxc_copy_path_costsize(Plan *dest, Path *src);
-extern Plan *pgxc_create_gating_plan(PlannerInfo *root, Plan *plan, List *quals);
-#endif
+/* Expose fix_scan_expr to create_remotequery_plan() */
+extern Node *pgxc_fix_scan_expr(PlannerInfo *root, Node *node, int rtoffset);
+#endif /* XCP */
+#endif /* PGXC */
 
 #endif   /* PLANMAIN_H */

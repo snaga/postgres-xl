@@ -23,6 +23,9 @@ Complete list of usable sgml source files in this directory.
 <!## XC>
 <!entity alterNode          SYSTEM "alter_node.sgml">
 <!## end>
+<!## XL>
+<!entity alterNode          SYSTEM "alter_node.sgml">
+<!## end>
 <!ENTITY alterOperator      SYSTEM "alter_operator.sgml">
 <!ENTITY alterOperatorClass SYSTEM "alter_opclass.sgml">
 <!ENTITY alterOperatorFamily SYSTEM "alter_opfamily.sgml">
@@ -46,6 +49,9 @@ Complete list of usable sgml source files in this directory.
 <!## XC>
 <!entity cleanConnection    system "clean_connection.sgml">
 <!## end>
+<!## XL>
+<!entity cleanConnection    system "clean_connection.sgml">
+<!## end>
 <!ENTITY checkpoint         SYSTEM "checkpoint.sgml">
 <!ENTITY close              SYSTEM "close.sgml">
 <!ENTITY cluster            SYSTEM "cluster.sgml">
@@ -55,6 +61,9 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY copyTable          SYSTEM "copy.sgml">
 <!ENTITY createAggregate    SYSTEM "create_aggregate.sgml">
 <!## XC>
+<!entity createBarrier      system "create_barrier.sgml">
+<!## end>
+<!## XL>
 <!entity createBarrier      system "create_barrier.sgml">
 <!## end>
 <!ENTITY createCast         SYSTEM "create_cast.sgml">
@@ -70,6 +79,10 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY createIndex        SYSTEM "create_index.sgml">
 <!ENTITY createLanguage     SYSTEM "create_language.sgml">
 <!## XC>
+<!entity createNode         SYSTEM "create_node.sgml">
+<!entity createNodeGroup    SYSTEM "create_nodegroup.sgml">
+<!## end>
+<!## XL>
 <!entity createNode         SYSTEM "create_node.sgml">
 <!entity createNodeGroup    SYSTEM "create_nodegroup.sgml">
 <!## end>
@@ -115,6 +128,10 @@ Complete list of usable sgml source files in this directory.
 <!entity dropNode           SYSTEM "drop_node.sgml">
 <!entity dropNodeGroup      SYSTEM "drop_nodegroup.sgml">
 <!## end>
+<!## XL>
+<!entity dropNode           SYSTEM "drop_node.sgml">
+<!entity dropNodeGroup      SYSTEM "drop_nodegroup.sgml">
+<!## end>
 <!ENTITY dropOperator       SYSTEM "drop_operator.sgml">
 <!ENTITY dropOperatorClass  SYSTEM "drop_opclass.sgml">
 <!ENTITY dropOperatorFamily  SYSTEM "drop_opfamily.sgml">
@@ -140,6 +157,9 @@ Complete list of usable sgml source files in this directory.
 <!## XC>
 <!entity executeDirect      system "execute_direct.sgml">
 <!## end>
+<!## XL>
+<!entity executeDirect      system "execute_direct.sgml">
+<!## end>
 <!ENTITY explain            SYSTEM "explain.sgml">
 <!ENTITY fetch              SYSTEM "fetch.sgml">
 <!ENTITY grant              SYSTEM "grant.sgml">
@@ -149,6 +169,9 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY lock               SYSTEM "lock.sgml">
 <!ENTITY move               SYSTEM "move.sgml">
 <!ENTITY notify             SYSTEM "notify.sgml">
+<!## XL>
+<!ENTITY pauseCluster       SYSTEM "pause_cluster.sgml">
+<!## end>
 <!ENTITY prepare            SYSTEM "prepare.sgml">
 <!ENTITY prepareTransaction SYSTEM "prepare_transaction.sgml">
 <!ENTITY reassignOwned      SYSTEM "reassign_owned.sgml">
@@ -172,12 +195,20 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY startTransaction   SYSTEM "start_transaction.sgml">
 <!ENTITY truncate           SYSTEM "truncate.sgml">
 <!ENTITY unlisten           SYSTEM "unlisten.sgml">
+<!## XL>
+<!ENTITY unpauseCluster     SYSTEM "unpause_cluster.sgml">
+<!## end>
 <!ENTITY update             SYSTEM "update.sgml">
 <!ENTITY vacuum             SYSTEM "vacuum.sgml">
 <!ENTITY values             SYSTEM "values.sgml">
 
 <!-- applications and utilities -->
 <!## XC>
+<!entity gtm                system "gtm.sgml">
+<!entity gtmPxy             system "gtm_proxy.sgml">
+<!entity gtmCtl             system "gtm_ctl.sgml">
+<!## end>
+<!## XL>
 <!entity gtm                system "gtm.sgml">
 <!entity gtmPxy             system "gtm_proxy.sgml">
 <!entity gtmCtl             system "gtm_ctl.sgml">
@@ -192,6 +223,9 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY ecpgRef            SYSTEM "ecpg-ref.sgml">
 <!ENTITY initdb             SYSTEM "initdb.sgml">
 <!## XC>
+<!ENTITY initgtm            SYSTEM "initgtm.sgml">
+<!## end>
+<!## XL>
 <!ENTITY initgtm            SYSTEM "initgtm.sgml">
 <!## end>
 <!ENTITY pgBasebackup       SYSTEM "pg_basebackup.sgml">

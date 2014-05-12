@@ -40,6 +40,9 @@ VACUUM [ FULL ] [ FREEZE ] [ VERBOSE ] ANALYZE [ <replaceable class="PARAMETER">
 <!## XC>
    In normal <productname>Postgres-XC</productname> operation, tuples that
 <!## end>
+<!## XL>
+   In normal <productname>Postgres-XL</productname> operation, tuples that
+<!## end>
    are deleted or obsoleted by an update are not physically removed from
    their table; they remain present until a <command>VACUUM</command> is
    done.  Therefore it's necessary to do <command>VACUUM</command>
@@ -86,6 +89,13 @@ VACUUM [ FULL ] [ FREEZE ] [ VERBOSE ] ANALYZE [ <replaceable class="PARAMETER">
 &xconly;
   <para>
    In <productname>Postgres-XC</>, <command>VACUUM</> will be performed
+   on all the Datanodes as well.
+  </para>
+<!## end>
+<!## XL>
+&xlonly;
+  <para>
+   In <productname>Postgres-XL</>, <command>VACUUM</> will be performed
    on all the Datanodes as well.
   </para>
 <!## end>
@@ -211,6 +221,9 @@ VACUUM [ FULL ] [ FREEZE ] [ VERBOSE ] ANALYZE [ <replaceable class="PARAMETER">
 <!## XC>
     <productname>Postgres-XC</productname> query planner to make better
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> query planner to make better
+<!## end>
     choices in planning queries.
    </para>
 
@@ -236,6 +249,9 @@ VACUUM [ FULL ] [ FREEZE ] [ VERBOSE ] ANALYZE [ <replaceable class="PARAMETER">
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname> includes an <quote>autovacuum</>
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> includes an <quote>autovacuum</>
 <!## end>
     facility which can automate routine vacuum maintenance.  For more
     information about automatic and manual vacuuming, see

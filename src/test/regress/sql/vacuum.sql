@@ -2,7 +2,7 @@
 -- VACUUM
 --
 
-CREATE TABLE vactst (i INT);
+CREATE TABLE vactst (i INT) DISTRIBUTE BY REPLICATION;
 INSERT INTO vactst VALUES (1);
 INSERT INTO vactst SELECT * FROM vactst;
 INSERT INTO vactst SELECT * FROM vactst;
@@ -49,7 +49,7 @@ CLUSTER vaccluster;
 
 VACUUM FULL pg_am;
 VACUUM FULL pg_class;
-VACUUM FULL pg_database;
+VACUUM FULL pg_catalog.pg_database;
 VACUUM FULL vaccluster;
 VACUUM FULL vactst;
 

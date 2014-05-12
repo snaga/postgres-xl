@@ -13,7 +13,7 @@ PostgreSQL documentation
  <refnamediv>
   <refname>gtm_ctl</refname>
   <refpurpose>
-   <productname>Postgres-XC</productname> GTM operation module
+   <productname>Postgres-XL</productname> GTM operation module
   </refpurpose>
  </refnamediv>
 
@@ -32,7 +32,7 @@ PostgreSQL documentation
   <title>
    Description
   </title>
-&xconly
+&xlonly
   <para>
    <command>gtm_ctl</command> starts/stops <command>gtm</command>
    or <command>gtm_proxy</command>. The options specify the GTM

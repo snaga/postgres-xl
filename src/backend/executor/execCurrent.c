@@ -3,6 +3,11 @@
  * execCurrent.c
  *	  executor support for WHERE CURRENT OF cursor
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -268,12 +273,14 @@ search_plan_tree(PlanState *node, Oid table_oid)
 	switch (nodeTag(node))
 	{
 #ifdef PGXC
+#ifndef XCP
 		case T_RemoteQueryState:
 			{
 				RemoteQueryState *rqs = (RemoteQueryState *) node;
 				ScanState  *sstate = &(rqs->ss);
 				return sstate;
 			}
+#endif
 #endif
 			/*
 			 * scan nodes can all be treated alike

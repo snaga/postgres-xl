@@ -204,6 +204,15 @@ check_node_options(const char *node_name, List *options, char **node_host,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("PGXC node %s: Node type not specified",
 						node_name)));
+
+#ifdef XCP
+	if (node_type == PGXC_NODE_DATANODE && NumDataNodes >= MaxDataNodes)
+		ereport(ERROR,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("Too many datanodes, current value of max_data_nodes is %d",
+						MaxDataNodes)));
+
+#endif
 }
 
 /*
@@ -347,6 +356,9 @@ PgxcNodeListAndCount(void)
 	heap_endscan(scan);
 	heap_close(rel, AccessShareLock);
 
+	elog(DEBUG1, "Done pgxc_nodes scan: %d coordinators and %d datanodes",
+			*shmemNumCoords, *shmemNumDataNodes);
+
 	/* Finally sort the lists */
 	if (*shmemNumCoords > 1)
 		qsort(coDefs, *shmemNumCoords, sizeof(NodeDefinition), cmp_nodes);
@@ -371,6 +383,9 @@ PgxcNodeGetOids(Oid **coOids, Oid **dnOids,
 				int *num_coords, int *num_dns, bool update_preferred)
 {
 	LWLockAcquire(NodeTableLock, LW_SHARED);
+
+	elog(DEBUG1, "Get OIDs from table: %d coordinators and %d datanodes",
+			*shmemNumCoords, *shmemNumDataNodes);
 
 	if (num_coords)
 		*num_coords = *shmemNumCoords;
@@ -656,6 +671,13 @@ PgxcNodeAlter(AlterNodeStmt *stmt)
 						node_name)));
 
 	/* Check type dependency */
+#ifndef XCP
+	/*
+	 * XCP:
+	 * Initially node identify itself as a Coordinator and this should be
+	 * changed for datanodes. In general, it should be safe to turn
+	 * Coordinator to Datanode and back
+	 */
 	if (node_type_old == PGXC_NODE_COORDINATOR &&
 		node_type == PGXC_NODE_DATANODE)
 		ereport(ERROR,
@@ -668,6 +690,7 @@ PgxcNodeAlter(AlterNodeStmt *stmt)
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("PGXC node %s: cannot alter Datanode to Coordinator",
 						node_name)));
+#endif
 
 	/* Update values for catalog entry */
 	MemSet(new_record, 0, sizeof(new_record));

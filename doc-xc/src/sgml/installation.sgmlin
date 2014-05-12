@@ -13,6 +13,9 @@ to the main documentation.  Don't use <xref>.
 <!## XC>
  <title><![%standalone-include[<productname>Postgres-XC</>]]>
 <!## end>
+<!## XL>
+ <title><![%standalone-include[<productname>Postgres-XL</>]]>
+<!## end>
   Installation from Source Code</title>
 
  <indexterm zone="installation">
@@ -37,6 +40,19 @@ to the main documentation.  Don't use <xref>.
   This <![%standalone-include;[document]]>
   <![%standalone-ignore;[chapter]]> describes the installation of
   <productname>Postgres-XC</productname> using the source code
+  distribution.  (If you are installing a pre-packaged distribution,
+  such as an RPM or Debian package, ignore this
+  <![%standalone-include;[document]]>
+  <![%standalone-ignore;[chapter]]>
+  and read the packager's instructions instead.)
+ </para>
+<!## end>
+<!## XL>
+&xlonly;
+ <para>
+  This <![%standalone-include;[document]]>
+  <![%standalone-ignore;[chapter]]> describes the installation of
+  <productname>Postgres-XL</productname> using the source code
   distribution.  (If you are installing a pre-packaged distribution,
   such as an RPM or Debian package, ignore this
   <![%standalone-include;[document]]>
@@ -103,6 +119,44 @@ su - postgres
 /usr/local/pgsql/bin/psql test
 </synopsis>
 <!## end>
+<!## XL>
+  <para>
+    The following short installation allows to install a simple cluster on a local machine with
+    1 Coordinator, 2 Datanodes and 1 GTM. When installing a more complex cluster, you might
+    change the number of Coordinators and Datanodes, and might have to start nodes on different
+    servers.
+    Also, you can instead use the pgxc_ctl utility, which simplifies the installation and configuration process.
+  </para>
+<synopsis>
+./configure
+gmake
+su
+gmake install
+adduser postgres
+mkdir /usr/local/pgsql/data_coord1
+mkdir /usr/local/pgsql/data_datanode1
+mkdir /usr/local/pgsql/data_datanode2
+mkdir /usr/local/pgsql/data_gtm
+chown postgres /usr/local/pgsql/data_coord1
+chown postgres /usr/local/pgsql/data_datanode1
+chown postgres /usr/local/pgsql/data_datanode2
+chown postgres /usr/local/pgsql/data_gtm
+su - postgres
+/usr/local/pgsql/bin/initdb -D /usr/local/pgsql/data_coord1 --nodename coord1
+/usr/local/pgsql/bin/initdb -D /usr/local/pgsql/data_datanode1 --nodename datanode1
+/usr/local/pgsql/bin/initdb -D /usr/local/pgsql/data_datanode2 --nodename datanode2
+/usr/local/pgsql/bin/initgtm -D /usr/local/pgsql/data_gtm -Z gtm
+/usr/local/pgsql/bin/gtm -D /usr/local/pgsql/data_gtm &gt;logfile 2&gt;&amp;1 &amp;
+/usr/local/pgsql/bin/postgres --datanode -p 15432 -D /usr/local/pgsql/data_datanode1 &gt;logfile 2&gt;&amp;1 &amp;
+/usr/local/pgsql/bin/postgres --datanode -p 15433 -D /usr/local/pgsql/data_datanode2 &gt;logfile 2&gt;&amp;1 &amp;
+/usr/local/pgsql/bin/postgres --coordinator -D /usr/local/pgsql/data_coord1 &gt;logfile 2&gt;&amp;1 &amp;
+/usr/local/pgsql/bin/psql -c "CREATE NODE datanode1 WITH (TYPE = 'datanode', PORT = 15432)" postgres
+/usr/local/pgsql/bin/psql -c "CREATE NODE datanode2 WITH (TYPE = 'datanode', PORT = 15433)" postgres
+/usr/local/pgsql/bin/psql -c "SELECT pgxc_pool_reload()" postgres
+/usr/local/pgsql/bin/createdb test
+/usr/local/pgsql/bin/psql test
+</synopsis>
+<!## end>
 <para>
 
    The long version is the rest of this
@@ -132,6 +186,12 @@ su - postgres
    In general, a Linux-Unix platform should be able to run <productname>Postgres-XC</>.
   </para>
 <!## end>
+<!## XL>
+&xlonly;
+  <para>
+   In general, a Linux-Unix platform should be able to run <productname>Postgres-XL</>.
+  </para>
+<!## end>
 
   <para>
    The following software packages are required for building
@@ -140,6 +200,9 @@ su - postgres
 <!## end>
 <!## XC>
    <productname>Postgres-XC</>:
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</>:
 <!## end>
 
    <itemizedlist>
@@ -173,6 +236,9 @@ su - postgres
 <!## end>
 <!## XC>
       <productname>Postgres-XC</> is known to build using a wide variety
+<!## end>
+<!## XL>
+      <productname>Postgres-XL</> is known to build using a wide variety
 <!## end>
       of compilers from different vendors.
      </para>
@@ -219,6 +285,26 @@ su - postgres
       The <acronym>GNU</> <productname>Readline</> library is used by
       default.  It allows <application>psql</application> (the
       Postgres-XC command line SQL interpreter) to remember each
+      command you type, and allows you to use arrow keys to recall and
+      edit previous commands.  This is very helpful and is strongly
+      recommended.  If you don't want to use it then you must specify
+      the <option>--without-readline</option> option to
+      <filename>configure</>. As an alternative, you can often use the
+      BSD-licensed <filename>libedit</filename> library, originally
+      developed on <productname>NetBSD</productname>. The
+      <filename>libedit</filename> library is
+      GNU <productname>Readline</productname>-compatible and is used if
+      <filename>libreadline</filename> is not found, or if
+      <option>--with-libedit-preferred</option> is used as an
+      option to <filename>configure</>. If you are using a package-based
+      Linux distribution, be aware that you need both the
+      <literal>readline</> and <literal>readline-devel</> packages, if
+      those are separate in your distribution.
+<!## end>
+<!## XL>
+      The <acronym>GNU</> <productname>Readline</> library is used by
+      default.  It allows <application>psql</application> (the
+      Postgres-XL command line SQL interpreter) to remember each
       command you type, and allows you to use arrow keys to recall and
       edit previous commands.  This is very helpful and is strongly
       recommended.  If you don't want to use it then you must specify
@@ -292,6 +378,11 @@ su - postgres
       like this will appear during the <productname>Postgres-XC</>
       build to point out this fact:
 <!## end>
+<!## XL>
+      If you don't have the shared library but you need one, a message
+      like this will appear during the <productname>Postgres-XL</>
+      build to point out this fact:
+<!## end>
 
 <screen>
 *** Cannot build PL/Perl because libperl is not a shared library.
@@ -357,6 +448,14 @@ su - postgres
       configure using the <literal>--enable-shared</> flag.  On some
       operating systems you don't have to build a shared library, but
       you will have to convince the <productname>Postgres-XC</> build
+      system of this.  Consult the <filename>Makefile</filename> in
+      the <filename>src/pl/plpython</filename> directory for details.
+<!## end>
+<!## XL>
+      If you have problems, run <productname>Python</> 2.3 or later's
+      configure using the <literal>--enable-shared</> flag.  On some
+      operating systems you don't have to build a shared library, but
+      you will have to convince the <productname>Postgres-XL</> build
       system of this.  Consult the <filename>Makefile</filename> in
       the <filename>src/pl/plpython</filename> directory for details.
 <!## end>
@@ -509,6 +608,24 @@ su - postgres
    of the installation procedure.
   </para>
 <!## end>
+<!## XL>
+&xlonly;
+  <para>
+   The <productname>Postgres-XL</> &version; sources can be obtained from
+   its <ulink url="http://postgres-xl.sourceforge.net/">Web site</ulink> or 
+   <ulink url="http://sourceforge.net/projects/postgres-xl/">development site</ulink>.
+   After you have obtained the file, unpack it:
+<screen>
+<userinput>gunzip pgxl-v&version;.tar.gz</userinput>
+<userinput>tar xf pgxl-v&version;.tar</userinput>
+</screen>
+   This will create a directory
+   <filename>pgxl</filename> under the current directory
+   with the <productname>Postgres-XL</> sources.
+   Change into that directory for the rest
+   of the installation procedure.
+  </para>
+<!## end>
 
   <para>
    You can also get the source directly from the version control repository, see
@@ -520,7 +637,6 @@ su - postgres
  <sect1 id="install-procedure">
   <title>Installation Procedure</title>
 
-&xconly;
   <procedure>
 
   <step id="configure">
@@ -700,6 +816,9 @@ su - postgres
 <!## XC>
          The man pages that come with <productname>Postgres-XC</> will be installed under
 <!## end>
+<!## XL>
+         The man pages that come with <productname>Postgres-XL</> will be installed under
+<!## end>
          this directory, in their respective
          <filename>man<replaceable>x</></> subdirectories.
          The default is <filename><replaceable>DATAROOTDIR</>/man</>.
@@ -730,6 +849,9 @@ su - postgres
 <!## XC>
          <productname>Postgres-XC</productname> will be installed under
 <!## end>
+<!## XL>
+         <productname>Postgres-XL</productname> will be installed under
+<!## end>
          this directory.  The default is
          <filename><replaceable>DATAROOTDIR</></>.
         </para>
@@ -745,6 +867,9 @@ su - postgres
 <!## end>
 <!## XC>
        <productname>Postgres-XC</> into shared installation locations
+<!## end>
+<!## XL>
+       <productname>Postgres-XL</> into shared installation locations
 <!## end>
        (such as <filename>/usr/local/include</filename>) without
        interfering with the namespace of the rest of the system. First,
@@ -844,6 +969,9 @@ su - postgres
 <!## end>
 <!## XC>
          <productname>Postgres-XC</> servers on the same machine.
+<!## end>
+<!## XL>
+         <productname>Postgres-XL</> servers on the same machine.
 <!## end>
         </para>
        </listitem>
@@ -1051,6 +1179,9 @@ su - postgres
 <!## XC>
          options.  Postgres-XC will use it automatically if found.  To
 <!## end>
+<!## XL>
+         options.  Postgres-XL will use it automatically if found.  To
+<!## end>
          specify a libxml installation at an unusual location, you can
          either set the environment variable
          <envar>XML2_CONFIG</envar> to point to the
@@ -1088,6 +1219,9 @@ su - postgres
 <!## XC>
          default in <productname>Postgres-XC</productname> releases
 <!## end>
+<!## XL>
+         default in <productname>Postgres-XL</productname> releases
+<!## end>
          prior to 8.4, but it is now deprecated, because it does not
          support microsecond precision for the full range of
          <type>timestamp</type> values. However, integer-based
@@ -1099,6 +1233,9 @@ su - postgres
 <!## end>
 <!## XC>
          versions of <productname>Postgres-XC</productname>. See
+<!## end>
+<!## XL>
+         versions of <productname>Postgres-XL</productname>. See
 <!## end>
          <![%standalone-include[the documentation about datetime datatypes]]>
          <![%standalone-ignore[<xref linkend="datatype-datetime">]]>
@@ -1216,6 +1353,9 @@ su - postgres
 <!## XC>
          Allow the build to succeed even if <productname>Postgres-XC</>
 <!## end>
+<!## XL>
+         Allow the build to succeed even if <productname>Postgres-XL</>
+<!## end>
          has no CPU spinlock support for the platform.  The lack of
          spinlock support will result in poor performance; therefore,
          this option should only be used if the build aborts and
@@ -1226,12 +1366,18 @@ su - postgres
 <!## XC>
          option is required to build <productname>Postgres-XC</> on
 <!## end>
+<!## XL>
+         option is required to build <productname>Postgres-XL</> on
+<!## end>
          your platform, please report the problem to the
 <!## PG>
          <productname>PostgreSQL</> developers.
 <!## end>
 <!## XC>
          <productname>Postgres-XC</> developers.
+<!## end>
+<!## XL>
+         <productname>Postgres-XL</> developers.
 <!## end>
         </para>
        </listitem>
@@ -1262,6 +1408,9 @@ su - postgres
 <!## XC>
          <productname>Postgres-XC</> includes its own time zone database,
 <!## end>
+<!## XL>
+         <productname>Postgres-XL</> includes its own time zone database,
+<!## end>
          which it requires for date and time operations.  This time zone
          database is in fact compatible with the <quote>zoneinfo</> time zone
          database provided by many operating systems such as FreeBSD,
@@ -1281,6 +1430,9 @@ su - postgres
 <!## XC>
          pointed to works correctly with <productname>Postgres-XC</>.
 <!## end>
+<!## XL>
+         pointed to works correctly with <productname>Postgres-XL</>.
+<!## end>
         </para>
 
         <indexterm><primary>cross compilation</primary></indexterm>
@@ -1294,6 +1446,9 @@ su - postgres
 <!## XC>
          advantage of using this option is that the Postgres-XC package
 <!## end>
+<!## XL>
+         advantage of using this option is that the Postgres-XL package
+<!## end>
          won't need to be upgraded whenever any of the many local
          daylight-saving time rules change.  Another advantage is that
 <!## PG>
@@ -1301,6 +1456,9 @@ su - postgres
 <!## end>
 <!## XC>
          Postgres-XC can be cross-compiled more straightforwardly if the
+<!## end>
+<!## XL>
+         Postgres-XL can be cross-compiled more straightforwardly if the
 <!## end>
          time zone database files do not need to be built during the
          installation.
@@ -1357,6 +1515,15 @@ su - postgres
 <!## end>
 <!## XC>
          <!-- regress-coverage is not included in XC reference -->
+         If using GCC, all programs and libraries are compiled with
+         code coverage testing instrumentation.  When run, they
+         generate files in the build directory with code coverage
+         metrics.
+         This option is for use only with GCC
+         and when doing development work.
+<!## end>
+<!## XL>
+         <!-- regress-coverage is not included in XL reference -->
          If using GCC, all programs and libraries are compiled with
          code coverage testing instrumentation.  When run, they
          generate files in the build directory with code coverage
@@ -1426,6 +1593,9 @@ su - postgres
 <!## XC>
          Compiles <productname>Postgres-XC</productname> with support for the
 <!## end>
+<!## XL>
+         Compiles <productname>Postgres-XL</productname> with support for the
+<!## end>
          dynamic tracing tool DTrace.
          <![%standalone-ignore[See <xref linkend="dynamic-trace">
          for more information.]]>
@@ -1483,6 +1653,13 @@ su - postgres
 <userinput>./configure CC=/opt/bin/gcc CFLAGS='-O2 -pipe -DPGXC'</>
 </screen>
      Please note that you need to specify <filename>-DPGXC</>
+     explicitly to specify <filename>CFLAGS</> option.
+<!## end>
+<!## XL>
+<screen>
+<userinput>./configure CC=/opt/bin/gcc CFLAGS='-O2 -pipe -DPGXL'</>
+</screen>
+     Please note that you need to specify <filename>-DPGXL</>
      explicitly to specify <filename>CFLAGS</> option.
 <!## end>
     </para>
@@ -1669,6 +1846,9 @@ All of PostgreSQL is successfully made. Ready to install.
 <!## XC>
 All of Postgres-XC is successfully made. Ready to install.
 <!## end>
+<!## XL>
+All of Postgres-XL is successfully made. Ready to install.
+<!## end>
 </screen>
    </para>
 
@@ -1688,6 +1868,11 @@ PostgreSQL, contrib and HTML documentation successfully made. Ready to install.
 <!## XC>
 <screen>
 Postgres-XC, contrib and HTML documentation successfully made. Ready to install.
+</screen>
+<!## end>
+<!## XL>
+<screen>
+Postgres-XL, contrib and HTML documentation successfully made. Ready to install.
 </screen>
 <!## end>
    </para>
@@ -1811,6 +1996,83 @@ Postgres-XC, contrib and HTML documentation successfully made. Ready to install.
     </variablelist>
    </para>
 <!## end>
+<!## XL>
+   <para>
+    Before learning how to install <productname>Postgres-XL</>, you should determine
+    what you are going to install on each server.  The following lists
+    <productname>Postgres-XL</> components you've built and you're going to install.
+
+    <variablelist>
+     <varlistentry>
+      <term><envar>GTM</envar></term>
+      <listitem>
+       <para>
+        GTM stands for Global Transaction Manager.  It provides global transaction ID
+        and snapshot to each transaction in <productname>Postgres-XL</> database cluster.
+        It also provide several global value such as sequence and global timestamp.
+       </para>
+       <para>
+        GTM itself can be configured as a backup of other GTM as
+        GTM-Standby so that GTM can continue to run even if main GTM
+        fails.  You may want to install GTM-Standby to separate
+        server.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><envar>GTM-Proxy</envar></term>
+      <listitem>
+      <para>
+       Because GTM has to take care of each transaction, it has to
+       read and write enormous amount of messages which may
+       restrict <productname>Postgres-XL</> scalability.  GTM-Proxy is
+       a proxy of GTM feature which groups requests and response to
+       reduce network read/write by GTM.  Distributing one snapshot to
+       multiple transactions also contributes to reduce GTM network
+       workload.
+      </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><envar>Coordinator</envar></term>
+      <listitem>
+       <para>
+        The Coordinator is an entry point to <productname>Postgres-XL</> from applications.
+        You can run more than one Coordinator simultaneously in the cluster.   Each Coordinator behaves
+        just as a <productname>PostgreSQL</> database server, while all the Coordinators
+        handles transactions in harmonized way so that any transaction coming into one
+        Coordinator is protected against any other transactions coming into others.
+        Updates by a transaction is visible immediately to others running in other
+        Coordinators.
+        To simplify the load balance of Coordinators and Datanodes, as mentioned
+        below, it is highly advised to install same number of Coordinator and Datanode
+        in a server.
+       </para>
+      </listitem>
+     </varlistentry>
+     <varlistentry>
+      <term><envar>Datanode</envar></term>
+      <listitem>
+       <para>
+        Datanode 
+       </para>
+       <para>
+        The Coordinator and Datanode shares the same binary but their behavior is a little
+        different.  The Coordinator decomposes incoming statements into those handled by
+        Datanodes.  If necessary, the Coordinator materializes response from Datanodes
+        to calculate final response to applications.
+       </para>
+       <para>
+        The Datanode is very close to PostgreSQL itself because it just handles incoming
+        statements locally.
+       </para>
+      </listitem>
+     </varlistentry>
+    </variablelist>
+   </para>
+<!## end>
 
    <para>
 <!## PG>
@@ -1818,6 +2080,9 @@ Postgres-XC, contrib and HTML documentation successfully made. Ready to install.
 <!## end>
 <!## XC>
     To install <productname>Postgres-XC</> enter:
+<!## end>
+<!## XL>
+    To install <productname>Postgres-XL</> enter:
 <!## end>
 <screen>
 <userinput>gmake install</userinput>
@@ -1835,6 +2100,9 @@ Postgres-XC, contrib and HTML documentation successfully made. Ready to install.
     To install the documentation (HTML and man pages), enter:
 <!## end>
 <!## XC>
+    To install the documentation (HTML and man pages), enter:
+<!## end>
+<!## XL>
     To install the documentation (HTML and man pages), enter:
 <!## end>
 <screen>
@@ -1942,14 +2210,12 @@ Postgres-XC, contrib and HTML documentation successfully made. Ready to install.
 
  <sect1 id="install-post">
   <title>Post-Installation Setup</title>
-&xconly;
   <sect2>
    <title>Shared Libraries</title>
 
    <indexterm>
     <primary>shared library</primary>
    </indexterm>
-&xconly;
    <para>
 <!## PG>
     On some systems with shared libraries
@@ -1965,6 +2231,12 @@ Postgres-XC, contrib and HTML documentation successfully made. Ready to install.
     <systemitem class="osname">Solaris</>.
 <!## end>
 <!## XC>
+    On some systems with shared libraries
+    you need to tell the system how to find the newly installed
+    shared libraries.
+    However, <systemitem class="osname">Linux</> does <emphasis>not</> need this.
+<!## end>
+<!## XL>
     On some systems with shared libraries
     you need to tell the system how to find the newly installed
     shared libraries.
@@ -2032,6 +2304,11 @@ libpq.so.2.1: cannot open shared object file: No such file or directory
     class="osname">Linux</>, 
     you have root access and you can run:
 <!## end>
+<!## XL>
+    Because you are <systemitem
+    class="osname">Linux</>, 
+    you have root access and you can run:
+<!## end>
 <programlisting>
 /sbin/ldconfig /usr/local/pgsql/lib
 </programlisting>
@@ -2069,6 +2346,9 @@ libpq.so.2.1: cannot open shared object file: No such file or directory
 <!## end>
 <!## XC>
     necessary, but it will make the use of <productname>Postgres-XC</>
+<!## end>
+<!## XL>
+    necessary, but it will make the use of <productname>Postgres-XL</>
 <!## end>
     much more convenient.
    </para>
@@ -2121,6 +2401,17 @@ export MANPATH
     and <productname>Postgres-XC</> will not run correctly.
    </para>
 <!## end>
+<!## XL>
+&xlonly;
+   <para>
+    When, as typical case, you're configuring both Coordinator and
+    Datanode in a same server, please be careful not to assign same
+    resource, such as listening point (IP address and port number) to
+    different component.  If you apply single set of environment
+    described here to different components, they will conflict
+    and <productname>Postgres-XL</> will not run correctly.
+   </para>
+<!## end>
   </sect2>
  </sect1>
 
@@ -2135,6 +2426,9 @@ export MANPATH
 <!## end>
 <!## XC>
    The following is a quick summary of how to get <productname>Postgres-XC</> up and
+<!## end>
+<!## XL>
+   The following is a quick summary of how to get <productname>Postgres-XL</> up and
 <!## end>
    running once installed. The main documentation contains more information.
   </para>
@@ -2154,6 +2448,15 @@ export MANPATH
 <!## XC>
      Create a user account on all the servers where at least one
      of <productname>Postgres-XC</> component runs. This is the user
+     the components will run as. For production use you should create a
+     separate, unprivileged account (<quote>postgres</> is commonly
+     used). If you do not have root access or just want to play
+     around, your own user account is enough, but running the server
+     as root is a security risk and will not work.
+<!## end>
+<!## XL>
+     Create a user account on all the servers where at least one
+     of <productname>Postgres-XL</> component runs. This is the user
      the components will run as. For production use you should create a
      separate, unprivileged account (<quote>postgres</> is commonly
      used). If you do not have root access or just want to play
@@ -2225,6 +2528,65 @@ bin/  include/  lib/  share/
    </step>
 
 <!## end>
+<!## XL>
+
+   <step>
+&xlonly;
+    <para>
+     If you follow the previous steps, you will have files ready to
+     distribute to servers where you want to run one or
+     more <productname>Postgres-XL</> components.   
+    </para>
+    <para> 
+     After you've installed your build locally, build target
+     will include the following directories.
+
+<screen>
+bin/  include/  lib/  share/
+</screen>
+
+     <filename>bin</> directory contains executable binaries and
+     scripts.  <filename>include</> contains header files needed to
+     build <productname>Postgres-XL</> applications.  <filename>lib</>
+     contains shared libraries needed to run binaries, as well as
+     static libraries which should be included into your application
+     binaries.  Finally, <productname>share</> contains miscellaneous
+     files <productname>Postgres-XL</> should read at runtime, as well
+     as sample files.
+
+    </para>
+
+    <para>
+
+     If your servers has sufficient file space, you can copy all the
+     files to the target server.  Total size is less than 30mega
+     bytes.  If you want to install minimum files to each servers,
+     please follow the following paragraphs.
+
+    </para>
+
+    <para>
+     For the server to run GTM or GTM-Standby, you need to copy the
+     following files to your path: <filename>bin/gtm</> and <filename>bin/gtm_ctl</>.
+    </para>
+
+    <para>
+     For the server to run GTM-Proxy (the server you run Coordinator and/or Datanode),
+     you need to copy the following files to your path: <filename>bin/gtm_proxy</filename>
+     and <filename>bin/gtm_ctl</>.
+    </para>
+
+    <para>
+     For server to run Coordinator or Datanode, or both, you should
+     copy the following files to your
+     path: <filename>bin/initdb</>.
+     You should also copy everything in <filename>path</> directory to
+     your library search path.
+    </para>
+
+   </step>
+
+<!## end>
 
 
    <step>
@@ -2237,6 +2599,9 @@ bin/  include/  lib/  share/
 <!## end>
 <!## XC>
      <productname>Postgres-XC</> server account. It will not work as
+<!## end>
+<!## XL>
+     <productname>Postgres-XL</> server account. It will not work as
 <!## end>
      root.
 <screen>
@@ -2259,6 +2624,13 @@ postgres$ <userinput>/usr/local/pgsql/bin/initdb -D /usr/local/pgsql/data</>
     <para>
      If you're configuring both Datanode and Coordinator on the same
      server, you should specify different <option>-D</> option for
+     each of them.
+    </para>
+<!## end>
+<!## XL>
+    <para>
+     If you're configuring both Datanodes and Coordinators on the same
+     server, you should specify different <option>-D</> values for
      each of them.
     </para>
 <!## end>
@@ -2336,7 +2708,7 @@ postgres$ <userinput>/usr/local/pgsql/bin/initdb -D /usr/local/pgsql/data</>
        care of connection with other Coordinators and Datanodes.  This
        parameter specifies minimum number of connection to pool.
        If you're not configuring <productname>XC</> cluster in
-       unballanced way, you should specify the same value to all the
+       unbalanced way, you should specify the same value to all the
        Coordinators.
       </par>
      </listitem>
@@ -2353,7 +2725,7 @@ postgres$ <userinput>/usr/local/pgsql/bin/initdb -D /usr/local/pgsql/data</>
        value, you will see very frequent close and ope connection
        which leads to serious performance problem.
        If you're not configuring <productname>XC</> cluster in
-       unballanced way, you should specify the same value to all the
+       unbalanced way, you should specify the same value to all the
        Coordinators.
       </para>
      </listitem>
@@ -2574,6 +2946,422 @@ postgres --coordinator -D /usr/local/pgsql/Coordinator
     all the servers you're running Coordinators.
    </para>
 <!## end>
+<!## XL>
+   <step>
+&xlonly;
+    <para>
+    You should configure GTM and GTM-Proxy, as well as
+    GTM-Standby if you need high-availability capability for GTM
+    before you really run <productname>Postgres-XL</> database
+    cluster.  You can do the following before you
+    run <command>initdb</>.
+    </para>
+    <para>
+     Each of GTM, GTM-Proxy and GTM need their own working directories.
+     Create them as <productname>Postgres-XL</> owner user.  Please
+     assign a port number to each of them, although you don't have to do
+     any configuration work now.
+    </para>
+   </step>
+
+   <step>
+&xlonly;
+    <para>
+    Now you should configure each Coordinator and Datanode.  Because
+    they have to communicate each other and number of servers,
+    Datanodes and Coordinators depend upon configurations, we do not
+    provide default configuration files for them.
+    </para>
+    <para>
+     You can configure Datanodes and Coordinators by
+     editing the <filename>postgresql.conf</> file located under the
+     directory you specified with <option>-D</> option
+     of <command>initdb</>.   The following paragraphs describe what
+     parameter to edit at for Coordinators.   You can specify
+     any other <filename>postgresql.conf</> parameters as
+     standalone <productname>PostgreSQL</>.
+    </para>
+
+    <variablelist>
+    <varlistentry>
+     <term><envar>max_prepared_transactions</envar></term>
+     <listitem>
+&xlonly;
+      <para>
+       <option>max_prepared_transactions</> specifies maximum number
+       of two-phase commit transactions.   Even if you don't use
+       explicit two phase commit operation, the Coordinator may issue
+       two-phase commit operation implicitly if a transaction is
+       involved with multiple Datanodes and/or Coordinators. You should
+       specify <option>max_prepared_transactions</> value at 
+       least the number of <option>max_connection</>.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><envar>min_pool_size</envar><term>
+     <listitem>
+&xlonly;
+      <par>
+       Coordinator is associated with a connection pooler which takes
+       care of connection with other Coordinators and Datanodes.  This
+       parameter specifies minimum number of connection to pool.
+       If you're not configuring <productname>XL</> cluster in
+       unbalanced way, you should specify the same value to all the
+       Coordinators.
+      </par>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><envar>max_pool_size</envar></term>
+     <listitem>
+&xlonly;
+      <para>
+       This parameter specifies maximum number of the pooled
+       connection.  This value should be at least more than the number
+       of all the Coordinators and Datanodes.   If you specify less
+       value, you will see very frequent close and ope connection
+       which leads to serious performance problem.
+       If you're not configuring <productname>XL</> cluster in
+       unbalanced way, you should specify the same value to all the
+       Coordinators.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><envar>pool_conn_keepalive</envar></term>
+     <listitem>
+&xlonly;
+      <para>
+       This parameter specifies how long to keep the connection alive.
+       If older than this amount, the pooler discards the connection.
+       This parameter is useful in multi-tenant environments where
+       many connections to many different databases may be used,
+       so that idle connections may cleaned up. It is also useful
+       for automatically closing connections occasionally in case
+       there is some unknown memory leak so that this memory can be freed. 
+      </para> 
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><envar>pool_maintenance_timeout</envar></term>
+     <listitem>
+&xlonly;
+      <para>
+       This parameter specifies how long to wait until pooler
+       maintenance is performed. During such maintenance,
+       old idle connections are discarded.
+       This parameter is useful in multi-tenant environments where
+       many connections to many different databases may be used,
+       so that idle connections may cleaned up. 
+      </para> 
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><envar>remote_query_cost</envar></term>
+     <listitem>
+&xlonly;
+      <para>
+       This parameter specifies the cost overhead of setting up
+       a remote query to obtain remote data. It is used by
+       the planner in costing queries.
+      </para> 
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><envar>network_byte_cost</envar></term>
+     <listitem>
+&xlonly;
+      <para>
+       This parameter is used in query cost planning to 
+       estimate the cost involved in row shipping and obtaining
+       remote data based on the expected data size.
+       Row shipping is expensive and adds latency, so this
+       setting helps to favor plans that minimizes row shipping.
+      </para> 
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><envar>sequence_range</envar></term>
+     <listitem>
+&xlonly;
+      <para>
+       This parameter is used to get several sequence values
+       at once from GTM.  This greatly speeds up COPY and INSERT SELECT
+       operations where the target table uses sequences.
+       <productname>Postgres-XL</productname> will not use this entire
+       amount at once, but will increase the request size over
+       time if many requests are done in a short time frame in
+       the same session.
+       After a short time without any sequence requests, decreases back down to 1.
+       Note that any settings here are overriden if the CACHE clause was
+       used in <xref linkend='sql-createsequence'> or <xref linkend='sql-altersequence'>.
+      </para> 
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><envar>max_coordinators</envar></term>
+     <listitem>
+&xlonly;
+      <para>
+       This parameter specifies maximum number of the Coordinators that can
+       be added to the cluster. Cluster would have to be restarted to increase
+       the value.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><envar>max_datanodes</envar></term>
+     <listitem>
+&xlonly;
+      <para>
+       This parameter specifies maximum number of the Datanodes that can
+       be added to the cluster. Cluster would have to be restarted to increase
+       the value.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><envar>pgxc_node_name</envar></term>
+     <listitem>
+&xlonly;
+      <para>
+       Specify the name of this cluster node. This name index refers to the
+       element of <link linkend="catalog-pgxc-node"><structname>pgxc_node
+       </structname></link>.node_name value, to identify the node self.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><envar>port</envar></term>
+     <listitem>
+&xlonly;
+      <para>
+       Specify the port number listened to by this Coordinator.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><envar>pooler_port</envar></term>
+     <listitem>
+&xlonly;
+      <para>
+       Connection pooler needs separate port.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><envar>gtm_port</envar></term>
+     <listitem>
+&xlonly;
+      <para>
+       Specify the port number of gtm you're connecting to.  This is
+       local to the server and you should specify the port assigned to
+       the GTM-Proxy local to the Coordinator.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    </variablelist>                                                             
+
+   <step>
+&xlonly;
+    <para>
+     Now you should configure <filename>postgresql.conf</> for each
+     Datanodes.  Please note, as in the case of Coordinator, you can
+     specify other <filename>postgresql.conf</> parameters as in
+     standalone <productname>PostgreSQL</>.
+    </para>
+
+    <variablelist>
+
+    <varlistentry>
+     <term><envar>max_connections</envar></term>
+     <listitem>
+&xlonly;
+      <para>
+       <option>max_connections</> is, in short, a maximum number of
+       background processes of the Datanode.   You should be careful
+       to specify reasonable value to this parameter because each
+       Coordinator backend may have connections to all the Datanodes.
+       You should specify this value as <option>max_connections</> of
+       Coordinator multiplied by the number of Coordinators.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><envar>max_prepared_transactions</envar></term>
+     <listitem>
+&xlonly;
+      <para>
+       <option>max_prepared_transactions</> specifies maximum number
+       of two-phase commit transactions.   Even if you don't use
+       explicit two phase commit operation, Coordinator may issue
+       two-phase commit operation implicitly if a transaction is
+       involved with multiple Datanodes and/or Coordinators.   The value
+       of this parameter should be at least the value
+       of <option>max_connections</> of Coordinator multiplied by the number of Coordinators.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><envar>port</envar></term>
+     <listitem>
+&xlonly;
+      <para>
+       Specify the port number listened to by the Datanode.
+      </para>
+     </listitem>
+    </varlistentry>
+
+     <term><envar>gtm_port</envar></term>
+     <listitem>
+&xlonly;
+      <para>
+       Specify the port number of gtm you're connecting to.  This is
+       local to the server and you should specify the port assigned to
+       the GTM-Proxy local to the Datanode.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    </variablelist>
+
+    <para>
+     Postgres-XL introduces some additional parameters for the 
+     Datanodes as well
+    </para>
+
+    <variablelist>
+
+    <varlistentry>
+     <term><envar>shared_queues</envar></term>
+     <listitem>
+&xlonly;
+      <para>
+       For some joins that occur in queries, data from one Datanode may
+       need to be joined with data from another Datanode.
+       <productname>Postgres-XL</productname> uses shared queues for this purpose.
+       During execution each Datanode knows if it needs to produce or consume
+       tuples, or both. 
+      </para>
+      <para>
+       Note that there may be mulitple shared_queues used even for a single
+       query. So a value should be set taking into account the number of 
+       connections it can accept and expected number of such joins occurring
+       simultaneously.
+      </para>
+
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><envar>shared_queue_size</envar></term>
+     <listitem>
+&xlonly;
+      <para>
+       This parameter sets the size of each each shared queue allocated.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    </variablelist>
+   </step>
+
+   <step>
+&xlonly;
+    <para>
+     Then you are ready to start the <productname>Postgres-XL</> cluster.
+     First, you should start GTM bu something like:
+<programlisting>
+gtm -D /usr/local/pgsql/gtm -h localhost -p 20001 -n 1 -x 1000
+</programlisting>
+     This will start GTM.   <option>-h</> specifies IP address or host
+     name to listen to the connection
+     from <command>gtm_standby</>.   <option>-p</> specifies the port
+     number to listen to.   <option>-n</> specifies the node number
+     within GTM.   This identifies GTM especially when you run
+     GTM-Standby.  <option>-x</> option specifies the value of initial
+     Global Transaction ID.   We need to specify this
+     because <command>initdb</> consumes some of the transaction ID
+     locally and GTM must to begin to provide global transaction ID
+     greater than the consumed one.   A value of at least 2000 is believed
+     to be safe.
+    </para>
+   </step>
+
+   <step>
+&xlonly;
+    <para>
+     Next, you should start GTM-Proxy on each server you're running
+     Coordinator and/or Datanode like:
+<programlisting>
+gtm_proxy -h localhost -p 20002 -s localhost -t 20001 -i 1 -n 2 -D /usr/local/pgsql/gtm_proxy
+</programlisting>
+     This will start GTM-Proxy.  <option>-h</> option is the host name
+     or IP address which GTM-Proxy listens to.   <option>-p</> option
+     is the port number to listen to.   <option>-s</>
+     and <option>-t</> are IP address or the host
+     name and the port number of GTM as specified
+     above.   <option>-i</> is the node number of GTM-Proxy beginning
+     with 1.   <option>-n</> is the number of worker thread of
+     GTM-Proxy.   Usually, 1 or 2 is advised.  Then <option>-D</>
+     option is the working directory of the GTM-Proxy.
+    </para>
+    <para>
+     Please note that you should start GTM-Proxy on all the servers
+     you run Coordinator/Datanode.
+    </para>
+   </step>
+
+   <step>
+&xlonly;
+    <para>
+     Now you can start Datanode on each server like:
+<programlisting>
+postgres --datanode -D /usr/local/pgsql/Datanode
+</programlisting>
+     This will start the Datanode.   <option>--datanode</>
+     specifies <command>postgres</> to start as a
+     Datanode. <option>-D</> specifies the data directory of the
+     Datanode. You can specify other options of standalone <command>postgres</>.
+    </para>
+    <para>
+     Please note that you should issue <command>postgres</> command at
+     all the servers you're running Datanode.
+    </para>
+   </step>
+
+   <para>
+    Finally, you can start Coordinator like:
+<programlisting>
+postgres --coordinator -D /usr/local/pgsql/Coordinator
+</programlisting>
+    This will start the Coordinator.  <option>--coordinator</>
+    specifies <command>postgres</> to start as a
+    Coordinator.  <option>-D</> specifies the data directory of the
+    Coordinator.  You can specify other options of standalone <command>postgres</>.
+   </para>
+   <para>
+    Please note that you should issue <command>postgres</> command at
+    all the servers you're running Coordinators.
+   </para>
+<!## end>
 
    <step>
 
@@ -2639,6 +3427,45 @@ kill `cat /usr/local/pgsql/gtm-proxy/gtm_proxy.pid
 </programlisting>
     </para>
 <!## end>
+<!## XL>
+&xlonly;
+    <para>
+     The previous step should have told you how to
+     start up the whole database cluster. Do so now. The command should look
+     something like:
+<programlisting>
+postgres --datanode -D /usr/local/pgsql/Datanode
+</programlisting>
+     This will start the Datanode in the foreground. To put the Datanode
+     in the background use something like:
+<programlisting>
+nohup postgres --datanode -D /usr/local/pgsql/data \
+    &lt;/dev/null &gt;&gt;server.log 2&gt;&amp;1 &lt;/dev/null &amp;
+</programlisting>
+     You can apply this to all the other components, GTM, GTM-Proxies,
+     and Coordinators.
+    </para>
+
+    <para>
+     To stop a Datanode running in the background you can type:
+<programlisting>
+kill `cat /usr/local/pgsql/Datanode/postmaster.pid`
+</programlisting>
+     You can apply this to stop a Coordinator too.
+    </para>
+    <para>
+     To stop the GTM running in the background you can type
+<programlisting>
+kill `cat /usr/local/pgsql/gtm/gtm.pid`
+</programlisting>
+    </para>
+    <para>
+     To stop a GTM-Proxy running in the background, you can type
+<programlisting>
+kill `cat /usr/local/pgsql/gtm-proxy/gtm_proxy.pid
+</programlisting>
+    </para>
+<!## end>
 
    </step>
 
@@ -2660,7 +3487,18 @@ kill `cat /usr/local/pgsql/gtm-proxy/gtm_proxy.pid
 <userinput>psql -p 20004 testdb</>
 </screen>
 <!## end>
+<!## XL>
+&xlonly;
+<screen>
+<userinput>psql -p 20004 testdb</>
+</screen>
+<!## end>
 <!## XC>
+     Please do not forget to give the port number of one of the
+     Coordinators.   Then you are connected to a Coordinator listening
+     to the port you specified.
+<!## end>
+<!## XL>
      Please do not forget to give the port number of one of the
      Coordinators.   Then you are connected to a Coordinator listening
      to the port you specified.
@@ -2686,6 +3524,9 @@ kill `cat /usr/local/pgsql/gtm-proxy/gtm_proxy.pid
 <!## end>
 <!## XC>
       The <productname>Postgres-XC</> distribution contains a
+<!## end>
+<!## XL>
+      The <productname>Postgres-XL</> distribution contains a
 <!## end>
       comprehensive documentation set, which you should read sometime.
       After installation, the documentation can be accessed by
@@ -2730,6 +3571,9 @@ kill `cat /usr/local/pgsql/gtm-proxy/gtm_proxy.pid
 <!## end>
 <!## XC>
       By default, <productname>Postgres-XC</> is configured to run on
+<!## end>
+<!## XL>
+      By default, <productname>Postgres-XL</> is configured to run on
 <!## end>
       minimal hardware.  This allows it to start up with almost any
       hardware configuration. The default configuration is, however,
@@ -2785,6 +3629,13 @@ kill `cat /usr/local/pgsql/gtm-proxy/gtm_proxy.pid
     architectures may also work but are not currently being tested.
   </para>
 <!## end>
+<!## XL>
+&xlonly;
+  <para>
+   <productname>Postgres-XL</> has been tested on Intel-based CPU mainly. Other CPU
+    architectures may also work but are not currently being tested.
+  </para>
+<!## end>
 
 <!## PG>
   <para>
@@ -2807,7 +3658,13 @@ kill `cat /usr/local/pgsql/gtm-proxy/gtm_proxy.pid
    also work but are not currently being tested.
   </para>
 <!## end>
-&xconly;
+<!## XL>
+  <para>
+   <productname>Postgres-XL</> can be expected to work on these operating systems:
+   Linux (all recent distributions), FreeBSD and Mac OS X. Other Unix-like systems may
+   also work but are not currently being tested.
+  </para>
+<!## end>
 
   <para>
 <!## PG>
@@ -2826,6 +3683,14 @@ kill `cat /usr/local/pgsql/gtm-proxy/gtm_proxy.pid
    <email>postgres-xc-developers@lists.sourceforge.net</email> is the appropriate place
    to discuss that.
 <!## end>
+<!## XL>
+   If you have installation problems on a platform that is known
+   to be supported according to recent build farm results, please report
+   it to <email>postgres-xl-bugs@lists.sourceforge.net</email>.  If you are interested
+   in porting <productname>Postgres-XL</> to a new platform,
+   <email>postgres-xl-developers@lists.sourceforge.net</email> is the appropriate place
+   to discuss that.
+<!## end>
 
   </para>
  </sect1>
@@ -2833,7 +3698,6 @@ kill `cat /usr/local/pgsql/gtm-proxy/gtm_proxy.pid
  <sect1 id="installation-platform-notes">
   <title>Platform-specific Notes</title>
 
-&xconly;
   <para>
 <!## PG>
    This section documents additional platform-specific issues
@@ -2848,6 +3712,11 @@ kill `cat /usr/local/pgsql/gtm-proxy/gtm_proxy.pid
 <!## XC>
    This section documents additional platform-specific issues
    regarding the installation and setup of Postgres-XC.  Be sure to
+   read the installation instructions.
+<!## end>
+<!## XL>
+   This section documents additional platform-specific issues
+   regarding the installation and setup of Postgres-XL.  Be sure to
    read the installation instructions.
 <!## end>
   </para>

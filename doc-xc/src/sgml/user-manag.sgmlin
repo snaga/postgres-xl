@@ -12,6 +12,9 @@
 <!## XC>
   <productname>Postgres-XC</productname> manages database access permissions
 <!## end>
+<!## XL>
+  <productname>Postgres-XL</productname> manages database access permissions
+<!## end>
   using the concept of <firstterm>roles</>.  A role can be thought of as
   either a database user, or a group of database users, depending on how
   the role is set up.  Roles can own database objects (for example,
@@ -28,6 +31,9 @@
 <!## end>
 <!## XC>
   <quote>groups</>.  In <productname>Postgres-XC</productname> versions
+<!## end>
+<!## XL>
+  <quote>groups</>.  In <productname>Postgres-XL</productname> versions
 <!## end>
   before 8.1, users and groups were distinct kinds of entities, but now
   there are only roles.  Any role can act as a user, a group, or both.
@@ -309,6 +315,9 @@ ALTER ROLE myname SET enable_indexscan TO off;
 <!## XC>
    revoked from, a group as a whole.  In <productname>Postgres-XC</productname>
 <!## end>
+<!## XL>
+   revoked from, a group as a whole.  In <productname>Postgres-XL</productname>
+<!## end>
    this is done by creating a role that represents the group, and then
    granting <firstterm>membership</> in the group role to individual user
    roles.
@@ -403,6 +412,9 @@ RESET ROLE;
 <!## XC>
     behavior can be obtained in <productname>Postgres-XC</productname> by giving
 <!## end>
+<!## XL>
+    behavior can be obtained in <productname>Postgres-XL</productname> by giving
+<!## end>
     roles being used as SQL roles the <literal>INHERIT</> attribute, while
     giving roles being used as SQL users the <literal>NOINHERIT</> attribute.
 <!## PG>
@@ -410,6 +422,9 @@ RESET ROLE;
 <!## end>
 <!## XC>
     However, <productname>Postgres-XC</productname> defaults to giving all roles
+<!## end>
+<!## XL>
+    However, <productname>Postgres-XL</productname> defaults to giving all roles
 <!## end>
     the <literal>INHERIT</> attribute, for backward compatibility with pre-8.1
     releases in which users always had use of permissions granted to groups
@@ -471,6 +486,9 @@ DROP ROLE <replaceable>name</replaceable>;
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname> allows only superusers to
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> allows only superusers to
 <!## end>
    create functions written in those languages.
   </para>

@@ -167,6 +167,9 @@ CREATE VIEW hollywood.winners AS
 <!## XC>
    <productname>Postgres-XC</productname>.
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname>.
+<!## end>
   </para>
 
   <para>
@@ -177,6 +180,9 @@ CREATE VIEW hollywood.winners AS
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname> implementation, inherited from <productname>PostgreSQL</>, does not
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> implementation, inherited from <productname>PostgreSQL</>, does not
 <!## end>
    handle all cases of forward references in subcommands; it might
    sometimes be necessary to reorder the subcommands in order to avoid
@@ -190,6 +196,9 @@ CREATE VIEW hollywood.winners AS
 <!## end>
 <!## XC>
    all objects within it.  <productname>Postgres-XC</productname>
+<!## end>
+<!## XL>
+   all objects within it.  <productname>Postgres-XL</productname>
 <!## end>
    allows schemas to contain objects owned by users other than the
    schema owner.  This can happen only if the schema owner grants the

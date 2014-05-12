@@ -49,6 +49,7 @@ static void makeAlterConfigCommand(PGconn *conn, const char *arrayitem,
 static void dumpDatabases(PGconn *conn);
 static void dumpTimestamp(char *msg);
 static void doShellQuoting(PQExpBuffer buf, const char *str);
+static void doConnStrQuoting(PQExpBuffer buf, const char *str);
 
 static int	runPgDump(const char *dbname);
 static void buildShSecLabels(PGconn *conn, const char *catalog_name,
@@ -58,6 +59,11 @@ static PGconn *connectDatabase(const char *dbname, const char *pghost, const cha
 	  const char *pguser, enum trivalue prompt_password, bool fail_on_error);
 static PGresult *executeQuery(PGconn *conn, const char *query);
 static void executeCommand(PGconn *conn, const char *query);
+
+#ifdef PGXC
+static void dumpNodes(PGconn *conn);
+static void dumpNodeGroups(PGconn *conn);
+#endif /* PGXC */
 
 static char pg_dump_bin[MAXPGPATH];
 static PQExpBuffer pgdumpopts;
@@ -78,6 +84,10 @@ static int	server_version;
 static FILE *OPF;
 static char *filename = NULL;
 
+#ifdef PGXC
+static int	dump_nodes = 0;
+static int include_nodes = 0;
+#endif /* PGXC */
 
 int
 main(int argc, char *argv[])
@@ -138,7 +148,10 @@ main(int argc, char *argv[])
 		{"use-set-session-authorization", no_argument, &use_setsessauth, 1},
 		{"no-security-labels", no_argument, &no_security_labels, 1},
 		{"no-unlogged-table-data", no_argument, &no_unlogged_table_data, 1},
-
+#ifdef PGXC
+		{"dump-nodes", no_argument, &dump_nodes, 1},
+		{"include-nodes", no_argument, &include_nodes, 1},
+#endif
 		{NULL, 0, NULL, 0}
 	};
 
@@ -360,6 +373,11 @@ main(int argc, char *argv[])
 	if (no_unlogged_table_data)
 		appendPQExpBuffer(pgdumpopts, " --no-unlogged-table-data");
 
+#ifdef PGXC
+	if (include_nodes)
+		appendPQExpBuffer(pgdumpopts, " --include-nodes");
+#endif
+
 	/*
 	 * If there was a database specified on the command line, use that,
 	 * otherwise try to connect to database "postgres", and failing that
@@ -511,6 +529,15 @@ main(int argc, char *argv[])
 			if (server_version >= 90000)
 				dumpDbRoleConfig(conn);
 		}
+
+#ifdef PGXC
+		/* Dump nodes and node groups */
+		if (dump_nodes)
+		{
+			dumpNodes(conn);
+			dumpNodeGroups(conn);
+		}
+#endif
 	}
 
 	if (!globals_only && !roles_only && !tablespaces_only)
@@ -538,9 +565,9 @@ help(void)
 
 	printf(_("\nGeneral options:\n"));
 	printf(_("  -f, --file=FILENAME          output file name\n"));
+	printf(_("  -V, --version                output version information, then exit\n"));
 	printf(_("  --lock-wait-timeout=TIMEOUT  fail after waiting TIMEOUT for a table lock\n"));
-	printf(_("  --help                       show this help, then exit\n"));
-	printf(_("  --version                    output version information, then exit\n"));
+	printf(_("  -?, --help                   show this help, then exit\n"));
 	printf(_("\nOptions controlling the output content:\n"));
 	printf(_("  -a, --data-only              dump only the data, not the schema\n"));
 	printf(_("  -c, --clean                  clean (drop) databases before recreating\n"));
@@ -564,6 +591,10 @@ help(void)
 	printf(_("  --use-set-session-authorization\n"
 			 "                               use SET SESSION AUTHORIZATION commands instead of\n"
 			 "                               ALTER OWNER commands to set ownership\n"));
+#ifdef PGXC
+	printf(_("  --dump-nodes                 include nodes and node groups in the dump\n"));
+	printf(_("  --include-nodes              include TO NODE clause in the dumped CREATE TABLE commands\n"));
+#endif
 
 	printf(_("\nConnection options:\n"));
 	printf(_("  -h, --host=HOSTNAME      database server host or socket directory\n"));
@@ -1619,6 +1650,7 @@ dumpDatabases(PGconn *conn)
 static int
 runPgDump(const char *dbname)
 {
+	PQExpBuffer connstr = createPQExpBuffer();
 	PQExpBuffer cmd = createPQExpBuffer();
 	int			ret;
 
@@ -1634,7 +1666,17 @@ runPgDump(const char *dbname)
 	else
 		appendPQExpBuffer(cmd, " -Fp ");
 
-	doShellQuoting(cmd, dbname);
+	/*
+	 * Construct a connection string from the database name, like
+	 * dbname='<database name>'. pg_dump would usually also accept the
+	 * database name as is, but if it contains any = characters, it would
+	 * incorrectly treat it as a connection string.
+	 */
+	appendPQExpBuffer(connstr, "dbname='");
+	doConnStrQuoting(connstr, dbname);
+	appendPQExpBuffer(connstr, "'");
+
+	doShellQuoting(cmd, connstr->data);
 
 	appendPQExpBuffer(cmd, "%s", SYSTEMQUOTE);
 
@@ -1647,6 +1689,7 @@ runPgDump(const char *dbname)
 	ret = system(cmd->data);
 
 	destroyPQExpBuffer(cmd);
+	destroyPQExpBuffer(connstr);
 
 	return ret;
 }
@@ -1887,6 +1930,25 @@ dumpTimestamp(char *msg)
 
 
 /*
+ * Append the given string to the buffer, with suitable quoting for passing
+ * the string as a value, in a keyword/pair value in a libpq connection
+ * string
+ */
+static void
+doConnStrQuoting(PQExpBuffer buf, const char *str)
+{
+	while (*str)
+	{
+		/* ' and \ must be escaped by to \' and \\ */
+		if (*str == '\'' || *str == '\\')
+			appendPQExpBufferChar(buf, '\\');
+
+		appendPQExpBufferChar(buf, *str);
+		str++;
+	}
+}
+
+/*
  * Append the given string to the shell command being built in the buffer,
  * with suitable shell-style quoting.
  */
@@ -1918,3 +1980,76 @@ doShellQuoting(PQExpBuffer buf, const char *str)
 	appendPQExpBufferChar(buf, '"');
 #endif   /* WIN32 */
 }
+
+#ifdef PGXC
+static void
+dumpNodes(PGconn *conn)
+{
+	PQExpBuffer query;
+	PGresult   *res;
+	int			num;
+	int			i;
+
+	query = createPQExpBuffer();
+
+	appendPQExpBuffer(query, "select 'CREATE NODE ' || node_name || '"
+					" WITH (TYPE = ' || chr(39) || (case when node_type='C'"
+					" then 'coordinator' else 'datanode' end) || chr(39)"
+					" || ' , HOST = ' || chr(39) || node_host || chr(39)"
+					" || ', PORT = ' || node_port || (case when nodeis_primary='t'"
+					" then ', PRIMARY' else ' ' end) || (case when nodeis_preferred"
+					" then ', PREFERRED' else ' ' end) || ');' "
+					" as node_query from pg_catalog.pgxc_node order by oid");
+
+	res = executeQuery(conn, query->data);
+
+	num = PQntuples(res);
+
+	if (num > 0)
+		fprintf(OPF, "--\n-- Nodes\n--\n\n");
+
+	for (i = 0; i < num; i++)
+	{
+		fprintf(OPF, "%s\n", PQgetvalue(res, i, PQfnumber(res, "node_query")));
+	}
+	fprintf(OPF, "\n");
+
+	PQclear(res);
+	destroyPQExpBuffer(query);
+}
+
+static void
+dumpNodeGroups(PGconn *conn)
+{
+	PQExpBuffer query;
+	PGresult   *res;
+	int			num;
+	int			i;
+
+	query = createPQExpBuffer();
+
+	appendPQExpBuffer(query,
+						"select 'CREATE NODE GROUP ' || pgxc_group.group_name"
+						" || ' WITH(' || string_agg(node_name,',') || ');'"
+						" as group_query from pg_catalog.pgxc_node, pg_catalog.pgxc_group"
+						" where pgxc_node.oid = any (pgxc_group.group_members)"
+						" group by pgxc_group.group_name"
+						" order by pgxc_group.group_name");
+
+	res = executeQuery(conn, query->data);
+
+	num = PQntuples(res);
+
+	if (num > 0)
+		fprintf(OPF, "--\n-- Node groups\n--\n\n");
+
+	for (i = 0; i < num; i++)
+	{
+		fprintf(OPF, "%s\n", PQgetvalue(res, i, PQfnumber(res, "group_query")));
+	}
+	fprintf(OPF, "\n");
+
+	PQclear(res);
+	destroyPQExpBuffer(query);
+}
+#endif

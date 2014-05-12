@@ -7,11 +7,19 @@
   <primary>pg_upgrade</primary>
  </indexterm>
 
-&xconly;
 <!## XC>
+&xconly;
  <para>
   <application>pg_updrade</> is not compatible
   with <productname>Postgres-XC</> due to the difference of internal
+  catalog.
+ </para>
+<!## end>
+<!## XL>
+&xlonly;
+ <para>
+  <application>pg_updrade</> is not compatible
+  with <productname>Postgres-XL</> due to the difference of internal
   catalog.
  </para>
 <!## end>

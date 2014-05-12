@@ -268,7 +268,7 @@ DROP TABLE FKTABLE;
 --
 CREATE TABLE PKTABLE ( ptest1 int PRIMARY KEY, ptest2 text ) DISTRIBUTE BY REPLICATION;
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "pktable_pkey" for table "pktable"
-CREATE TABLE FKTABLE ( ftest1 int REFERENCES PKTABLE MATCH FULL, ftest2 int );
+CREATE TABLE FKTABLE ( ftest1 int REFERENCES PKTABLE MATCH FULL, ftest2 int ) DISTRIBUTE BY REPLICATION;
 -- Insert test data into PKTABLE
 INSERT INTO PKTABLE VALUES (1, 'Test1');
 INSERT INTO PKTABLE VALUES (2, 'Test2');
@@ -344,7 +344,7 @@ DROP TABLE PKTABLE;
 CREATE TABLE PKTABLE ( ptest1 int, ptest2 int, ptest3 int, ptest4 text, PRIMARY KEY(ptest1, ptest2, ptest3) ) DISTRIBUTE BY REPLICATION;
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "pktable_pkey" for table "pktable"
 CREATE TABLE FKTABLE ( ftest1 int, ftest2 int, ftest3 int, ftest4 int,  CONSTRAINT constrname3
-			FOREIGN KEY(ftest1, ftest2, ftest3) REFERENCES PKTABLE);
+			FOREIGN KEY(ftest1, ftest2, ftest3) REFERENCES PKTABLE) DISTRIBUTE BY REPLICATION;
 -- Insert Primary Key values
 INSERT INTO PKTABLE VALUES (1, 2, 3, 'test1');
 INSERT INTO PKTABLE VALUES (1, 3, 3, 'test2');
@@ -610,7 +610,7 @@ CREATE TABLE PKTABLE ( ptest1 int, ptest2 int, ptest3 int, ptest4 text, PRIMARY 
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "pktable_pkey" for table "pktable"
 CREATE TABLE FKTABLE ( ftest1 int DEFAULT 0, ftest2 int DEFAULT -1, ftest3 int, ftest4 int,  CONSTRAINT constrname3
 			FOREIGN KEY(ftest1, ftest2, ftest3) REFERENCES PKTABLE
-			ON DELETE SET NULL ON UPDATE SET DEFAULT);
+			ON DELETE SET NULL ON UPDATE SET DEFAULT) DISTRIBUTE BY REPLICATION;
 -- Insert Primary Key values
 INSERT INTO PKTABLE VALUES (1, 2, 3, 'test1');
 INSERT INTO PKTABLE VALUES (1, 3, 3, 'test2');
@@ -726,9 +726,9 @@ DROP TABLE PKTABLE;
 CREATE TABLE PKTABLE (ptest1 int PRIMARY KEY);
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "pktable_pkey" for table "pktable"
 CREATE TABLE FKTABLE_FAIL1 ( ftest1 int, CONSTRAINT fkfail1 FOREIGN KEY (ftest2) REFERENCES PKTABLE);
-ERROR:  column "ftest2" referenced in foreign key constraint does not exist
+ERROR:  Hash/Modulo distributed table must include distribution column in index
 CREATE TABLE FKTABLE_FAIL2 ( ftest1 int, CONSTRAINT fkfail1 FOREIGN KEY (ftest1) REFERENCES PKTABLE(ptest2));
-ERROR:  column "ptest2" referenced in foreign key constraint does not exist
+ERROR:  Hash/Modulo distribution column does not refer to hash/modulo distribution column in referenced table.
 DROP TABLE FKTABLE_FAIL1;
 ERROR:  table "fktable_fail1" does not exist
 DROP TABLE FKTABLE_FAIL2;
@@ -962,8 +962,7 @@ create table fktable(ftest1 int, ftest2 inet, foreign key(ftest2, ftest1) refere
 ERROR:  foreign key constraint "fktable_ftest2_fkey" cannot be implemented
 DETAIL:  Key columns "ftest2" and "base1" are of incompatible types: inet and integer.
 create table fktable(ftest1 int, ftest2 inet, foreign key(ftest1, ftest2) references pktable(ptest1, base1));
-ERROR:  foreign key constraint "fktable_ftest1_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: integer and inet.
+ERROR:  Hash/Modulo distribution column does not refer to hash/modulo distribution column in referenced table.
 drop table pktable;
 drop table pktable_base;
 -- 2 columns (1 table), mismatched types
@@ -1089,8 +1088,6 @@ DETAIL:  Key (fk)=(200) is not present in table "pktable".
 DROP TABLE pktable, fktable;
 -- test notice about expensive referential integrity checks,
 -- where the index cannot be used because of type incompatibilities.
--- Enforce use of COMMIT instead of 2PC for temporary objects
-SET enforce_two_phase_commit TO off;
 CREATE TEMP TABLE pktable (
         id1     INT4 PRIMARY KEY,
         id2     VARCHAR(4) UNIQUE,
@@ -1190,37 +1187,40 @@ BEGIN;
 INSERT INTO fktable VALUES (0, 20);
 -- UPDATE will be in a subxact
 SAVEPOINT savept1;
+ERROR:  SAVEPOINT is not yet supported.
 -- don't change FK
 UPDATE fktable SET id = id + 1;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
 -- should catch error from initial INSERT
 COMMIT;
-ERROR:  insert or update on table "fktable" violates foreign key constraint "fktable_fk_fkey"
-DETAIL:  Key (fk)=(20) is not present in table "pktable".
 BEGIN;
 -- INSERT will be in a subxact
 SAVEPOINT savept1;
+ERROR:  SAVEPOINT is not yet supported.
 -- doesn't match PK, but no error yet
 INSERT INTO fktable VALUES (0, 20);
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
 RELEASE SAVEPOINT savept1;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
 -- don't change FK
 UPDATE fktable SET id = id + 1;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
 -- should catch error from initial INSERT
 COMMIT;
-ERROR:  insert or update on table "fktable" violates foreign key constraint "fktable_fk_fkey"
-DETAIL:  Key (fk)=(20) is not present in table "pktable".
 BEGIN;
 -- doesn't match PK, but no error yet
 INSERT INTO fktable VALUES (0, 20);
 -- UPDATE will be in a subxact
 SAVEPOINT savept1;
+ERROR:  SAVEPOINT is not yet supported.
 -- don't change FK
 UPDATE fktable SET id = id + 1;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
 -- Roll back the UPDATE
 ROLLBACK TO savept1;
+ERROR:  no such savepoint
 -- should catch error from initial INSERT
 COMMIT;
-ERROR:  insert or update on table "fktable" violates foreign key constraint "fktable_fk_fkey"
-DETAIL:  Key (fk)=(20) is not present in table "pktable".
 -- test order of firing of FK triggers when several RI-induced changes need to
 -- be made to the same row.  This was broken by subtransaction-related
 -- changes in 8.0.

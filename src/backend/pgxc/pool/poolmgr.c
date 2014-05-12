@@ -24,6 +24,11 @@
  * allocated to a session, at most one per Datanode.
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
  *
@@ -61,9 +66,18 @@
 #include <string.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#ifdef XCP
+#include "pgxc/pause.h"
+#include "storage/procarray.h"
+#endif
 
 /* Configuration options */
+#ifdef XCP
+int			PoolConnKeepAlive = 600;
+int			PoolMaintenanceTimeout = 30;
+#else
 int			MinPoolSize = 1;
+#endif
 int			MaxPoolSize = 100;
 int			PoolerPort = 6667;
 
@@ -79,6 +93,15 @@ typedef struct
 	char	*host;
 	int	port;
 } PGXCNodeConnectionInfo;
+
+#ifdef XCP
+/* Handle to the pool manager (Session's side) */
+typedef struct
+{
+	/* communication channel */
+	PoolPort	port;
+} PoolHandle;
+#endif
 
 /* The root memory context */
 static MemoryContext PoolerMemoryContext = NULL;
@@ -105,11 +128,17 @@ static int	is_pool_locked = false;
 static int	server_fd = -1;
 
 static int	node_info_check(PoolAgent *agent);
+#ifdef XCP
+static void agent_init(PoolAgent *agent, const char *database,
+						const char *user_name);
+#else
 static void agent_init(PoolAgent *agent, const char *database, const char *user_name,
 	                   const char *pgoptions);
+#endif
 static void agent_destroy(PoolAgent *agent);
 static void agent_create(void);
 static void agent_handle_input(PoolAgent *agent, StringInfo s);
+#ifndef XCP
 static int agent_session_command(PoolAgent *agent,
 								 const char *set_command,
 								 PoolCommandType command_type);
@@ -117,18 +146,33 @@ static int agent_set_command(PoolAgent *agent,
 							 const char *set_command,
 							 PoolCommandType command_type);
 static int agent_temp_command(PoolAgent *agent);
+#endif
+#ifdef XCP
+static DatabasePool *create_database_pool(const char *database,
+										   const char *user_name);
+#else
 static DatabasePool *create_database_pool(const char *database, const char *user_name, const char *pgoptions);
+#endif
 static void insert_database_pool(DatabasePool *pool);
 static int	destroy_database_pool(const char *database, const char *user_name);
 static void reload_database_pools(PoolAgent *agent);
+#ifdef XCP
+static DatabasePool *find_database_pool(const char *database,
+										 const char *user_name);
+#else
 static DatabasePool *find_database_pool(const char *database, const char *user_name, const char *pgoptions);
+#endif
 static DatabasePool *remove_database_pool(const char *database, const char *user_name);
 static int *agent_acquire_connections(PoolAgent *agent, List *datanodelist, List *coordlist);
+#ifndef XCP
 static int send_local_commands(PoolAgent *agent, List *datanodelist, List *coordlist);
+#endif
 static int cancel_query_on_connections(PoolAgent *agent, List *datanodelist, List *coordlist);
 static PGXCNodePoolSlot *acquire_connection(DatabasePool *dbPool, Oid node);
 static void agent_release_connections(PoolAgent *agent, bool force_destroy);
+#ifndef XCP
 static void agent_reset_session(PoolAgent *agent);
+#endif
 static void release_connection(DatabasePool *dbPool, PGXCNodePoolSlot *slot,
 							   Oid node, bool force_destroy);
 static void destroy_slot(PGXCNodePoolSlot *slot);
@@ -143,14 +187,21 @@ static int *abort_pids(int *count,
 					   const char *database,
 					   const char *user_name);
 static char *build_node_conn_str(Oid node, DatabasePool *dbPool);
-
 /* Signal handlers */
 static void pooler_die(SIGNAL_ARGS);
 static void pooler_quickdie(SIGNAL_ARGS);
-
+#ifdef XCP
+static void PoolManagerConnect(const char *database, const char *user_name);
+static void pooler_sighup(SIGNAL_ARGS);
+static bool shrink_pool(DatabasePool *pool);
+static void pools_maintenance(void);
+#endif
 /*
  * Flags set by interrupt handlers for later service in the main loop.
  */
+#ifdef XCP
+static volatile sig_atomic_t got_SIGHUP = false;
+#endif
 static volatile sig_atomic_t shutdown_requested = false;
 
 void
@@ -208,7 +259,11 @@ PoolManagerInit()
 	pqsignal(SIGINT, pooler_die);
 	pqsignal(SIGTERM, pooler_die);
 	pqsignal(SIGQUIT, pooler_quickdie);
+#ifdef XCP
+	pqsignal(SIGHUP, pooler_sighup);
+#else
 	pqsignal(SIGHUP, SIG_IGN);
+#endif
 	/* TODO other signal handlers */
 
 	/* We allow SIGQUIT (quickdie) at all times */
@@ -331,16 +386,29 @@ PoolManagerDestroy(void)
 }
 
 
+#ifdef XCP
+/*
+ * Connect to the pooler process
+ */
+static void
+#else
 /*
  * Get handle to pool manager
  * Invoked from Postmaster's main loop just before forking off new session
  * Returned PoolHandle structure will be inherited by session process
  */
 PoolHandle *
+#endif
 GetPoolManagerHandle(void)
 {
 	PoolHandle *handle;
 	int			fdsock;
+
+#ifdef XCP
+	if (poolHandle)
+		/* already connected */
+		return;
+#endif
 
 	/* Connect to the pooler */
 	fdsock = pool_connect(PoolerPort, UnixSocketDir);
@@ -352,7 +420,9 @@ GetPoolManagerHandle(void)
 				(errcode(ERRCODE_CONNECTION_FAILURE),
 				 errmsg("failed to connect to pool manager: %m")));
 		errno = saved_errno;
+#ifndef XCP
 		return NULL;
+#endif
 	}
 
 	/* Allocate handle */
@@ -369,7 +439,9 @@ GetPoolManagerHandle(void)
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("out of memory")));
+#ifndef XCP
 		return NULL;
+#endif
 	}
 
 	handle->port.fdsock = fdsock;
@@ -377,12 +449,17 @@ GetPoolManagerHandle(void)
 	handle->port.RecvPointer = 0;
 	handle->port.SendPointer = 0;
 
+#ifdef XCP
+	poolHandle = handle;
+#else
 	return handle;
+#endif
 }
 
 
+#ifndef XCP
 /*
- * Close handle
+ * XXX May create on_proc_exit callback instead
  */
 void
 PoolManagerCloseHandle(PoolHandle *handle)
@@ -391,7 +468,7 @@ PoolManagerCloseHandle(PoolHandle *handle)
 	free(handle);
 	handle = NULL;
 }
-
+#endif
 
 /*
  * Create agent
@@ -444,9 +521,11 @@ agent_create(void)
 	agent->coord_conn_oids = NULL;
 	agent->dn_connections = NULL;
 	agent->coord_connections = NULL;
+#ifndef XCP
 	agent->session_params = NULL;
 	agent->local_params = NULL;
 	agent->is_temp = false;
+#endif
 	agent->pid = 0;
 
 	/* Append new agent to the list */
@@ -455,6 +534,8 @@ agent_create(void)
 	MemoryContextSwitchTo(oldcontext);
 }
 
+
+#ifndef XCP
 /*
  * session_options
  * Returns the pgoptions string generated using a particular
@@ -508,11 +589,86 @@ char *session_options(void)
 
 	return options.data;
 }
+#endif
+
 
 /*
  * Associate session with specified database and respective connection pool
  * Invoked from Session process
  */
+#ifdef XCP
+static void
+PoolManagerConnect(const char *database, const char *user_name)
+{
+	int 	n32;
+	char 	msgtype = 'c';
+	int 	unamelen = strlen(user_name);
+	int 	dbnamelen = strlen(database);
+	char	atchar = ' ';
+
+	/* Connect to the pooler process if not yet connected */
+	GetPoolManagerHandle();
+	if (poolHandle == NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("failed to connect to the pooler process")));
+
+	/*
+	 * Special handling for db_user_namespace=on
+	 * We need to handle per-db users and global users. The per-db users will
+	 * arrive with @dbname and global users just as username. Handle both of
+	 * them appropriately
+	 */
+	if (strcmp(GetConfigOption("db_user_namespace", false, false), "on") == 0)
+	{
+		if (strchr(user_name, '@') != NULL)
+		{
+			Assert(unamelen > dbnamelen + 1);
+			unamelen -= (dbnamelen + 1);
+		}
+		else
+		{
+			atchar = '@';
+			unamelen++;
+		}
+	}
+
+	/* Message type */
+	pool_putbytes(&poolHandle->port, &msgtype, 1);
+
+	/* Message length */
+	n32 = htonl(dbnamelen + unamelen + 18);
+	pool_putbytes(&poolHandle->port, (char *) &n32, 4);
+
+	/* PID number */
+	n32 = htonl(MyProcPid);
+	pool_putbytes(&poolHandle->port, (char *) &n32, 4);
+
+	/* Length of Database string */
+	n32 = htonl(dbnamelen + 1);
+	pool_putbytes(&poolHandle->port, (char *) &n32, 4);
+
+	/* Send database name followed by \0 terminator */
+	pool_putbytes(&poolHandle->port, database, dbnamelen);
+	pool_putbytes(&poolHandle->port, "\0", 1);
+
+	/* Length of user name string */
+	n32 = htonl(unamelen + 1);
+	pool_putbytes(&poolHandle->port, (char *) &n32, 4);
+
+	/* Send user name followed by \0 terminator */
+	/* Send the '@' char if needed. Already accounted for in len */
+	if (atchar == '@')
+	{
+		pool_putbytes(&poolHandle->port, user_name, unamelen - 1);
+		pool_putbytes(&poolHandle->port, "@", 1);
+	}
+	else
+		pool_putbytes(&poolHandle->port, user_name, unamelen);
+	pool_putbytes(&poolHandle->port, "\0", 1);
+	pool_flush(&poolHandle->port);
+}
+#else
 void
 PoolManagerConnect(PoolHandle *handle,
 	               const char *database, const char *user_name,
@@ -564,6 +720,7 @@ PoolManagerConnect(PoolHandle *handle,
 	pool_flush(&handle->port);
 
 }
+#endif
 
 /*
  * Reconnect to pool manager
@@ -572,6 +729,13 @@ PoolManagerConnect(PoolHandle *handle,
 void
 PoolManagerReconnect(void)
 {
+#ifdef XCP
+	/* Connected, disconnect */
+	if (poolHandle)
+		PoolManagerDisconnect();
+
+	PoolManagerConnect(get_database_name(MyDatabaseId), GetClusterUserName());
+#else
 	PoolHandle *handle;
 
 	Assert(poolHandle);
@@ -582,8 +746,11 @@ PoolManagerReconnect(void)
 					   get_database_name(MyDatabaseId),
 					   GetUserNameFromId(GetUserId()),
 					   session_options());
+#endif
 }
 
+
+#ifndef XCP
 int
 PoolManagerSetCommand(PoolCommandType command_type, const char *set_command)
 {
@@ -694,6 +861,7 @@ PoolManagerSendLocalCommand(int dn_count, int* dn_list, int co_count, int* co_li
 	/* Get result */
 	return pool_recvres(&poolHandle->port);
 }
+#endif
 
 /*
  * Lock/unlock pool manager
@@ -706,7 +874,13 @@ PoolManagerLock(bool is_lock)
 	char msgtype = 'o';
 	int n32;
 	int msglen = 8;
+#ifdef XCP
+	if (poolHandle == NULL)
+		PoolManagerConnect(get_database_name(MyDatabaseId),
+						   GetClusterUserName());
+#else
 	Assert(poolHandle);
+#endif
 
 	/* Message type */
 	pool_putbytes(&poolHandle->port, &msgtype, 1);
@@ -724,9 +898,15 @@ PoolManagerLock(bool is_lock)
 /*
  * Init PoolAgent
  */
+#ifdef XCP
+static void
+agent_init(PoolAgent *agent, const char *database,
+						const char *user_name)
+#else
 static void
 agent_init(PoolAgent *agent, const char *database, const char *user_name,
            const char *pgoptions)
+#endif
 {
 	MemoryContext oldcontext;
 
@@ -748,12 +928,21 @@ agent_init(PoolAgent *agent, const char *database, const char *user_name,
 			palloc0(agent->num_coord_connections * sizeof(PGXCNodePoolSlot *));
 	agent->dn_connections = (PGXCNodePoolSlot **)
 			palloc0(agent->num_dn_connections * sizeof(PGXCNodePoolSlot *));
+#ifdef XCP
+	/* find database */
+	agent->pool = find_database_pool(database, user_name);
+
+	/* create if not found */
+	if (agent->pool == NULL)
+		agent->pool = create_database_pool(database, user_name);
+#else
 	/* find database */
 	agent->pool = find_database_pool(database, user_name, pgoptions);
 
 	/* create if not found */
 	if (agent->pool == NULL)
 		agent->pool = create_database_pool(database, user_name, pgoptions);
+#endif
 
 	MemoryContextSwitchTo(oldcontext);
 
@@ -775,6 +964,13 @@ agent_destroy(PoolAgent *agent)
 	/* Discard connections if any remaining */
 	if (agent->pool)
 	{
+#ifdef XCP
+		/*
+		 * If session is disconnecting while there are active connections
+		 * we can not know if they clean or not, so force destroy them
+		 */
+		agent_release_connections(agent, true);
+#else
 		/*
 		 * Agent is being destroyed, so reset session parameters
 		 * before putting back connections to pool.
@@ -786,6 +982,7 @@ agent_destroy(PoolAgent *agent)
 		 * Force disconnection if there are temporary objects on agent.
 		 */
 		agent_release_connections(agent, agent->is_temp);
+#endif
 	}
 
 	/* find agent in the list */
@@ -813,12 +1010,20 @@ agent_destroy(PoolAgent *agent)
 void
 PoolManagerDisconnect(void)
 {
+#ifdef XCP
+	if (!poolHandle)
+		return; /* not even connected */
+#else
 	Assert(poolHandle);
+#endif
 
 	pool_putmessage(&poolHandle->port, 'd', NULL, 0);
 	pool_flush(&poolHandle->port);
 
 	close(Socket(poolHandle->port));
+#ifdef XCP
+	free(poolHandle);
+#endif
 	poolHandle = NULL;
 }
 
@@ -835,7 +1040,13 @@ PoolManagerGetConnections(List *datanodelist, List *coordlist)
 	int			totlen = list_length(datanodelist) + list_length(coordlist);
 	int			nodes[totlen + 2];
 
+#ifdef XCP
+	if (poolHandle == NULL)
+		PoolManagerConnect(get_database_name(MyDatabaseId),
+						   GetClusterUserName());
+#else
 	Assert(poolHandle);
+#endif
 
 	/*
 	 * Prepare end send message to pool manager.
@@ -895,7 +1106,17 @@ PoolManagerAbortTransactions(char *dbname, char *username, int **proc_pids)
 	int		dblen = dbname ? strlen(dbname) + 1 : 0;
 	int		userlen = username ? strlen(username) + 1 : 0;
 
+#ifdef XCP
+	/*
+	 * New connection may be established to clean connections to
+	 * specified nodes and databases.
+	 */
+	if (poolHandle == NULL)
+		PoolManagerConnect(get_database_name(MyDatabaseId),
+						   GetClusterUserName());
+#else
 	Assert(poolHandle);
+#endif
 
 	/* Message type */
 	pool_putbytes(&poolHandle->port, &msgtype, 1);
@@ -943,6 +1164,16 @@ PoolManagerCleanConnection(List *datanodelist, List *coordlist, char *dbname, ch
 	char			msgtype = 'f';
 	int			userlen = username ? strlen(username) + 1 : 0;
 	int			dblen = dbname ? strlen(dbname) + 1 : 0;
+
+#ifdef XCP
+	/*
+	 * New connection may be established to clean connections to
+	 * specified nodes and databases.
+	 */
+	if (poolHandle == NULL)
+		PoolManagerConnect(get_database_name(MyDatabaseId),
+						   GetClusterUserName());
+#endif
 
 	nodes[0] = htonl(list_length(datanodelist));
 	i = 1;
@@ -1008,7 +1239,17 @@ PoolManagerCheckConnectionInfo(void)
 {
 	int res;
 
+#ifdef XCP
+	/*
+	 * New connection may be established to clean connections to
+	 * specified nodes and databases.
+	 */
+	if (poolHandle == NULL)
+		PoolManagerConnect(get_database_name(MyDatabaseId),
+						   GetClusterUserName());
+#else
 	Assert(poolHandle);
+#endif
 	PgxcNodeListAndCount();
 	pool_putmessage(&poolHandle->port, 'q', NULL, 0);
 	pool_flush(&poolHandle->port);
@@ -1051,9 +1292,10 @@ agent_handle_input(PoolAgent * agent, StringInfo s)
 	{
 		const char *database = NULL;
 		const char *user_name = NULL;
+#ifndef XCP
 		const char *pgoptions = NULL;
-		const char *set_command = NULL;
 		PoolCommandType	command_type;
+#endif
 		int			datanodecount;
 		int			coordcount;
 		List	   *nodelist = NIL;
@@ -1072,6 +1314,8 @@ agent_handle_input(PoolAgent * agent, StringInfo s)
 		 */
 		if (is_pool_locked && (qtype == 'a' || qtype == 'c' || qtype == 'g'))
 			elog(WARNING,"Pool operation cannot run during pool lock");
+
+		elog(DEBUG1, "Pooler is handling command %c from %d", (char) qtype, agent->pid);
 
 		switch (qtype)
 		{
@@ -1093,6 +1337,7 @@ agent_handle_input(PoolAgent * agent, StringInfo s)
 				if (pids)
 					pfree(pids);
 				break;
+#ifndef XCP
 			case 'b':		/* Fire transaction-block commands on given nodes */
 				/*
 				 * Length of message is caused by:
@@ -1119,6 +1364,7 @@ agent_handle_input(PoolAgent * agent, StringInfo s)
 				list_free(datanodelist);
 				list_free(coordlist);
 				break;
+#endif
 			case 'c':			/* CONNECT */
 				pool_getmessage(&agent->port, s, 0);
 				agent->pid = pq_getmsgint(s, 4);
@@ -1126,13 +1372,19 @@ agent_handle_input(PoolAgent * agent, StringInfo s)
 				database = pq_getmsgbytes(s, len);
 				len = pq_getmsgint(s, 4);
 				user_name = pq_getmsgbytes(s, len);
+#ifndef XCP
 				len = pq_getmsgint(s, 4);
 				pgoptions = pq_getmsgbytes(s, len);
+#endif
 				/*
 				 * Coordinator pool is not initialized.
 				 * With that it would be impossible to create a Database by default.
 				 */
+#ifdef XCP
+				agent_init(agent, database, user_name);
+#else
 				agent_init(agent, database, user_name, pgoptions);
+#endif
 				pq_getmsgend(s);
 				break;
 			case 'd':			/* DISCONNECT */
@@ -1277,10 +1529,22 @@ agent_handle_input(PoolAgent * agent, StringInfo s)
 				pool_sendres(&agent->port, res);
 				break;
 			case 'r':			/* RELEASE CONNECTIONS */
+#ifdef XCP
+				{
+					bool destroy;
+
+					pool_getmessage(&agent->port, s, 8);
+					destroy = (bool) pq_getmsgint(s, 4);
+					pq_getmsgend(s);
+					agent_release_connections(agent, destroy);
+				}
+#else
 				pool_getmessage(&agent->port, s, 4);
 				pq_getmsgend(s);
 				agent_release_connections(agent, false);
+#endif
 				break;
+#ifndef XCP
 			case 's':			/* Session-related COMMAND */
 				pool_getmessage(&agent->port, s, 0);
 				/* Determine if command is local or session */
@@ -1298,6 +1562,7 @@ agent_handle_input(PoolAgent * agent, StringInfo s)
 				/* Send success result */
 				pool_sendres(&agent->port, res);
 				break;
+#endif
 			default:			/* EOF or protocol violation */
 				agent_destroy(agent);
 				return;
@@ -1308,6 +1573,7 @@ agent_handle_input(PoolAgent * agent, StringInfo s)
 	}
 }
 
+#ifndef XCP
 /*
  * Manage a session command for pooler
  */
@@ -1419,6 +1685,7 @@ agent_set_command(PoolAgent *agent, const char *set_command, PoolCommandType com
 
 	return res;
 }
+#endif
 
 /*
  * acquire connection
@@ -1460,6 +1727,7 @@ agent_acquire_connections(PoolAgent *agent, List *datanodelist, List *coordlist)
 	 */
 	oldcontext = MemoryContextSwitchTo(agent->pool->mcxt);
 
+
 	/* Initialize result */
 	i = 0;
 	/* Save in array fds of Datanodes first */
@@ -1489,8 +1757,10 @@ agent_acquire_connections(PoolAgent *agent, List *datanodelist, List *coordlist)
 			 * Local parameters are fired only once BEGIN has been launched on
 			 * remote nodes.
 			 */
+#ifndef XCP
 			if (agent->session_params)
 				PGXCNodeSendSetQuery(slot->conn, agent->session_params);
+#endif
 		}
 
 		result[i++] = PQsocket((PGconn *) agent->dn_connections[node]->conn);
@@ -1522,8 +1792,10 @@ agent_acquire_connections(PoolAgent *agent, List *datanodelist, List *coordlist)
 			 * Local parameters are fired only once BEGIN has been launched on
 			 * remote nodes.
 			 */
+#ifndef XCP
 			if (agent->session_params)
 				PGXCNodeSendSetQuery(slot->conn, agent->session_params);
+#endif
 		}
 
 		result[i++] = PQsocket((PGconn *) agent->coord_connections[node]->conn);
@@ -1534,6 +1806,7 @@ agent_acquire_connections(PoolAgent *agent, List *datanodelist, List *coordlist)
 	return result;
 }
 
+#ifndef XCP
 /*
  * send transaction local commands if any, set the begin sent status in any case
  */
@@ -1605,6 +1878,7 @@ send_local_commands(PoolAgent *agent, List *datanodelist, List *coordlist)
 		return -res;
 	return 0;
 }
+#endif
 
 /*
  * Cancel query
@@ -1664,6 +1938,31 @@ cancel_query_on_connections(PoolAgent *agent, List *datanodelist, List *coordlis
 /*
  * Return connections back to the pool
  */
+#ifdef XCP
+void
+PoolManagerReleaseConnections(bool force)
+{
+	char msgtype = 'r';
+	int n32;
+	int msglen = 8;
+
+	/* If disconnected from pooler all the connections already released */
+	if (!poolHandle)
+		return;
+
+	/* Message type */
+	pool_putbytes(&poolHandle->port, &msgtype, 1);
+
+	/* Message length */
+	n32 = htonl(msglen);
+	pool_putbytes(&poolHandle->port, (char *) &n32, 4);
+
+	/* Lock information */
+	n32 = htonl((int) force);
+	pool_putbytes(&poolHandle->port, (char *) &n32, 4);
+	pool_flush(&poolHandle->port);
+}
+#else
 void
 PoolManagerReleaseConnections(void)
 {
@@ -1671,6 +1970,8 @@ PoolManagerReleaseConnections(void)
 	pool_putmessage(&poolHandle->port, 'r', NULL, 0);
 	pool_flush(&poolHandle->port);
 }
+#endif
+
 
 /*
  * Cancel Query
@@ -1736,7 +2037,15 @@ agent_release_connections(PoolAgent *agent, bool force_destroy)
 
 	if (!agent->dn_connections && !agent->coord_connections)
 		return;
+#ifdef XCP
+	if (!force_destroy && cluster_ex_lock_held)
+	{
+		elog(LOG, "Not releasing connection with cluster lock");
+		return;
+	}
+#endif
 
+#ifndef XCP
 	/*
 	 * If there are some session parameters or temporary objects,
 	 * do not put back connections to pool.
@@ -1751,6 +2060,7 @@ agent_release_connections(PoolAgent *agent, bool force_destroy)
 	}
 	if ((agent->session_params || agent->is_temp) && !force_destroy)
 		return;
+#endif
 
 	/*
 	 * There are possible memory allocations in the core pooler, we want
@@ -1788,9 +2098,21 @@ agent_release_connections(PoolAgent *agent, bool force_destroy)
 		agent->coord_connections[i] = NULL;
 	}
 
+#ifdef XCP
+	/*
+	 * Released connections are now in the pool and we may want to close
+	 * them eventually. Update the oldest_idle value to reflect the latest
+	 * last access time if not already updated..
+	 */
+	if (!force_destroy && agent->pool->oldest_idle == (time_t) 0)
+		agent->pool->oldest_idle = time(NULL);
+#endif
+
 	MemoryContextSwitchTo(oldcontext);
 }
 
+
+#ifndef XCP
 /*
  * Reset session parameters for given connections in the agent.
  * This is done before putting back to pool connections that have been
@@ -1814,7 +2136,7 @@ agent_reset_session(PoolAgent *agent)
 
 			/* Reset given slot with parameters */
 			if (slot)
-				PGXCNodeSendSetQuery(slot->conn, "SET SESSION AUTHORIZATION DEFAULT;RESET ALL;");
+				PGXCNodeSendSetQuery(slot->conn, "SET SESSION AUTHORIZATION DEFAULT;RESET ALL;SET GLOBAL_SESSION TO NONE;");
 		}
 	}
 
@@ -1827,7 +2149,7 @@ agent_reset_session(PoolAgent *agent)
 
 			/* Reset given slot with parameters */
 			if (slot)
-				PGXCNodeSendSetQuery(slot->conn, "SET SESSION AUTHORIZATION DEFAULT;RESET ALL;");
+				PGXCNodeSendSetQuery(slot->conn, "SET SESSION AUTHORIZATION DEFAULT;RESET ALL;SET GLOBAL_SESSION TO NONE;");
 		}
 	}
 
@@ -1843,6 +2165,7 @@ agent_reset_session(PoolAgent *agent)
 		agent->local_params = NULL;
 	}
 }
+#endif
 
 
 /*
@@ -1853,8 +2176,13 @@ agent_reset_session(PoolAgent *agent)
  * Returns POOL_OK if operation succeed POOL_FAIL in case of OutOfMemory
  * error and POOL_WEXIST if poll for this database already exist.
  */
+#ifdef XCP
+static DatabasePool *create_database_pool(const char *database,
+										   const char *user_name)
+#else
 static DatabasePool *
 create_database_pool(const char *database, const char *user_name, const char *pgoptions)
+#endif
 {
 	MemoryContext	oldcontext;
 	MemoryContext	dbcontext;
@@ -1884,8 +2212,13 @@ create_database_pool(const char *database, const char *user_name, const char *pg
 	databasePool->database = pstrdup(database);
 	 /* Copy the user name */
 	databasePool->user_name = pstrdup(user_name);
+#ifdef XCP
+	/* Reset the oldest_idle value */
+	databasePool->oldest_idle = (time_t) 0;
+#else
 	 /* Copy the pgoptions */
 	databasePool->pgoptions = pstrdup(pgoptions);
+#endif
 
 	if (!databasePool->database)
 	{
@@ -2031,8 +2364,14 @@ reload_database_pools(PoolAgent *agent)
 /*
  * Find pool for specified database and username in the list
  */
+#ifdef XCP
+static DatabasePool *
+find_database_pool(const char *database,
+										 const char *user_name)
+#else
 static DatabasePool *
 find_database_pool(const char *database, const char *user_name, const char *pgoptions)
+#endif
 {
 	DatabasePool *databasePool;
 
@@ -2040,11 +2379,16 @@ find_database_pool(const char *database, const char *user_name, const char *pgop
 	databasePool = databasePools;
 	while (databasePool)
 	{
+#ifdef XCP
+		if (strcmp(database, databasePool->database) == 0 &&
+				strcmp(user_name, databasePool->user_name) == 0)
+			break;
+#else
 		if (strcmp(database, databasePool->database) == 0 &&
 			strcmp(user_name, databasePool->user_name) == 0 &&
 			strcmp(pgoptions, databasePool->pgoptions) == 0)
 			break;
-
+#endif
 		databasePool = databasePool->next;
 	}
 	return databasePool;
@@ -2185,6 +2529,9 @@ release_connection(DatabasePool *dbPool, PGXCNodePoolSlot *slot,
 	{
 		/* Insert the slot into the array and increase pool size */
 		nodePool->slot[(nodePool->freeSize)++] = slot;
+#ifdef XCP
+		slot->released = time(NULL);
+#endif
 	}
 	else
 	{
@@ -2204,6 +2551,10 @@ release_connection(DatabasePool *dbPool, PGXCNodePoolSlot *slot,
 static PGXCNodePool *
 grow_pool(DatabasePool *dbPool, Oid node)
 {
+#ifdef XCP
+	/* if error try to release idle connections and try again */
+	bool 			tryagain = true;
+#endif
 	PGXCNodePool   *nodePool;
 	bool			found;
 
@@ -2211,7 +2562,6 @@ grow_pool(DatabasePool *dbPool, Oid node)
 
 	nodePool = (PGXCNodePool *) hash_search(dbPool->nodePools, &node,
 											HASH_ENTER, &found);
-
 	if (!found)
 	{
 		nodePool->connstr = build_node_conn_str(node, dbPool);
@@ -2233,7 +2583,11 @@ grow_pool(DatabasePool *dbPool, Oid node)
 		nodePool->size = 0;
 	}
 
+#ifdef XCP
+	while (nodePool->freeSize == 0 && nodePool->size < MaxPoolSize)
+#else
 	while (nodePool->size < MinPoolSize || (nodePool->freeSize == 0 && nodePool->size < MaxPoolSize))
+#endif
 	{
 		PGXCNodePoolSlot *slot;
 
@@ -2257,10 +2611,33 @@ grow_pool(DatabasePool *dbPool, Oid node)
 			ereport(LOG,
 					(errcode(ERRCODE_CONNECTION_FAILURE),
 					 errmsg("failed to connect to Datanode")));
+#ifdef XCP
+			/*
+			 * If we failed to connect probably number of connections on the
+			 * target node reached max_connections. Try and release idle
+			 * connections and try again.
+			 * We do not want to enter endless loop here and run maintenance
+			 * procedure only once.
+			 * It is not safe to run the maintenance procedure if no connections
+			 * from that pool currently in use - the node pool may be destroyed
+			 * in that case.
+			 */
+			if (tryagain && nodePool->size > nodePool->freeSize)
+			{
+				pools_maintenance();
+				tryagain = false;
+				continue;
+			}
+#endif
 			break;
 		}
 
 		slot->xc_cancelConn = (NODE_CANCEL *) PQgetCancel((PGconn *)slot->conn);
+#ifdef XCP
+		slot->released = time(NULL);
+		if (dbPool->oldest_idle == (time_t) 0)
+			dbPool->oldest_idle = slot->released;
+#endif
 
 		/* Insert at the end of the pool */
 		nodePool->slot[(nodePool->freeSize)++] = slot;
@@ -2326,7 +2703,10 @@ destroy_node_pool(PGXCNodePool *node_pool)
 static void
 PoolerLoop(void)
 {
-	StringInfoData input_message;
+	StringInfoData 	input_message;
+#ifdef XCP
+	time_t			last_maintenance = (time_t) 0;
+#endif
 
 	server_fd = pool_listen(PoolerPort, UnixSocketDir);
 	if (server_fd == -1)
@@ -2335,6 +2715,7 @@ PoolerLoop(void)
 		return;
 	}
 	initStringInfo(&input_message);
+
 	for (;;)
 	{
 		int			nfds;
@@ -2365,8 +2746,53 @@ PoolerLoop(void)
 			nfds = Max(nfds, sockfd);
 		}
 
-		/* wait for event */
+#ifdef XCP
+		if (PoolMaintenanceTimeout > 0)
+		{
+			struct timeval	maintenance_timeout;
+			int				timeout_val;
+			double			timediff;
+
+			/*
+			 * Decide the timeout value based on when the last
+			 * maintenance activity was carried out. If the last
+			 * maintenance was done quite a while ago schedule the select
+			 * with no timeout. It will serve any incoming activity
+			 * and if there's none it will cause the maintenance
+			 * to be scheduled as soon as possible
+			 */
+			timediff = difftime(time(NULL), last_maintenance);
+
+			if (timediff > PoolMaintenanceTimeout)
+				timeout_val = 0;
+			else
+				timeout_val = PoolMaintenanceTimeout - rint(timediff);
+
+			maintenance_timeout.tv_sec = timeout_val;
+			maintenance_timeout.tv_usec = 0;
+			/* wait for event */
+			retval = select(nfds + 1, &rfds, NULL, NULL, &maintenance_timeout);
+		}
+		else
+#endif
 		retval = select(nfds + 1, &rfds, NULL, NULL, NULL);
+#ifdef XCP
+		/*
+		 * Emergency bailout if postmaster has died.  This is to avoid the
+		 * necessity for manual cleanup of all postmaster children.
+		 */
+		if (!PostmasterIsAlive())
+			exit(1);
+
+		/*
+		 * Process any requests or signals received recently.
+		 */
+		if (got_SIGHUP)
+		{
+			got_SIGHUP = false;
+			ProcessConfigFile(PGC_SIGHUP);
+		}
+#endif
 		if (shutdown_requested)
 		{
 			for (i = agentCount - 1; i >= 0; i--)
@@ -2400,6 +2826,14 @@ PoolerLoop(void)
 			if (FD_ISSET(server_fd, &rfds))
 				agent_create();
 		}
+#ifdef XCP
+		else if (retval == 0)
+		{
+			/* maintenance timeout */
+			pools_maintenance();
+			last_maintenance = time(NULL);
+		}
+#endif
 	}
 }
 
@@ -2530,6 +2964,17 @@ pooler_quickdie(SIGNAL_ARGS)
 	exit(2);
 }
 
+
+#ifdef XCP
+static void
+pooler_sighup(SIGNAL_ARGS)
+{
+	got_SIGHUP = true;
+}
+#endif
+
+
+#ifndef XCP
 bool
 IsPoolHandle(void)
 {
@@ -2537,7 +2982,7 @@ IsPoolHandle(void)
 		return false;
 	return true;
 }
-
+#endif
 
 /*
  * Given node identifier, dbname and user name build connection string.
@@ -2556,13 +3001,145 @@ build_node_conn_str(Oid node, DatabasePool *dbPool)
 		return NULL;
 	}
 
+#ifdef XCP
+	connstr = PGXCNodeConnStr(NameStr(nodeDef->nodehost),
+							  nodeDef->nodeport,
+							  dbPool->database,
+							  dbPool->user_name,
+							  IS_PGXC_COORDINATOR ? "coordinator" : "datanode",
+							  PGXCNodeName);
+#else
 	connstr = PGXCNodeConnStr(NameStr(nodeDef->nodehost),
 							  nodeDef->nodeport,
 							  dbPool->database,
 							  dbPool->user_name,
 							  dbPool->pgoptions,
 							  IS_PGXC_COORDINATOR ? "coordinator" : "datanode");
+#endif
 	pfree(nodeDef);
 
 	return connstr;
 }
+
+
+#ifdef XCP
+/*
+ * Check all pooled connections, and close which have been released more then
+ * PooledConnKeepAlive seconds ago.
+ * Return true if shrink operation closed all the connections and pool can be
+ * ddestroyed, false if there are still connections or pool is in use.
+ */
+static bool
+shrink_pool(DatabasePool *pool)
+{
+	time_t 			now = time(NULL);
+	HASH_SEQ_STATUS hseq_status;
+	PGXCNodePool   *nodePool;
+	int 			i;
+	bool			empty = true;
+
+	/* Negative PooledConnKeepAlive disables automatic connection cleanup */
+	if (PoolConnKeepAlive < 0)
+		return false;
+
+	pool->oldest_idle = (time_t) 0;
+	hash_seq_init(&hseq_status, pool->nodePools);
+	while ((nodePool = (PGXCNodePool *) hash_seq_search(&hseq_status)))
+	{
+		/* Go thru the free slots and destroy those that are free too long */
+		for (i = 0; i < nodePool->freeSize; )
+		{
+			PGXCNodePoolSlot *slot = nodePool->slot[i];
+
+			if (difftime(now, slot->released) > PoolConnKeepAlive)
+			{
+				/* connection is idle for long, close it */
+				destroy_slot(slot);
+				/* reduce pool size and total number of connections */
+				(nodePool->freeSize)--;
+				(nodePool->size)--;
+				/* move last connection in place, if not at last already */
+				if (i < nodePool->freeSize)
+					nodePool->slot[i] = nodePool->slot[nodePool->freeSize];
+			}
+			else
+			{
+				if (pool->oldest_idle == (time_t) 0 ||
+						difftime(pool->oldest_idle, slot->released) > 0)
+					pool->oldest_idle = slot->released;
+
+				i++;
+			}
+		}
+		if (nodePool->size > 0)
+			empty = false;
+		else
+		{
+			destroy_node_pool(nodePool);
+			hash_search(pool->nodePools, &nodePool->nodeoid, HASH_REMOVE, NULL);
+		}
+	}
+
+	/*
+	 * Last check, if any active agent is referencing the pool do not allow to
+	 * destroy it, because there will be a problem if session wakes up and try
+	 * to get a connection from non existing pool.
+	 * If all such sessions will eventually disconnect the pool will be
+	 * destroyed during next maintenance procedure.
+	 */
+	if (empty)
+	{
+		for (i = 0; i < agentCount; i++)
+		{
+			if (poolAgents[i]->pool == pool)
+				return false;
+		}
+	}
+
+	return empty;
+}
+
+
+/*
+ * Scan connection pools and release connections which are idle for long.
+ * If pool gets empty after releasing connections it is destroyed.
+ */
+static void
+pools_maintenance(void)
+{
+	DatabasePool   *prev = NULL;
+	DatabasePool   *curr = databasePools;
+	time_t			now = time(NULL);
+	int				count = 0;
+
+	/* Iterate over the pools */
+	while (curr)
+	{
+		/*
+		 * If current pool has connections to close and it is emptied after
+		 * shrink remove the pool and free memory.
+		 * Otherwithe move to next pool.
+		 */
+		if (curr->oldest_idle != (time_t) 0 &&
+				difftime(now, curr->oldest_idle) > PoolConnKeepAlive &&
+				shrink_pool(curr))
+		{
+			MemoryContext mem = curr->mcxt;
+			curr = curr->next;
+			if (prev)
+				prev->next = curr;
+			else
+				databasePools = curr;
+			MemoryContextDelete(mem);
+			count++;
+		}
+		else
+		{
+			prev = curr;
+			curr = curr->next;
+		}
+	}
+	elog(DEBUG1, "Pool maintenance, done in %f seconds, removed %d pools",
+			difftime(time(NULL), now), count);
+}
+#endif

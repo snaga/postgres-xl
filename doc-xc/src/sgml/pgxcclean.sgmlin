@@ -11,17 +11,17 @@
  <sect2>
   <title>Overview</title>
 
-&xconly;
+&xlonly;
     <para>
-      pgxc_clean has the following synopsis.
+      pgxc_clean has the following syntax.
 <programlisting>
 pgxc_clean <optional> <replaceable>option</> </optional> <optional><replaceable>dbname</><optional><replaceable>username</></optional></optional>
 </programlisting>
     </para>
 
     <para>
-     <application>pgxc_clean</application> is Postgres-XC utility to maintain transaction status after a crash.
-     When some Postgres-XC node crashes and recovers or fails over, commit status of such node may be inconsistent
+     <application>pgxc_clean</application> is a Postgres-XL utility to maintain transaction status after a crash.
+     When a Postgres-XL node crashes and recovers or fails over, the commit status of such node may be inconsistent
      with other nodes.   <application>pgxc_clean</application> checks transaction commit status and corrects them.
     </para>
 

@@ -18,6 +18,9 @@ PostgreSQL documentation
 <!## XC>
   <refpurpose>create a new <productname>Postgres-XC</productname> Coordinator or Datanode database cluster</refpurpose>
 <!## end>
+<!## XL>
+  <refpurpose>create a new <productname>Postgres-XL</productname> Coordinator or Datanode database cluster</refpurpose>
+<!## end>
  </refnamediv>
 
  <indexterm zone="app-initdb">
@@ -49,6 +52,9 @@ PostgreSQL documentation
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname> database cluster for Coordinator or Datanode.  A database
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> database cluster for Coordinator or Datanode.  A database
 <!## end>
    cluster is a collection of databases that are managed by a single
    server instance.
@@ -125,6 +131,13 @@ PostgreSQL documentation
    performed for each Coordinators and Datanodes manually.
   </para>
 <!## end>
+<!## XL>
+&xlonly;
+  <para>
+   <command>initdb</> will be performed locally.  This has to be
+   performed for each Coordinators and Datanodes manually.
+  </para>
+<!## end>
 
  </refsect1>
 
@@ -175,6 +188,19 @@ PostgreSQL documentation
        </listitem>
      </varlistentry>
 <!## end>
+<!## XL>
+     <varlistentry>
+       <term><option>--nodename=<replaceable class="parameter">nodename</replaceable></option></term>
+       <listitem>
+       <para>
+       Set the name of Postgres-XL node initialized. This option is mandatory when setting a node.
+       It permits one to define the node itself in cluster node catalog
+       <link linkend="catalog-pgxc-node"><structname>pgxc_node</structname></link>. The node name
+       specified is also added in <filename>postgresql.conf</> as value of <varname>pgxc_node_name</>.
+       </para>
+       </listitem>
+     </varlistentry>
+<!## end>
 
      <varlistentry>
       <term><option>-E <replaceable class="parameter">encoding</replaceable></option></term>
@@ -190,6 +216,9 @@ PostgreSQL documentation
 <!## end>
 <!## XC>
         the <productname>Postgres-XC</productname> server are described
+<!## end>
+<!## XL>
+        the <productname>Postgres-XL</productname> server are described
 <!## end>
         in <xref linkend="multibyte-charset-supported">.
        </para>
@@ -369,6 +398,9 @@ PostgreSQL documentation
 <!## XC>
    This utility, like most other <productname>Postgres-XC</> utilities,
 <!## end>
+<!## XL>
+   This utility, like most other <productname>Postgres-XL</> utilities,
+<!## end>
    also uses the environment variables supported by <application>libpq</>
    (see <xref linkend="libpq-envars">).
   </para>
@@ -380,6 +412,13 @@ PostgreSQL documentation
 
 <!## XC>
 &xconly;
+  <para>
+   <command>initdb</> runs only locally.  You should
+   run <command>initdb</> for each Coordinator and Datanode.
+  </para>
+<!## end>
+<!## XL>
+&xlonly;
   <para>
    <command>initdb</> runs only locally.  You should
    run <command>initdb</> for each Coordinator and Datanode.

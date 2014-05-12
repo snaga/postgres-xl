@@ -50,8 +50,8 @@ OBJS = $(SUBDIROBJS) $(LOCALOBJS) \
 	$(top_builddir)/src/interfaces/libpq/pqexpbuffer.o \
 	$(top_builddir)/src/port/libpgport_srv.a \
 	$(top_builddir)/src/gtm/client/libgtmclient.a \
-	$(top_builddir)/src/gtm/common/libgtmcommon.a \
-	$(top_builddir)/src/interfaces/libpq/libpq.a
+	$(top_builddir)/src/gtm/common/libgtm.a \
+	$(top_builddir)/src/gtm/libpq/libpqcomm.a	
 
 # We put libpgport into OBJS, so remove it from LIBS; also add libldap
 LIBS := $(filter-out -lpgport, $(LIBS)) $(LDAP_LIBS_BE)
@@ -147,15 +147,6 @@ catalog/schemapg.h: | submake-schemapg
 
 $(top_builddir)/src/port/libpgport_srv.a: | submake-libpgport
 
-# Those are rules to create dependent GTM libraries automatically
-$(top_builddir)/src/interfaces/libpq/libpq.a:
-	$(MAKE) -C $(top_builddir)/src/interfaces/libpq libpq.a
-
-$(top_builddir)/src/gtm/common/libgtmcommon.a:
-	$(MAKE) -C $(top_builddir)/src/gtm/common libgtmcommon.a
-
-$(top_builddir)/src/gtm/client/libgtmclient.a:
-	$(MAKE) -C $(top_builddir)/src/gtm/client libgtmclient.a
 
 # The postgres.o target is needed by the rule in Makefile.global that
 # creates the exports file when MAKE_EXPORTS = true.
@@ -262,6 +253,7 @@ else
 endif
 ifeq ($(MAKE_EXPORTS), true)
 	$(INSTALL_DATA) $(POSTGRES_IMP) '$(DESTDIR)$(pkglibdir)/$(POSTGRES_IMP)'
+	$(INSTALL_PROGRAM) $(MKLDEXPORT) '$(DESTDIR)$(pgxsdir)/$(MKLDEXPORT_DIR)/mkldexport.sh'
 endif
 
 .PHONY: install-bin
@@ -280,6 +272,7 @@ endif
 endif
 ifeq ($(MAKE_EXPORTS), true)
 	$(MKDIR_P) '$(DESTDIR)$(pkglibdir)'
+	$(MKDIR_P) '$(DESTDIR)$(pgxsdir)/$(MKLDEXPORT_DIR)'
 endif
 
 
@@ -289,6 +282,7 @@ uninstall:
 	rm -f '$(DESTDIR)$(bindir)/postgres$(X)' '$(DESTDIR)$(bindir)/postmaster'
 ifeq ($(MAKE_EXPORTS), true)
 	rm -f '$(DESTDIR)$(pkglibdir)/$(POSTGRES_IMP)'
+	rm -f '$(DESTDIR)$(pgxsdir)/$(MKLDEXPORT_DIR)/mkldexport.sh'
 endif
 ifeq ($(PORTNAME), cygwin)
 ifeq ($(MAKE_DLL), true)

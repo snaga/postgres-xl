@@ -3,6 +3,11 @@
  * view.c
  *	  use rewrite rules to construct views
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -511,6 +516,14 @@ DefineView(ViewStmt *stmt, const char *queryString)
 	if (view->relpersistence == RELPERSISTENCE_PERMANENT
 		&& isViewOnTempTable(viewParse))
 	{
+		view = copyObject(view);	/* don't corrupt original command */
+#ifdef XCP
+		/*
+		 * Change original command as well - we do not want to create that view
+		 * on other coordinators where temp table does not exist
+		 */
+		stmt->view->relpersistence = RELPERSISTENCE_TEMP;
+#endif
 		view->relpersistence = RELPERSISTENCE_TEMP;
 		ereport(NOTICE,
 				(errmsg("view \"%s\" will be a temporary view",
@@ -518,9 +531,11 @@ DefineView(ViewStmt *stmt, const char *queryString)
 	}
 
 #ifdef PGXC
+#ifndef XCP
 	/* In case view is temporary, be sure not to use 2PC on such relations */
 	if (view->relpersistence == RELPERSISTENCE_TEMP)
 		ExecSetTempObjectIncluded();
+#endif
 #endif
 
 	/*

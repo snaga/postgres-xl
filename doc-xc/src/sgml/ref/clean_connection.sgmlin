@@ -29,12 +29,12 @@ CLEAN CONNECTION TO { COORDINATOR ( <replaceable class="parameter">nodename</rep
 
  <refsect1>
   <title>Description</title>
-&xconly;
+&xlonly;
   <para>
-   <command>CLEAN CONNECTION</command> cleans pooler connection in
-   a Postgres-XC cluster.  This can be done for a give database or
-   role. This command usage is restricted to superusers.  It is
-   possible to clean connections to a list of Postgres-XC Coordinators
+   <command>CLEAN CONNECTION</command> cleans pooler connections in
+   a Postgres-XL cluster.  This can be done for a given database or
+   role. This command's usage is restricted to superusers.  It is
+   possible to clean connections to a list of Postgres-XL Coordinators
    or Datanodes.  If TO ALL is specified, connections to all the nodes
    are cleaned.  A <replaceable class="parameter">username</replaceable>
    or a <replaceable class="parameter">dbname</replaceable> has to be
@@ -108,15 +108,6 @@ CLEAN CONNECTION TO COORDINATOR coord1,coord2 FOR DATABASE<replaceable>name</rep
  </refsect1>
 
  <refsect1>
-  <title>Notes</title>
-
-  <para>
-   <command>CLEAN CONNECTION</command> is implemented since Postgres-XC
-   0.9.3.
-  </para>
- </refsect1>
-
- <refsect1>
   <title>Examples</title>
 
   <para>
@@ -146,7 +137,7 @@ CLEAN CONNECTION TO ALL FORCE FOR DATABASE postgres TO USER admin;
   <title>Compatibility</title>
   <para>
    <command>CLEAN CONNECTION</command> does not conform to the <acronym>
-   SQL</acronym> standards, it is a Postgres-XC specific command.
+   SQL</acronym> standards, it is a Postgres-XL specific command.
   </para>
  </refsect1>
 

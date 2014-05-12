@@ -24,6 +24,11 @@
   system inherited from <productname>PostgreSQL</>.  The design goals of <application>PL/pgSQL</> were to create
   a loadable procedural language that
 <!## end>
+<!## XL>
+  language for the <productname>Postgres-XL</productname> database
+  system inherited from <productname>PostgreSQL</>.  The design goals of <application>PL/pgSQL</> were to create
+  a loadable procedural language that
+<!## end>
 
     <itemizedlist>
      <listitem>
@@ -80,6 +85,13 @@
     can be handled in a function.
    </para>
 <!## end>
+<!## XL>
+&xlonly;
+   <para>
+    At present, in <productname>Postgres-XL</>, only one SQL statment
+    can be handled in a function.
+   </para>
+<!## end>
 
   <sect2 id="plpgsql-advantages">
    <title>Advantages of Using <application>PL/pgSQL</application></title>
@@ -91,6 +103,9 @@
 <!## end>
 <!## XC>
      <acronym>SQL</acronym> is the language <productname>Postgres-XC</>
+<!## end>
+<!## XL>
+     <acronym>SQL</acronym> is the language <productname>Postgres-XL</>
 <!## end>
      and most other relational databases use as query language. It's
      portable and easy to learn. But every <acronym>SQL</acronym>
@@ -674,6 +689,9 @@ user_id users.user_id%TYPE;
 <!## XC>
     it actually does not matter in <productname>Postgres-XC</> whether you
 <!## end>
+<!## XL>
+    it actually does not matter in <productname>Postgres-XL</> whether you
+<!## end>
     write <literal>%ROWTYPE</literal> or not.  But the form with
     <literal>%ROWTYPE</literal> is more portable.)
    </para>
@@ -1068,6 +1086,14 @@ DELETE ... RETURNING <replaceable>expressions</replaceable> INTO <optional>STRIC
      THis feature may be supported in the future releases.
     </para>
 <!## end>
+<!## XL>
+    <para>
+     This paragraph originally describes internal behavior
+     of <command>SELECT INTO</> command of <productname>PostgerSQL</>,
+     which has not been supported by <productname>Postgres-XL</> yet.
+     THis feature may be supported in the future releases.
+    </para>
+<!## end>
    </tip>
 
     <para>
@@ -1279,6 +1305,9 @@ EXECUTE 'SELECT count(*) FROM '
 <!## end>
 <!## XC>
      <productname>Postgres-XC</productname> server. The server's
+<!## end>
+<!## XL>
+     <productname>Postgres-XL</productname> server. The server's
 <!## end>
      <command>EXECUTE</command> statement cannot be used directly within
      <application>PL/pgSQL</> functions (and is not needed).
@@ -1606,6 +1635,9 @@ END;
 <!## end>
 <!## XC>
     you can manipulate <productname>Postgres-XC</> data in a very
+<!## end>
+<!## XL>
+    you can manipulate <productname>Postgres-XL</> data in a very
 <!## end>
     flexible and powerful way.
    </para>
@@ -4231,6 +4263,9 @@ $$ LANGUAGE plpgsql;
 <!## XC>
      <productname>Postgres-XC</productname> main parser knows when
 <!## end>
+<!## XL>
+     <productname>Postgres-XL</productname> main parser knows when
+<!## end>
      preparing the plan for the <command>INSERT</command> that the
      string <literal>'now'</literal> should be interpreted as
      <type>timestamp</type>, because the target column of
@@ -4249,6 +4284,9 @@ $$ LANGUAGE plpgsql;
 <!## end>
 <!## XC>
      <productname>Postgres-XC</productname> main parser does not know
+<!## end>
+<!## XL>
+     <productname>Postgres-XL</productname> main parser does not know
 <!## end>
      what type <literal>'now'</literal> should become and therefore
      it returns a data value of type <type>text</type> containing the string
@@ -4486,6 +4524,9 @@ a_output := a_output || $$ if v_$$ || referrer_keys.kind || $$ like '$$
 <!## XC>
    <productname>Postgres-XC</>'s <application>PL/pgSQL</application>
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</>'s <application>PL/pgSQL</application>
+<!## end>
    language and Oracle's <application>PL/SQL</application> language,
    to help developers who port applications from
 <!## PG>
@@ -4493,6 +4534,9 @@ a_output := a_output || $$ if v_$$ || referrer_keys.kind || $$ like '$$
 <!## end>
 <!## XC>
    <trademark class="registered">Oracle</> to <productname>Postgres-XC</>.
+<!## end>
+<!## XL>
+   <trademark class="registered">Oracle</> to <productname>Postgres-XL</>.
 <!## end>
   </para>
 
@@ -4528,6 +4572,9 @@ a_output := a_output || $$ if v_$$ || referrer_keys.kind || $$ like '$$
 <!## end>
 <!## XC>
        In <productname>Postgres-XC</> the function body must be written as
+<!## end>
+<!## XL>
+       In <productname>Postgres-XL</> the function body must be written as
 <!## end>
        a string literal.  Therefore you need to use dollar quoting or escape
        single quotes in the function body. (See <xref
@@ -4627,6 +4674,9 @@ show errors;
 <!## XC>
         <productname>Postgres-XC</productname>.
 <!## end>
+<!## XL>
+        <productname>Postgres-XL</productname>.
+<!## end>
         Also, <literal>IS</> becomes <literal>AS</>, and you need to
         add a <literal>LANGUAGE</> clause because <application>PL/pgSQL</>
         is not the only possible function language.
@@ -4640,6 +4690,9 @@ show errors;
 <!## end>
 <!## XC>
         In <productname>Postgres-XC</>, the function body is considered
+<!## end>
+<!## XL>
+        In <productname>Postgres-XL</>, the function body is considered
 <!## end>
         to be a string literal, so you need to use quote marks or dollar
         quotes around it.  This substitutes for the terminating <literal>/</>
@@ -4656,6 +4709,9 @@ show errors;
 <!## XC>
         <productname>Postgres-XC</>, and is not needed since errors are
 <!## end>
+<!## XL>
+        <productname>Postgres-XL</>, and is not needed since errors are
+<!## end>
         reported automatically.
        </para>
       </listitem>
@@ -4669,6 +4725,9 @@ show errors;
 <!## end>
 <!## XC>
      <productname>Postgres-XC</>:
+<!## end>
+<!## XL>
+     <productname>Postgres-XL</>:
 <!## end>
 
 <programlisting>
@@ -4738,6 +4797,9 @@ show errors;
 <!## XC>
      Here is how this function would end up in <productname>Postgres-XC</>:
 <!## end>
+<!## XL>
+     Here is how this function would end up in <productname>Postgres-XL</>:
+<!## end>
 <programlisting>
 CREATE OR REPLACE FUNCTION cs_update_referrer_type_proc() RETURNS void AS $func$
 DECLARE
@@ -4794,6 +4856,9 @@ $func$ LANGUAGE plpgsql;
 <!## end>
 <!## XC>
     <productname>Postgres-XC</> does not have a built-in
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</> does not have a built-in
 <!## end>
     <function>instr</function> function, but you can create one
     using a combination of other
@@ -4954,6 +5019,9 @@ show errors
 <!## XC>
     Procedures like this can easily be converted into <productname>Postgres-XC</>
 <!## end>
+<!## XL>
+    Procedures like this can easily be converted into <productname>Postgres-XL</>
+<!## end>
     functions returning <type>void</type>. This procedure in
     particular is interesting because it can teach us some things:
 
@@ -4965,6 +5033,9 @@ show errors
 <!## end>
 <!## XC>
        There is no <literal>PRAGMA</literal> statement in <productname>Postgres-XC</>.
+<!## end>
+<!## XL>
+       There is no <literal>PRAGMA</literal> statement in <productname>Postgres-XL</>.
 <!## end>
       </para>
      </callout>
@@ -5062,6 +5133,9 @@ $$ LANGUAGE plpgsql;
 <!## XC>
     <productname>Postgres-XC</productname>.
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</productname>.
+<!## end>
    </para>
 
    <sect3 id="plpgsql-porting-exceptions">
@@ -5123,6 +5197,9 @@ END;
 <!## end>
 <!## XC>
      <productname>Postgres-XC</> gives you two function creation
+<!## end>
+<!## XL>
+     <productname>Postgres-XL</> gives you two function creation
 <!## end>
      modifiers to optimize execution: <quote>volatility</> (whether
      the function always returns the same result when given the same

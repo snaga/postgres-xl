@@ -32,7 +32,7 @@ SELECT name, statement, parameter_types FROM pg_prepared_statements;
 -- parameterized queries
 PREPARE q2(text) AS
 	SELECT datname, datistemplate, datallowconn
-	FROM pg_database WHERE datname = $1;
+	FROM pg_catalog.pg_database WHERE datname = $1;
 
 EXECUTE q2('postgres');
 

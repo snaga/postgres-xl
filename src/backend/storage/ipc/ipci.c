@@ -3,6 +3,11 @@
  * ipci.c
  *	  POSTGRES inter-process communication initialization code.
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -40,7 +45,11 @@
 #include "storage/procsignal.h"
 #include "storage/sinvaladt.h"
 #include "storage/spin.h"
-
+#ifdef XCP
+#include "pgxc/pgxc.h"
+#include "pgxc/squeue.h"
+#include "pgxc/pause.h"
+#endif
 
 shmem_startup_hook_type shmem_startup_hook = NULL;
 
@@ -126,6 +135,12 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		size = add_size(size, AutoVacuumShmemSize());
 		size = add_size(size, WalSndShmemSize());
 		size = add_size(size, WalRcvShmemSize());
+#ifdef XCP
+		if (IS_PGXC_DATANODE)
+			size = add_size(size, SharedQueueShmemSize());
+		if (IS_PGXC_COORDINATOR)
+			size = add_size(size, ClusterLockShmemSize());
+#endif
 		size = add_size(size, BTreeShmemSize());
 		size = add_size(size, SyncScanShmemSize());
 		size = add_size(size, AsyncShmemSize());
@@ -235,6 +250,16 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	AutoVacuumShmemInit();
 	WalSndShmemInit();
 	WalRcvShmemInit();
+
+#ifdef XCP
+	/*
+	 * Set up distributed executor's shared queues
+	 */
+	if (IS_PGXC_DATANODE)
+		SharedQueuesInit();
+	if (IS_PGXC_COORDINATOR)
+		ClusterLockShmemInit();
+#endif
 
 	/*
 	 * Set up other modules that need some shared memory space

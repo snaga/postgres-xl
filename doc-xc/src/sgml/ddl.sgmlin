@@ -67,6 +67,9 @@
 <!## XC>
    <productname>Postgres-XC</productname> includes a sizable set of
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> includes a sizable set of
+<!## end>
    built-in data types that fit many applications.  Users can also
    define their own data types.  Most built-in data types have obvious
    names and semantics, so we defer a detailed explanation to <xref
@@ -197,6 +200,85 @@ CREATE TABLE products (
    On the other hand, if exact value cannot be obtained from incoming statement, for example,
    in the case of floating point number, <productname>Postgres-XC</> may fail to find precise
    target Datanode and it is not recommended to use such column as a distribution column.
+  </para>
+
+  <para>
+   To replicate a table into all the Datanodes, specify <type>DISTRIBUTE BY REPLICATION</> as
+   follows:
+<programlisting>
+CREATE TABLE products (
+    product_no integer,
+    name text,
+    price numeric
+) DISTRIBUTE BY REPLICATION;
+</programlisting>
+
+  </para>
+<!## end>
+<!## XL>
+  <indexterm>
+   <primary>table</primary>
+   <secondary>distribution</secondary>
+  </indexterm>
+  <indexterm>
+   <primary>table</primary>
+   <secondary>replication</secondary>
+  </indexterm>
+
+&xlonly;
+
+  <para>
+   In <productname>Postgres-XL</>, each table can be distributed or replicated
+   among Datanodes.  By distributing tables each query
+   has the potential to be handled by a single or small
+   subset of the Datanodes and more transactions can be handled in parallel.
+   If you replicate tables, they can be read from just a single location, though
+   all writes will need to take place on all nodes.
+  </para>
+
+  <para>
+   When you distribute a table, you can choose almost any column of a fundamental data type as distribution
+   column.
+   For details, please refer to <xref linkend="SQL-CREATETABLE">.
+   The Datanode for a particular row is determined based upon the value of the distribution
+   column, chosen if DISTRIBUTE BY HASH was used.
+   If not used, the first column of a primary key or unique constraint is used
+   if present in the CREATE TABLE clause.
+   If neither of those are present, the first column of a foreign key constraint 
+   is used, the idea being that child data can be col-located on the same node
+   as the parent table.
+   If no such constraint is defined, Postgres-XL will choose the first reasonable
+   column it can find, that is the first column that has a deterministically 
+   distributable data type.
+
+   You may also choose another distribution method such as <type>MODULO</> and
+   <type>ROUNDROBIN</>.
+   To specify what column to choose as the distribution column and what value test to
+   choose, you can do as follows:
+<programlisting>
+CREATE TABLE products (
+    product_no integer,
+    name text,
+    price numeric
+) DISTRIBUTE BY HASH(product_no);
+</programlisting>
+   In this case, the column <type>product_no</> is chosen as the distribute column and
+   the target Datanode of each row is determined based upon the hash value of the column.
+   You can use <type>MODULO</> to specify modulo to test and determine the target Datanode.
+   You can also specify <type>ROUNDROBIN</> to determine the Datanode by the order each
+   row is inserted.
+  </para>
+
+  <para>
+   Please note that with <type>HASH</> and <type>MODULO</>, the Coordinator may be able to determine the
+   exact location of target row from incoming statement.   This reduces the number of involved Datanodes
+   and can increase the number of transaction handled in parallel.
+  </para>
+
+  <para>
+   On the other hand, if exact location cannot be obtained from incoming statement, the
+   Coordinator will have to involve all of the Datanodes on which the involved table 
+   is distributed.
   </para>
 
   <para>
@@ -671,6 +753,29 @@ CREATE TABLE products (
     table. It cannot use other columns as well.
    </para>
 <!## end>
+<!## XL>
+&xlonly;
+   <para>
+    In <productname>Postgres-XL</>, in distributed
+    tables, <literal>UNIQUE</literal> constraints must include the
+    distribution column of the table. 
+    This is because Postgres-XL currently only allows that it can
+    push down to the Datanodes to be enforced locally. If we include
+    the distribution column in unique constraints, it stands to
+    reason that it can be enforced locally.
+
+    If a table is distributed
+    by <type>ROUNDROBIN</type>, we cannot enforce <type>UNIQUE</>
+    constraints because it does not have a distribution column;
+    it is possible that the same value for a column exists on
+    multiple nodes.
+
+    There's no restriction in <type>UNIQUE</> constraint in replicated
+    tables. When an expression is used on a <type>UNIQUE</> constraint,
+    this expression must contain the distribution column of its parent
+    table. It cannot use other columns as well.
+   </para>
+<!## end>
   </sect2>
 
   <sect2>
@@ -746,12 +851,22 @@ CREATE TABLE example (
     not enforced by <productname>PostgreSQL</productname>, but it is
     usually best to follow it.
    </para>
-&xconly;
 <!## XC>
+&xconly;
    <para>
     As mentioned in <type>UNIQUE</> constraint, distribution column
     must be included in <type>PRIMARY KEY</type>.  Other restrictions
     apply to <type>PRIMARY KEY</> too.  When an expression is used on
+    a <type>PRIMARY KEY</> constraint, this expression must contain
+    the distribution column of its parent table. It cannot use other
+    columns as well.
+   </para>
+<!## end>
+<!## XL>
+   <para>
+    As mentioned when discussing <type>UNIQUE</> constraint, the distribution column
+    must be included in <type>PRIMARY KEY</type>.  Other restrictions
+    apply to the <type>PRIMARY KEY</> as well.  When an expression is used on
     a <type>PRIMARY KEY</> constraint, this expression must contain
     the distribution column of its parent table. It cannot use other
     columns as well.
@@ -836,6 +951,31 @@ CREATE TABLE orders (
    </para>
    <para>
 <!## end>
+<!## XL>
+&xlonly
+
+    Let's also assume you have a table storing orders of those
+    products.  We want to ensure that the orders table only contains
+    orders of products that actually exist.  So we define a foreign
+    key constraint in the orders table that references the products
+    table.
+<programlisting>
+CREATE TABLE orders (
+    order_id integer,
+    product_no integer <emphasis>REFERENCES products (product_no)</emphasis>,
+    quantity integer
+) DISTRIBUTE BY HASH(product_no);
+</programlisting>
+   </para>
+&xlonly;
+   <para>
+    Please note that column with <type>REFERENCES</> should be the distribution column.
+    In this case, we cannot add <type>PRIMARY KEY</> to <type>order_id</>
+    because <type>PRIMARY KEY</type> must be the distribution column as well.
+    This limitation is introduced because constraints are enforced only locally in each Datanode.
+   </para>
+   <para>
+<!## end>
 &common;
     Now it is impossible to create orders with
     <structfield>product_no</structfield> entries that do not appear in the
@@ -851,7 +991,7 @@ CREATE TABLE orders (
 
 <!## PG>
 <!-- NOTICE:
-     In XC, we cannot ommit column name in REFERENCES clause.
+     In XC, we cannot commit column name in REFERENCES clause.
 -->
    <para>
     You can also shorten the above command to:
@@ -872,7 +1012,6 @@ CREATE TABLE orders (
      In XC, we cannot specify both PRIMARY KEY and REFERENCES key
      for different columns.
 -->
-&xconly;
    <para>
     A foreign key can also constrain and reference a group of columns.
     As usual, it then needs to be written in table constraint form.
@@ -979,6 +1118,20 @@ CREATE TABLE order_items (
     </itemizedlist>
    </para>
 <!## end>
+<!## XL>
+&xlonly;
+   <para>
+    We know that the foreign keys disallow creation of orders that
+    do not relate to any products.  But what if a product is removed
+    after an order is created that references it?  SQL allows you to
+    handle that as well.  Intuitively, we have a few options:
+    <itemizedlist spacing="compact">
+     <listitem><para>Disallow deleting a referenced order</para></listitem>
+     <listitem><para>Delete the order line as well</para></listitem>
+     <listitem><para>Something else?</para></listitem>
+    </itemizedlist>
+   </para>
+<!## end>
 &common;
    <para>
     To illustrate this, let's implement the following policy on the
@@ -1009,6 +1162,28 @@ CREATE TABLE order_items (
 </programlisting>
 <!## end>
 <!## XC>
+<programlisting>
+CREATE TABLE products (
+    product_no integer PRIMARY KEY,
+    name text,
+    price numeric
+);
+
+CREATE TABLE orders (
+    order_id integer PRIMARY KEY,
+    shipping_address text,
+    ...
+);
+
+CREATE TABLE order_items (
+    product_no integer,
+    order_id integer REFERENCES orders <emphasis>ON DELETE CASCADE</emphasis>,
+    quantity integer,
+    PRIMARY KEY (product_no, order_id)
+) DISTRIBUTE BY HASH(order_id);
+</programlisting>
+<!## end>
+<!## XL>
 <programlisting>
 CREATE TABLE products (
     product_no integer PRIMARY KEY,
@@ -1171,6 +1346,16 @@ $xc-constraint;
       <productname>XC</> cluster.
      </para>
 <!## end>
+<!## XL>
+&xlonly;
+     <para>
+      Please note that <productname>Postgres-XL</> does not enforce
+      OID integrity among the cluster.  OIDs are assigned locally in
+      each Coordinator and Datanode.  You can use this in expressions
+      but you should not expect OID values are the same throughout the
+      <productname>XL</> cluster.
+     </para>
+<!## end>
     </listitem>
    </varlistentry>
 
@@ -1198,6 +1383,16 @@ $xc-constraint;
       each Coordinator and Datanode.  You can use this in expressions
       but you should not expect OID value is the same throughout the
       <productname>XC</> cluster.
+     </para>
+<!## end>
+<!## XL>
+&xlonly;
+     <para>
+      Please note that <productname>Postgres-XL</> does not enforce
+      OID integrity among the cluster.  OIDs are assigned locally in
+      each Coordinator and Datanode.  You can use this in expressions,
+      but you should not expect OID values are the same throughout the
+      <productname>XL</> cluster.
      </para>
 <!## end>
     </listitem>
@@ -1291,6 +1486,15 @@ $xc-constraint;
       this value.
      </para>
 <!## end>
+<!## XL>
+&xlonly;
+     <para>
+      In <productname>Postgres-XL</>, ctid is local to Coordinators
+      and Datanodes.  It is not good practice to use this value in
+      SQL statements and can be very dangerous when using it to update
+      data. 
+     </para>
+<!## end>
     </listitem>
    </varlistentry>
   </variablelist>
@@ -1352,6 +1556,16 @@ $xc-constraint;
       each Coordinator and Datanode.  You can use this in expressions
       but you should not expect OID value is the same throughout the
       <productname>XC</> cluster.
+   </para>
+<!## end>
+<!## XL>
+&xlonly;
+   <para>
+      Again, <productname>Postgres-XL</> does not enforce
+      OID integrity among the cluster.  OIDs are assigned locally in
+      each Coordinator and Datanode.  You can use this in expressions
+      but you should not expect OIDs values to refer to the same object throughout the
+      <productname>XL</> cluster.
    </para>
 <!## end>
 &common;
@@ -1427,6 +1641,20 @@ $xc-constraint;
 &xconly;
   <para>
    In <productname>Postgres-XC</> the following are not allowed:
+   <itemizedlist spacing="compact">
+    <listitem>
+     <para>Modifying distribution columns definition</para>
+    </listitem>
+    <listitem>
+     <para>Modifying distribution column values</para>
+    </listitem>
+   </itemizedlist>
+  </para>
+<!## end>
+<!## XL>
+&xlonly;
+  <para>
+   In <productname>Postgres-XL</> the following are not allowed:
    <itemizedlist spacing="compact">
     <listitem>
      <para>Modifying distribution columns definition</para>
@@ -1543,6 +1771,13 @@ ALTER TABLE products ALTER COLUMN product_no SET NOT NULL;
    </para>
 &xc-constraint;
 <!## end>
+<!## XL>
+&xlonly;
+   <para>
+    Please remember that the distribution column has to be included in UNIQUE and REFERENCE constraints.
+   </para>
+&xc-constraint;
+<!## end>
   </sect2>
 
   <sect2>
@@ -1654,11 +1889,26 @@ ALTER TABLE products ALTER COLUMN price TYPE numeric(10,2);
     on the column before altering its type, and then add back suitably
     modified constraints afterwards.
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</> will attempt to convert the column's
+    default value (if any) to the new type, as well as any constraints
+    that involve the column.  But these conversions might fail, or might
+    produce surprising results.  It's often best to drop any constraints
+    on the column before altering its type, and then add back suitably
+    modified constraints afterwards.
+<!## end>
    </para>
 <!## XC>
 &xconly;
    <para>
     It is <productname>Postgres-XC</>'s restriction that you cannot change the
+    type of distribution column.
+   </para>
+<!## end>
+<!## XL>
+&xlonly;
+   <para>
+    It is <productname>Postgres-XL</>'s restriction that you cannot change the
     type of distribution column.
    </para>
 <!## end>

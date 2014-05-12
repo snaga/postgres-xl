@@ -1,66 +1,88 @@
---
--- XC_FQS_JOIN
---
 -- This file contains testcases for JOINs, it does not test the expressions
 -- create the tables first
-select create_table_nodes('tab1_rep (val int, val2 int)', '{1, 2, 3}'::int[], 'replication', NULL);
- create_table_nodes 
---------------------
+-- A function to create table on specified nodes 
+create or replace function cr_table(tab_schema varchar, nodenums int[], distribution varchar, cmd_suffix varchar)
+returns void language plpgsql as $$
+declare
+	cr_command	varchar;
+	nodes		varchar[];
+	nodename	varchar;
+	nodenames_query varchar;
+	nodenames 	varchar;
+	node 		int;
+	sep			varchar;
+	tmp_node	int;
+	num_nodes	int;
+begin
+	nodenames_query := 'SELECT node_name FROM pgxc_node WHERE node_type = ''D'''; 
+	cr_command := 'CREATE TABLE ' || tab_schema || ' DISTRIBUTE BY ' || distribution || ' TO NODE ';
+	for nodename in execute nodenames_query loop
+		nodes := array_append(nodes, nodename);
+	end loop;
+	nodenames := '';
+	sep := '';
+	num_nodes := array_length(nodes, 1);
+	foreach node in array nodenums loop
+		tmp_node := node;
+		if (tmp_node < 1 or tmp_node > num_nodes) then
+			tmp_node := tmp_node % num_nodes;
+			if (tmp_node < 1) then
+				tmp_node := num_nodes; 
+			end if;
+		end if;
+		nodenames := nodenames || sep || nodes[tmp_node];
+		sep := ', ';
+	end loop;
+	cr_command := cr_command || nodenames;
+	if (cmd_suffix is not null) then
+		cr_command := cr_command  || ' ' || cmd_suffix;
+	end if;
+	execute cr_command;
+end;
+$$;
+select cr_table('tab1_rep (val int, val2 int)', '{1, 2, 3}'::int[], 'replication', NULL);
+ cr_table 
+----------
  
 (1 row)
 
 insert into tab1_rep (select * from generate_series(1, 5) a, generate_series(1, 5) b);
-select create_table_nodes('tab2_rep', '{2, 3, 4}'::int[], 'replication', 'as select * from tab1_rep');
- create_table_nodes 
---------------------
+select cr_table('tab2_rep', '{2, 3, 4}'::int[], 'replication', 'as select * from tab1_rep');
+ cr_table 
+----------
  
 (1 row)
 
-select create_table_nodes('tab3_rep', '{1, 3}'::int[], 'replication', 'as select * from tab1_rep');
- create_table_nodes 
---------------------
+select cr_table('tab3_rep', '{1, 3}'::int[], 'replication', 'as select * from tab1_rep');
+ cr_table 
+----------
  
 (1 row)
 
-select create_table_nodes('tab4_rep', '{2, 4}'::int[], 'replication', 'as select * from tab1_rep');
- create_table_nodes 
---------------------
+select cr_table('tab4_rep', '{2, 4}'::int[], 'replication', 'as select * from tab1_rep');
+ cr_table 
+----------
  
 (1 row)
 
-select create_table_nodes('tab1_mod', '{1, 2, 3}'::int[], 'modulo(val)', 'as select * from tab1_rep');
- create_table_nodes 
---------------------
+select cr_table('tab1_mod', '{1, 2, 3}'::int[], 'modulo(val)', 'as select * from tab1_rep');
+ cr_table 
+----------
  
 (1 row)
 
-select create_table_nodes('tab2_mod', '{2, 4}'::int[], 'modulo(val)', 'as select * from tab1_rep');
- create_table_nodes 
---------------------
+select cr_table('tab2_mod', '{2, 4}'::int[], 'modulo(val)', 'as select * from tab1_rep');
+ cr_table 
+----------
  
 (1 row)
 
-select create_table_nodes('tab3_mod', '{1, 2, 3}'::int[], 'modulo(val)', 'as select * from tab1_rep');
- create_table_nodes 
---------------------
+select cr_table('tab3_mod', '{1, 2, 3}'::int[], 'modulo(val)', 'as select * from tab1_rep');
+ cr_table 
+----------
  
 (1 row)
 
-select create_table_nodes('single_node_rep_tab', '{1}'::int[], 'replication', 'as select * from tab1_rep limit 0');
- create_table_nodes 
---------------------
- 
-(1 row)
-
-select create_table_nodes('single_node_mod_tab', '{1}'::int[], 'modulo(val)', 'as select * from tab1_rep limit 0');
- create_table_nodes 
---------------------
- 
-(1 row)
-
--- populate single node tables specially
-insert into single_node_rep_tab values (1, 2), (3, 4);
-insert into single_node_mod_tab values (1, 2), (5, 6);
 -- Join involving replicated tables only, all of them should be shippable
 select * from tab1_rep, tab2_rep where tab1_rep.val = tab2_rep.val and
 										tab1_rep.val2 = tab2_rep.val2 and
@@ -79,15 +101,24 @@ select * from tab1_rep, tab2_rep where tab1_rep.val = tab2_rep.val and
    3 |    5 |   3 |    5
 (10 rows)
 
-explain (costs off, num_nodes on, nodes off, verbose on) select * from tab1_rep, tab2_rep where tab1_rep.val = tab2_rep.val and
+explain (num_nodes on, nodes off, costs off, verbose on) select * from tab1_rep, tab2_rep where tab1_rep.val = tab2_rep.val and
 										tab1_rep.val2 = tab2_rep.val2 and
 										tab1_rep.val > 3 and tab1_rep.val < 5;
-                                                                                                             QUERY PLAN                                                                                                              
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Data Node Scan (primary node count=0, node count=1) on "__REMOTE_FQS_QUERY__"
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Remote Subquery Scan on all
    Output: tab1_rep.val, tab1_rep.val2, tab2_rep.val, tab2_rep.val2
-   Remote query: SELECT tab1_rep.val, tab1_rep.val2, tab2_rep.val, tab2_rep.val2 FROM tab1_rep, tab2_rep WHERE ((((tab1_rep.val = tab2_rep.val) AND (tab1_rep.val2 = tab2_rep.val2)) AND (tab1_rep.val > 3)) AND (tab1_rep.val < 5))
-(3 rows)
+   ->  Hash Join
+         Output: tab1_rep.val, tab1_rep.val2, tab2_rep.val, tab2_rep.val2
+         Hash Cond: ((tab2_rep.val = tab1_rep.val) AND (tab2_rep.val2 = tab1_rep.val2))
+         ->  Seq Scan on public.tab2_rep
+               Output: tab2_rep.val, tab2_rep.val2
+         ->  Hash
+               Output: tab1_rep.val, tab1_rep.val2
+               ->  Seq Scan on public.tab1_rep
+                     Output: tab1_rep.val, tab1_rep.val2
+                     Filter: ((tab1_rep.val > 3) AND (tab1_rep.val < 5))
+(12 rows)
 
 select * from tab1_rep natural join tab2_rep 
 			where tab2_rep.val > 2 and tab2_rep.val < 5;
@@ -105,14 +136,23 @@ select * from tab1_rep natural join tab2_rep
    4 |    5
 (10 rows)
 
-explain (costs off, num_nodes on, nodes off, verbose on) select * from tab1_rep natural join tab2_rep
+explain (num_nodes on, nodes off, costs off, verbose on) select * from tab1_rep natural join tab2_rep
 			where tab2_rep.val > 2 and tab2_rep.val < 5;
-                                                                 QUERY PLAN                                                                 
---------------------------------------------------------------------------------------------------------------------------------------------
- Data Node Scan (primary node count=0, node count=1) on "__REMOTE_FQS_QUERY__"
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Remote Subquery Scan on all
    Output: tab1_rep.val, tab1_rep.val2
-   Remote query: SELECT tab1_rep.val, tab1_rep.val2 FROM (tab1_rep NATURAL JOIN tab2_rep) WHERE ((tab2_rep.val > 2) AND (tab2_rep.val < 5))
-(3 rows)
+   ->  Hash Join
+         Output: tab1_rep.val, tab1_rep.val2
+         Hash Cond: ((tab1_rep.val = tab2_rep.val) AND (tab1_rep.val2 = tab2_rep.val2))
+         ->  Seq Scan on public.tab1_rep
+               Output: tab1_rep.val, tab1_rep.val2
+         ->  Hash
+               Output: tab2_rep.val, tab2_rep.val2
+               ->  Seq Scan on public.tab2_rep
+                     Output: tab2_rep.val, tab2_rep.val2
+                     Filter: ((tab2_rep.val > 2) AND (tab2_rep.val < 5))
+(12 rows)
 
 select * from tab1_rep join tab2_rep using (val, val2) join tab3_rep using (val, val2)
 									where tab1_rep.val > 0 and tab2_rep.val < 3; 
@@ -130,14 +170,35 @@ select * from tab1_rep join tab2_rep using (val, val2) join tab3_rep using (val,
    2 |    5
 (10 rows)
 
-explain (costs off, num_nodes on, nodes off, verbose on) select * from tab1_rep join tab2_rep using (val, val2) join tab3_rep using (val, val2)
+explain (num_nodes on, nodes off, costs off, verbose on) select * from tab1_rep join tab2_rep using (val, val2) join tab3_rep using (val, val2)
 							where tab1_rep.val > 0 and tab2_rep.val < 3; 
-                                                                                       QUERY PLAN                                                                                       
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Data Node Scan (primary node count=0, node count=1) on "__REMOTE_FQS_QUERY__"
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
+ Remote Subquery Scan on all
    Output: tab1_rep.val, tab1_rep.val2
-   Remote query: SELECT tab1_rep.val, tab1_rep.val2 FROM ((tab1_rep JOIN tab2_rep USING (val, val2)) JOIN tab3_rep USING (val, val2)) WHERE ((tab1_rep.val > 0) AND (tab2_rep.val < 3))
-(3 rows)
+   ->  Hash Join
+         Output: tab1_rep.val, tab1_rep.val2
+         Hash Cond: ((tab3_rep.val = tab1_rep.val) AND (tab3_rep.val2 = tab1_rep.val2))
+         ->  Seq Scan on public.tab3_rep
+               Output: tab3_rep.val, tab3_rep.val2
+         ->  Hash
+               Output: tab1_rep.val, tab1_rep.val2, tab2_rep.val, tab2_rep.val2
+               ->  Merge Join
+                     Output: tab1_rep.val, tab1_rep.val2, tab2_rep.val, tab2_rep.val2
+                     Merge Cond: ((tab1_rep.val = tab2_rep.val) AND (tab1_rep.val2 = tab2_rep.val2))
+                     ->  Sort
+                           Output: tab1_rep.val, tab1_rep.val2
+                           Sort Key: tab1_rep.val, tab1_rep.val2
+                           ->  Seq Scan on public.tab1_rep
+                                 Output: tab1_rep.val, tab1_rep.val2
+                                 Filter: (tab1_rep.val > 0)
+                     ->  Sort
+                           Output: tab2_rep.val, tab2_rep.val2
+                           Sort Key: tab2_rep.val, tab2_rep.val2
+                           ->  Seq Scan on public.tab2_rep
+                                 Output: tab2_rep.val, tab2_rep.val2
+                                 Filter: (tab2_rep.val < 3)
+(24 rows)
 
 select * from tab1_rep natural join tab2_rep natural join tab3_rep
 			where tab1_rep.val > 0 and tab2_rep.val < 3;
@@ -155,14 +216,35 @@ select * from tab1_rep natural join tab2_rep natural join tab3_rep
    2 |    5
 (10 rows)
 
-explain (costs off, num_nodes on, nodes off, verbose on) select * from tab1_rep natural join tab2_rep natural join tab3_rep
+explain (num_nodes on, nodes off, costs off, verbose on) select * from tab1_rep natural join tab2_rep natural join tab3_rep
 			where tab1_rep.val > 0 and tab2_rep.val < 3;
-                                                                             QUERY PLAN                                                                             
---------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Data Node Scan (primary node count=0, node count=1) on "__REMOTE_FQS_QUERY__"
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
+ Remote Subquery Scan on all
    Output: tab1_rep.val, tab1_rep.val2
-   Remote query: SELECT tab1_rep.val, tab1_rep.val2 FROM ((tab1_rep NATURAL JOIN tab2_rep) NATURAL JOIN tab3_rep) WHERE ((tab1_rep.val > 0) AND (tab2_rep.val < 3))
-(3 rows)
+   ->  Hash Join
+         Output: tab1_rep.val, tab1_rep.val2
+         Hash Cond: ((tab3_rep.val = tab1_rep.val) AND (tab3_rep.val2 = tab1_rep.val2))
+         ->  Seq Scan on public.tab3_rep
+               Output: tab3_rep.val, tab3_rep.val2
+         ->  Hash
+               Output: tab1_rep.val, tab1_rep.val2, tab2_rep.val, tab2_rep.val2
+               ->  Merge Join
+                     Output: tab1_rep.val, tab1_rep.val2, tab2_rep.val, tab2_rep.val2
+                     Merge Cond: ((tab1_rep.val = tab2_rep.val) AND (tab1_rep.val2 = tab2_rep.val2))
+                     ->  Sort
+                           Output: tab1_rep.val, tab1_rep.val2
+                           Sort Key: tab1_rep.val, tab1_rep.val2
+                           ->  Seq Scan on public.tab1_rep
+                                 Output: tab1_rep.val, tab1_rep.val2
+                                 Filter: (tab1_rep.val > 0)
+                     ->  Sort
+                           Output: tab2_rep.val, tab2_rep.val2
+                           Sort Key: tab2_rep.val, tab2_rep.val2
+                           ->  Seq Scan on public.tab2_rep
+                                 Output: tab2_rep.val, tab2_rep.val2
+                                 Filter: (tab2_rep.val < 3)
+(24 rows)
 
 -- make sure in Joins which are shippable and involve only one node, aggregates
 -- are shipped to
@@ -173,14 +255,37 @@ select avg(tab1_rep.val) from tab1_rep natural join tab2_rep natural join tab3_r
  1.5000000000000000
 (1 row)
 
-explain (costs off, num_nodes on, nodes off, verbose on) select avg(tab1_rep.val) from tab1_rep natural join tab2_rep natural join tab3_rep
+explain (num_nodes on, nodes off, costs off, verbose on) select avg(tab1_rep.val) from tab1_rep natural join tab2_rep natural join tab3_rep
 			where tab1_rep.val > 0 and tab2_rep.val < 3;
-                                                                                      QUERY PLAN                                                                                      
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Data Node Scan (primary node count=0, node count=1) on "__REMOTE_FQS_QUERY__"
-   Output: (avg(tab1_rep.val))
-   Remote query: SELECT pg_catalog.int8_avg(avg(tab1_rep.val)) AS avg FROM ((tab1_rep NATURAL JOIN tab2_rep) NATURAL JOIN tab3_rep) WHERE ((tab1_rep.val > 0) AND (tab2_rep.val < 3))
-(3 rows)
+                                                QUERY PLAN                                                 
+-----------------------------------------------------------------------------------------------------------
+ Remote Subquery Scan on all
+   Output: avg(tab1_rep.val)
+   ->  Aggregate
+         Output: avg(tab1_rep.val)
+         ->  Hash Join
+               Output: tab1_rep.val
+               Hash Cond: ((tab3_rep.val = tab1_rep.val) AND (tab3_rep.val2 = tab1_rep.val2))
+               ->  Seq Scan on public.tab3_rep
+                     Output: tab3_rep.val, tab3_rep.val2
+               ->  Hash
+                     Output: tab1_rep.val, tab1_rep.val2, tab2_rep.val, tab2_rep.val2
+                     ->  Merge Join
+                           Output: tab1_rep.val, tab1_rep.val2, tab2_rep.val, tab2_rep.val2
+                           Merge Cond: ((tab1_rep.val = tab2_rep.val) AND (tab1_rep.val2 = tab2_rep.val2))
+                           ->  Sort
+                                 Output: tab1_rep.val, tab1_rep.val2
+                                 Sort Key: tab1_rep.val, tab1_rep.val2
+                                 ->  Seq Scan on public.tab1_rep
+                                       Output: tab1_rep.val, tab1_rep.val2
+                                       Filter: (tab1_rep.val > 0)
+                           ->  Sort
+                                 Output: tab2_rep.val, tab2_rep.val2
+                                 Sort Key: tab2_rep.val, tab2_rep.val2
+                                 ->  Seq Scan on public.tab2_rep
+                                       Output: tab2_rep.val, tab2_rep.val2
+                                       Filter: (tab2_rep.val < 3)
+(26 rows)
 
 -- the two replicated tables being joined do not have any node in common, the
 -- query is not shippable
@@ -200,7 +305,7 @@ select * from tab3_rep natural join tab4_rep
    4 |    5
 (10 rows)
 
-explain (costs off, num_nodes on, nodes off, verbose on) select * from tab3_rep natural join tab4_rep
+explain (num_nodes on, nodes off, costs off, verbose on) select * from tab3_rep natural join tab4_rep
 			where tab3_rep.val > 2 and tab4_rep.val < 5;
                                              QUERY PLAN                                             
 ----------------------------------------------------------------------------------------------------
@@ -231,14 +336,28 @@ select * from tab1_mod natural join tab1_rep
    3 |    5
 (5 rows)
 
-explain (costs off, verbose on, nodes off) select * from tab1_mod natural join tab1_rep
+explain (verbose on, nodes off, costs off) select * from tab1_mod natural join tab1_rep
 			where tab1_mod.val > 2 and tab1_rep.val < 4;
-                                                                 QUERY PLAN                                                                 
---------------------------------------------------------------------------------------------------------------------------------------------
- Data Node Scan on "__REMOTE_FQS_QUERY__"
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Remote Subquery Scan on all
    Output: tab1_mod.val, tab1_mod.val2
-   Remote query: SELECT tab1_mod.val, tab1_mod.val2 FROM (tab1_mod NATURAL JOIN tab1_rep) WHERE ((tab1_mod.val > 2) AND (tab1_rep.val < 4))
-(3 rows)
+   ->  Merge Join
+         Output: tab1_mod.val, tab1_mod.val2
+         Merge Cond: ((tab1_mod.val = tab1_rep.val) AND (tab1_mod.val2 = tab1_rep.val2))
+         ->  Sort
+               Output: tab1_mod.val, tab1_mod.val2
+               Sort Key: tab1_mod.val, tab1_mod.val2
+               ->  Seq Scan on public.tab1_mod
+                     Output: tab1_mod.val, tab1_mod.val2
+                     Filter: (tab1_mod.val > 2)
+         ->  Sort
+               Output: tab1_rep.val, tab1_rep.val2
+               Sort Key: tab1_rep.val, tab1_rep.val2
+               ->  Seq Scan on public.tab1_rep
+                     Output: tab1_rep.val, tab1_rep.val2
+                     Filter: (tab1_rep.val < 4)
+(17 rows)
 
 -- Join involving one distributed and one replicated table, with replicated
 -- table existing on only some of the nodes where distributed table exists.
@@ -254,7 +373,7 @@ select * from tab1_mod natural join tab4_rep
    3 |    5
 (5 rows)
 
-explain (costs off, verbose on, nodes off) select * from tab1_mod natural join tab4_rep
+explain (verbose on, nodes off, costs off) select * from tab1_mod natural join tab4_rep
 			where tab1_mod.val > 2 and tab4_rep.val < 4;
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
@@ -283,7 +402,7 @@ select * from tab1_mod natural join tab2_mod
    3 |    5
 (5 rows)
 
-explain (costs off, verbose on, nodes off) select * from tab1_mod natural join tab2_mod
+explain (verbose on, nodes off, costs off) select * from tab1_mod natural join tab2_mod
 			where tab1_mod.val > 2 and tab2_mod.val < 4;
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
@@ -314,14 +433,35 @@ select * from tab2_rep natural join tab4_rep natural join tab2_mod
    3 |    5
 (5 rows)
 
-explain (costs off, verbose on, nodes off) select * from tab2_rep natural join tab4_rep natural join tab2_mod
+explain (verbose on, nodes off, costs off) select * from tab2_rep natural join tab4_rep natural join tab2_mod
 			where tab2_rep.val > 2 and tab4_rep.val < 4;
-                                                                             QUERY PLAN                                                                             
---------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Data Node Scan on "__REMOTE_FQS_QUERY__"
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
+ Remote Subquery Scan on all
    Output: tab2_rep.val, tab2_rep.val2
-   Remote query: SELECT tab2_rep.val, tab2_rep.val2 FROM ((tab2_rep NATURAL JOIN tab4_rep) NATURAL JOIN tab2_mod) WHERE ((tab2_rep.val > 2) AND (tab4_rep.val < 4))
-(3 rows)
+   ->  Hash Join
+         Output: tab2_rep.val, tab2_rep.val2
+         Hash Cond: ((tab2_mod.val = tab2_rep.val) AND (tab2_mod.val2 = tab2_rep.val2))
+         ->  Seq Scan on public.tab2_mod
+               Output: tab2_mod.val, tab2_mod.val2
+         ->  Hash
+               Output: tab2_rep.val, tab2_rep.val2, tab4_rep.val, tab4_rep.val2
+               ->  Merge Join
+                     Output: tab2_rep.val, tab2_rep.val2, tab4_rep.val, tab4_rep.val2
+                     Merge Cond: ((tab2_rep.val = tab4_rep.val) AND (tab2_rep.val2 = tab4_rep.val2))
+                     ->  Sort
+                           Output: tab2_rep.val, tab2_rep.val2
+                           Sort Key: tab2_rep.val, tab2_rep.val2
+                           ->  Seq Scan on public.tab2_rep
+                                 Output: tab2_rep.val, tab2_rep.val2
+                                 Filter: (tab2_rep.val > 2)
+                     ->  Sort
+                           Output: tab4_rep.val, tab4_rep.val2
+                           Sort Key: tab4_rep.val, tab4_rep.val2
+                           ->  Seq Scan on public.tab4_rep
+                                 Output: tab4_rep.val, tab4_rep.val2
+                                 Filter: (tab4_rep.val < 4)
+(24 rows)
 
 select * from tab4_rep natural join tab2_rep natural join tab2_mod
 			where tab2_rep.val > 2 and tab4_rep.val < 4;
@@ -334,14 +474,35 @@ select * from tab4_rep natural join tab2_rep natural join tab2_mod
    3 |    5
 (5 rows)
 
-explain (costs off, verbose on, nodes off) select * from tab4_rep natural join tab2_rep natural join tab2_mod
+explain (verbose on, nodes off, costs off) select * from tab4_rep natural join tab2_rep natural join tab2_mod
 			where tab2_rep.val > 2 and tab4_rep.val < 4;
-                                                                             QUERY PLAN                                                                             
---------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Data Node Scan on "__REMOTE_FQS_QUERY__"
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
+ Remote Subquery Scan on all
    Output: tab4_rep.val, tab4_rep.val2
-   Remote query: SELECT tab4_rep.val, tab4_rep.val2 FROM ((tab4_rep NATURAL JOIN tab2_rep) NATURAL JOIN tab2_mod) WHERE ((tab2_rep.val > 2) AND (tab4_rep.val < 4))
-(3 rows)
+   ->  Hash Join
+         Output: tab4_rep.val, tab4_rep.val2
+         Hash Cond: ((tab2_mod.val = tab4_rep.val) AND (tab2_mod.val2 = tab4_rep.val2))
+         ->  Seq Scan on public.tab2_mod
+               Output: tab2_mod.val, tab2_mod.val2
+         ->  Hash
+               Output: tab4_rep.val, tab4_rep.val2, tab2_rep.val, tab2_rep.val2
+               ->  Merge Join
+                     Output: tab4_rep.val, tab4_rep.val2, tab2_rep.val, tab2_rep.val2
+                     Merge Cond: ((tab4_rep.val = tab2_rep.val) AND (tab4_rep.val2 = tab2_rep.val2))
+                     ->  Sort
+                           Output: tab4_rep.val, tab4_rep.val2
+                           Sort Key: tab4_rep.val, tab4_rep.val2
+                           ->  Seq Scan on public.tab4_rep
+                                 Output: tab4_rep.val, tab4_rep.val2
+                                 Filter: (tab4_rep.val < 4)
+                     ->  Sort
+                           Output: tab2_rep.val, tab2_rep.val2
+                           Sort Key: tab2_rep.val, tab2_rep.val2
+                           ->  Seq Scan on public.tab2_rep
+                                 Output: tab2_rep.val, tab2_rep.val2
+                                 Filter: (tab2_rep.val > 2)
+(24 rows)
 
 select * from tab2_rep natural join tab2_mod natural join tab4_rep
 			where tab2_rep.val > 2 and tab4_rep.val < 4;
@@ -354,14 +515,35 @@ select * from tab2_rep natural join tab2_mod natural join tab4_rep
    3 |    5
 (5 rows)
 
-explain (costs off, verbose on, nodes off) select * from tab2_rep natural join tab2_mod natural join tab4_rep
+explain (verbose on, nodes off, costs off) select * from tab2_rep natural join tab2_mod natural join tab4_rep
 			where tab2_rep.val > 2 and tab4_rep.val < 4;
-                                                                             QUERY PLAN                                                                             
---------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Data Node Scan on "__REMOTE_FQS_QUERY__"
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
+ Remote Subquery Scan on all
    Output: tab2_rep.val, tab2_rep.val2
-   Remote query: SELECT tab2_rep.val, tab2_rep.val2 FROM ((tab2_rep NATURAL JOIN tab2_mod) NATURAL JOIN tab4_rep) WHERE ((tab2_rep.val > 2) AND (tab4_rep.val < 4))
-(3 rows)
+   ->  Hash Join
+         Output: tab2_rep.val, tab2_rep.val2
+         Hash Cond: ((tab2_mod.val = tab2_rep.val) AND (tab2_mod.val2 = tab2_rep.val2))
+         ->  Seq Scan on public.tab2_mod
+               Output: tab2_mod.val, tab2_mod.val2
+         ->  Hash
+               Output: tab2_rep.val, tab2_rep.val2, tab4_rep.val, tab4_rep.val2
+               ->  Merge Join
+                     Output: tab2_rep.val, tab2_rep.val2, tab4_rep.val, tab4_rep.val2
+                     Merge Cond: ((tab2_rep.val = tab4_rep.val) AND (tab2_rep.val2 = tab4_rep.val2))
+                     ->  Sort
+                           Output: tab2_rep.val, tab2_rep.val2
+                           Sort Key: tab2_rep.val, tab2_rep.val2
+                           ->  Seq Scan on public.tab2_rep
+                                 Output: tab2_rep.val, tab2_rep.val2
+                                 Filter: (tab2_rep.val > 2)
+                     ->  Sort
+                           Output: tab4_rep.val, tab4_rep.val2
+                           Sort Key: tab4_rep.val, tab4_rep.val2
+                           ->  Seq Scan on public.tab4_rep
+                                 Output: tab4_rep.val, tab4_rep.val2
+                                 Filter: (tab4_rep.val < 4)
+(24 rows)
 
 -- qualifications on distributed tables
 -- In case of 2,3,4 datanodes following join should get shipped completely
@@ -375,13 +557,26 @@ select * from tab1_mod natural join tab4_rep where tab1_mod.val = 1 order by tab
    1 |    5
 (5 rows)
 
-explain (costs off, verbose on, nodes off, num_nodes on) select * from tab1_mod natural join tab4_rep where tab1_mod.val = 1 order by tab1_mod.val2;
-                                                                                                                                      QUERY PLAN                                                                                                                                      
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Data Node Scan (primary node count=0, node count=1) on "__REMOTE_SORT_QUERY__"
+explain (verbose on, nodes off, costs off, num_nodes on) select * from tab1_mod natural join tab4_rep where tab1_mod.val = 1 order by tab1_mod.val2;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Remote Subquery Scan on all
    Output: tab1_mod.val, tab1_mod.val2, tab1_mod.val2
-   Remote query: SELECT l.a_1, l.a_2 FROM ((SELECT tab1_mod.val, tab1_mod.val2 FROM ONLY tab1_mod WHERE (tab1_mod.val = 1)) l(a_1, a_2) JOIN (SELECT tab4_rep.val, tab4_rep.val2 FROM ONLY tab4_rep WHERE (tab4_rep.val = 1)) r(a_1, a_2) ON (true)) WHERE (l.a_2 = r.a_2) ORDER BY 2
-(3 rows)
+   ->  Sort
+         Output: tab1_mod.val, tab1_mod.val2, tab1_mod.val2
+         Sort Key: tab1_mod.val2
+         ->  Hash Join
+               Output: tab1_mod.val, tab1_mod.val2, tab1_mod.val2
+               Hash Cond: (tab1_mod.val2 = tab4_rep.val2)
+               ->  Seq Scan on public.tab1_mod
+                     Output: tab1_mod.val, tab1_mod.val2
+                     Filter: (tab1_mod.val = 1)
+               ->  Hash
+                     Output: tab4_rep.val, tab4_rep.val2
+                     ->  Seq Scan on public.tab4_rep
+                           Output: tab4_rep.val, tab4_rep.val2
+                           Filter: (tab4_rep.val = 1)
+(16 rows)
 
 -- following join between distributed tables should get FQSed because both of
 -- them reduce to a single node
@@ -396,14 +591,27 @@ select * from tab1_mod join tab2_mod using (val2)
     5 |   1 |   2
 (5 rows)
 
-explain (costs off, verbose on, nodes off, num_nodes on) select * from tab1_mod join tab2_mod using (val2)
+explain (verbose on, nodes off, costs off, num_nodes on) select * from tab1_mod join tab2_mod using (val2)
 		where tab1_mod.val = 1 and tab2_mod.val = 2 order by tab1_mod.val;
-                                                                                                                                    QUERY PLAN                                                                                                                                    
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Data Node Scan (primary node count=0, node count=1) on "_REMOTE_TABLE_QUERY_"
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
+ Remote Subquery Scan on all
    Output: tab1_mod.val2, tab1_mod.val, tab2_mod.val, tab1_mod.val
-   Remote query: SELECT l.a_1, l.a_2, r.a_1 FROM ((SELECT tab1_mod.val2, tab1_mod.val FROM ONLY tab1_mod WHERE (tab1_mod.val = 1)) l(a_1, a_2) JOIN (SELECT tab2_mod.val, tab2_mod.val2 FROM ONLY tab2_mod WHERE (tab2_mod.val = 2)) r(a_1, a_2) ON (true)) WHERE (l.a_1 = r.a_2)
-(3 rows)
+   ->  Nested Loop
+         Output: tab1_mod.val2, tab1_mod.val, tab2_mod.val, tab1_mod.val
+         Join Filter: (tab1_mod.val2 = tab2_mod.val2)
+         ->  Remote Subquery Scan on all
+               Output: tab1_mod.val2, tab1_mod.val
+               Distribute results by R
+               ->  Seq Scan on public.tab1_mod
+                     Output: tab1_mod.val2, tab1_mod.val
+                     Filter: (tab1_mod.val = 1)
+         ->  Materialize
+               Output: tab2_mod.val, tab2_mod.val2
+               ->  Seq Scan on public.tab2_mod
+                     Output: tab2_mod.val, tab2_mod.val2
+                     Filter: (tab2_mod.val = 2)
+(16 rows)
 
 -- JOIN involving the distributed table with equi-JOIN on the distributed column
 -- with same kind of distribution on same nodes.
@@ -437,232 +645,56 @@ select * from tab1_mod, tab3_mod where tab1_mod.val = tab3_mod.val and tab1_mod.
    1 |    5 |   1 |    5
 (25 rows)
 
-explain (costs off, verbose on, nodes off) select * from tab1_mod, tab3_mod
+explain (verbose on, nodes off, costs off) select * from tab1_mod, tab3_mod
 			where tab1_mod.val = tab3_mod.val and tab1_mod.val = 1;
-                                                                              QUERY PLAN                                                                              
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Data Node Scan on "__REMOTE_FQS_QUERY__"
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Remote Subquery Scan on all
    Output: tab1_mod.val, tab1_mod.val2, tab3_mod.val, tab3_mod.val2
-   Remote query: SELECT tab1_mod.val, tab1_mod.val2, tab3_mod.val, tab3_mod.val2 FROM tab1_mod, tab3_mod WHERE ((tab1_mod.val = tab3_mod.val) AND (tab1_mod.val = 1))
-(3 rows)
-
--- OUTER joins, we insert some data in existing tables for testing OUTER join
--- OUTER join between two replicated tables is shippable if they have a common
--- datanode.
-insert into tab1_rep values (100, 200);
-insert into tab2_rep values (3000, 4000);
-select * from tab1_rep left join tab2_rep on (tab1_rep.val = tab2_rep.val and tab1_rep.val2 = tab2_rep.val2)
-			where tab2_rep.val = tab2_rep.val2 or tab2_rep.val is null
-			order by tab1_rep.val, tab1_rep.val2;
- val | val2 | val | val2 
------+------+-----+------
-   1 |    1 |   1 |    1
-   2 |    2 |   2 |    2
-   3 |    3 |   3 |    3
-   4 |    4 |   4 |    4
-   5 |    5 |   5 |    5
- 100 |  200 |     |     
-(6 rows)
-
-explain (costs off, verbose on, nodes off)
-select * from tab1_rep left join tab2_rep on (tab1_rep.val = tab2_rep.val and tab1_rep.val2 = tab2_rep.val2)
-			where tab1_rep.val = tab1_rep.val2 or tab2_rep.val is null
-			order by tab1_rep.val, tab1_rep.val2;
-                                                                                                                                            QUERY PLAN                                                                                                                                             
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Data Node Scan on "__REMOTE_FQS_QUERY__"
-   Output: tab1_rep.val, tab1_rep.val2, tab2_rep.val, tab2_rep.val2, tab1_rep.val, tab1_rep.val2
-   Remote query: SELECT tab1_rep.val, tab1_rep.val2, tab2_rep.val, tab2_rep.val2 FROM (tab1_rep LEFT JOIN tab2_rep ON (((tab1_rep.val = tab2_rep.val) AND (tab1_rep.val2 = tab2_rep.val2)))) WHERE ((tab1_rep.val = tab1_rep.val2) OR (tab2_rep.val IS NULL)) ORDER BY tab1_rep.val, tab1_rep.val2
-(3 rows)
-
--- FULL OUTER join
-select * from tab1_rep full join tab2_rep on (tab1_rep.val < tab2_rep.val and tab1_rep.val2 = tab2_rep.val2) 
-					where tab1_rep.val > 5 or tab2_rep.val > 5
-					order by tab1_rep.val, tab2_rep.val, tab1_rep.val2, tab2_rep.val2;
- val | val2 | val  | val2 
------+------+------+------
- 100 |  200 |      |     
-     |      | 3000 | 4000
-(2 rows)
-
-explain (costs off, verbose on, nodes off)
-select * from tab1_rep full join tab2_rep on (tab1_rep.val < tab2_rep.val and tab1_rep.val2 = tab2_rep.val2)
-					where tab1_rep.val > 5 or tab2_rep.val > 5
-					order by tab1_rep.val, tab2_rep.val, tab1_rep.val2, tab2_rep.val2;
-                                                                                                                                                   QUERY PLAN                                                                                                                                                   
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Data Node Scan on "__REMOTE_FQS_QUERY__"
-   Output: tab1_rep.val, tab1_rep.val2, tab2_rep.val, tab2_rep.val2, tab1_rep.val, tab2_rep.val, tab1_rep.val2, tab2_rep.val2
-   Remote query: SELECT tab1_rep.val, tab1_rep.val2, tab2_rep.val, tab2_rep.val2 FROM (tab1_rep FULL JOIN tab2_rep ON (((tab1_rep.val < tab2_rep.val) AND (tab1_rep.val2 = tab2_rep.val2)))) WHERE ((tab1_rep.val > 5) OR (tab2_rep.val > 5)) ORDER BY tab1_rep.val, tab2_rep.val, tab1_rep.val2, tab2_rep.val2
-(3 rows)
-
--- OUTER join between two distributed tables is shippable if it's an equi-join
--- on the distribution columns, such that distribution columns are of same type
--- and the relations are distributed on same set of nodes
-insert into tab1_mod values (100, 200);
-insert into tab3_mod values (3000, 4000);
-select * from tab1_mod left join tab3_mod on (tab1_mod.val = tab3_mod.val and tab1_mod.val2 = tab3_mod.val2)
-			where tab3_mod.val = tab3_mod.val2 or tab3_mod.val is null
-			order by tab1_mod.val, tab1_mod.val2;
- val | val2 | val | val2 
------+------+-----+------
-   1 |    1 |   1 |    1
-   2 |    2 |   2 |    2
-   3 |    3 |   3 |    3
-   4 |    4 |   4 |    4
-   5 |    5 |   5 |    5
- 100 |  200 |     |     
-(6 rows)
-
-explain (costs off, verbose on, nodes off)
-select * from tab1_mod left join tab3_mod on (tab1_mod.val = tab3_mod.val and tab1_mod.val2 = tab3_mod.val2)
-			where tab3_mod.val = tab3_mod.val2 or tab3_mod.val is null
-			order by  tab1_mod.val, tab1_mod.val2;
-                                                                                                                                                                 QUERY PLAN                                                                                                                                                                 
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Sort
-   Output: tab1_mod.val, tab1_mod.val2, tab3_mod.val, tab3_mod.val2, tab1_mod.val, tab1_mod.val2
-   Sort Key: tab1_mod.val, tab1_mod.val2
-   ->  Data Node Scan on "__REMOTE_SORT_QUERY__"
-         Output: tab1_mod.val, tab1_mod.val2, tab3_mod.val, tab3_mod.val2, tab1_mod.val, tab1_mod.val2
-         Remote query: SELECT l.a_1, l.a_2, r.a_1, r.a_2 FROM ((SELECT tab1_mod.val, tab1_mod.val2 FROM ONLY tab1_mod WHERE true) l(a_1, a_2) LEFT JOIN (SELECT tab3_mod.val, tab3_mod.val2 FROM ONLY tab3_mod WHERE true) r(a_1, a_2) ON (((l.a_1 = r.a_1) AND (l.a_2 = r.a_2)))) WHERE ((r.a_1 = r.a_2) OR (r.a_1 IS NULL)) ORDER BY 1, 2
-(6 rows)
-
--- JOIN condition is not equi-join on distribution column, join is not shippable
-select * from tab1_mod left join tab3_mod using (val2)
-			where (tab1_mod.val = tab1_mod.val2 and tab3_mod.val = tab3_mod.val2) or tab3_mod.val is null
-			order by tab1_mod.val, tab1_mod.val2, tab3_mod.val2;
- val2 | val | val 
-------+-----+-----
-    1 |   1 |   1
-    2 |   2 |   2
-    3 |   3 |   3
-    4 |   4 |   4
-    5 |   5 |   5
-  200 | 100 |    
-(6 rows)
-
-explain (costs off, verbose on, nodes off)
-select * from tab1_mod left join tab3_mod using (val2)
-			where (tab1_mod.val = tab1_mod.val2 and tab3_mod.val = tab3_mod.val2) or tab3_mod.val is null
-			order by  tab1_mod.val, tab1_mod.val2, tab3_mod.val2;
-                                                   QUERY PLAN                                                    
------------------------------------------------------------------------------------------------------------------
- Sort
-   Output: tab1_mod.val2, tab1_mod.val, tab3_mod.val, tab1_mod.val, tab1_mod.val2, tab3_mod.val2
-   Sort Key: tab1_mod.val, tab1_mod.val2, tab3_mod.val2
-   ->  Hash Left Join
-         Output: tab1_mod.val2, tab1_mod.val, tab3_mod.val, tab1_mod.val, tab1_mod.val2, tab3_mod.val2
-         Hash Cond: (tab1_mod.val2 = tab3_mod.val2)
-         Filter: (((tab1_mod.val = tab1_mod.val2) AND (tab3_mod.val = tab3_mod.val2)) OR (tab3_mod.val IS NULL))
-         ->  Data Node Scan on tab1_mod "_REMOTE_TABLE_QUERY_"
-               Output: tab1_mod.val2, tab1_mod.val
-               Remote query: SELECT val2, val FROM ONLY tab1_mod WHERE true
-         ->  Hash
-               Output: tab3_mod.val, tab3_mod.val2
-               ->  Data Node Scan on tab3_mod "_REMOTE_TABLE_QUERY_"
-                     Output: tab3_mod.val, tab3_mod.val2
-                     Remote query: SELECT val, val2 FROM ONLY tab3_mod WHERE true
-(15 rows)
-
--- OUTER join between replicated and distributed tables is shippable if the
--- the replicated table is available on all the datanodes where outer side is
--- distributed
-select * from tab1_mod left join tab1_rep on (tab1_mod.val < tab1_rep.val and tab1_mod.val2 = tab1_rep.val2)
-			where tab1_mod.val >= 5
-			order by tab1_mod.val, tab1_mod.val2, tab1_rep.val, tab1_rep.val2;
- val | val2 | val | val2 
------+------+-----+------
-   5 |    1 |     |     
-   5 |    2 |     |     
-   5 |    3 |     |     
-   5 |    4 |     |     
-   5 |    5 |     |     
- 100 |  200 |     |     
-(6 rows)
-
-explain (costs off, verbose on, nodes off)
-select * from tab1_mod left join tab1_rep on (tab1_mod.val < tab1_rep.val and tab1_mod.val2 = tab1_rep.val2)
-			where tab1_mod.val >= 5
-			order by tab1_mod.val, tab1_mod.val2, tab1_rep.val, tab1_rep.val2;
-                                                                                                                                                           QUERY PLAN                                                                                                                                                            
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Sort
-   Output: tab1_mod.val, tab1_mod.val2, tab1_rep.val, tab1_rep.val2, tab1_mod.val, tab1_mod.val2, tab1_rep.val, tab1_rep.val2
-   Sort Key: tab1_mod.val, tab1_mod.val2, tab1_rep.val, tab1_rep.val2
-   ->  Data Node Scan on "__REMOTE_SORT_QUERY__"
-         Output: tab1_mod.val, tab1_mod.val2, tab1_rep.val, tab1_rep.val2, tab1_mod.val, tab1_mod.val2, tab1_rep.val, tab1_rep.val2
-         Remote query: SELECT l.a_1, l.a_2, r.a_1, r.a_2 FROM ((SELECT tab1_mod.val, tab1_mod.val2 FROM ONLY tab1_mod WHERE (tab1_mod.val >= 5)) l(a_1, a_2) LEFT JOIN (SELECT tab1_rep.val, tab1_rep.val2 FROM ONLY tab1_rep WHERE true) r(a_1, a_2) ON (((l.a_1 < r.a_1) AND (l.a_2 = r.a_2)))) WHERE true ORDER BY 1, 2, 3, 4
-(6 rows)
-
--- OUTER side is replicated and inner is distributed, join is not shippable
-select * from tab1_mod right join tab1_rep on (tab1_mod.val > tab1_rep.val and tab1_mod.val2 = tab1_rep.val2)
-			where tab1_rep.val >= 5
-			order by tab1_mod.val, tab1_mod.val2, tab1_rep.val, tab1_rep.val2;
- val | val2 | val | val2 
------+------+-----+------
-     |      |   5 |    1
-     |      |   5 |    2
-     |      |   5 |    3
-     |      |   5 |    4
-     |      |   5 |    5
-     |      | 100 |  200
-(6 rows)
-
-explain (costs off, verbose on, nodes off)
-select * from tab1_mod right join tab1_rep on (tab1_mod.val > tab1_rep.val and tab1_mod.val2 = tab1_rep.val2)
-			where tab1_rep.val >= 5
-			order by tab1_mod.val, tab1_mod.val2, tab1_rep.val, tab1_rep.val2;
-                                                             QUERY PLAN                                                             
-------------------------------------------------------------------------------------------------------------------------------------
- Sort
-   Output: tab1_mod.val, tab1_mod.val2, tab1_rep.val, tab1_rep.val2, tab1_mod.val, tab1_mod.val2, tab1_rep.val, tab1_rep.val2
-   Sort Key: tab1_mod.val, tab1_mod.val2, tab1_rep.val, tab1_rep.val2
-   ->  Hash Right Join
-         Output: tab1_mod.val, tab1_mod.val2, tab1_rep.val, tab1_rep.val2, tab1_mod.val, tab1_mod.val2, tab1_rep.val, tab1_rep.val2
-         Hash Cond: (tab1_mod.val2 = tab1_rep.val2)
-         Join Filter: (tab1_mod.val > tab1_rep.val)
-         ->  Data Node Scan on tab1_mod "_REMOTE_TABLE_QUERY_"
+   ->  Nested Loop
+         Output: tab1_mod.val, tab1_mod.val2, tab3_mod.val, tab3_mod.val2
+         ->  Remote Subquery Scan on all
                Output: tab1_mod.val, tab1_mod.val2
-               Remote query: SELECT val, val2 FROM ONLY tab1_mod WHERE true
-         ->  Hash
-               Output: tab1_rep.val, tab1_rep.val2
-               ->  Data Node Scan on tab1_rep "_REMOTE_TABLE_QUERY_"
-                     Output: tab1_rep.val, tab1_rep.val2
-                     Remote query: SELECT val, val2 FROM ONLY tab1_rep WHERE (val >= 5)
+               Distribute results by R
+               ->  Seq Scan on public.tab1_mod
+                     Output: tab1_mod.val, tab1_mod.val2
+                     Filter: (tab1_mod.val = 1)
+         ->  Materialize
+               Output: tab3_mod.val, tab3_mod.val2
+               ->  Seq Scan on public.tab3_mod
+                     Output: tab3_mod.val, tab3_mod.val2
+                     Filter: (tab3_mod.val = 1)
 (15 rows)
-
--- Any join involving a distributed and replicated node each located on a single
--- and same node should be shippable
-select * from single_node_rep_tab natural full outer join single_node_mod_tab order by val, val2;
- val | val2 
------+------
-   1 |    2
-   3 |    4
-   5 |    6
-(3 rows)
-
-explain (costs off, verbose on, nodes off)
-select * from single_node_rep_tab natural full outer join single_node_mod_tab order by val, val2;
-                                                      QUERY PLAN                                                      
-----------------------------------------------------------------------------------------------------------------------
- Data Node Scan on "__REMOTE_FQS_QUERY__"
-   Output: val, val2
-   Remote query: SELECT val, val2 FROM (single_node_rep_tab NATURAL FULL JOIN single_node_mod_tab) ORDER BY val, val2
-(3 rows)
 
 -- DMLs involving JOINs are not FQSed
--- We need to just make sure that FQS is not kicking in. But the JOINs can still
--- be reduced by JOIN reduction optimization. Turn this optimization off so as
--- to generate plans independent of number of nodes in the cluster.
-set enable_remotejoin to false;
-explain (costs off, verbose on, nodes off) update tab1_mod set val2 = 1000 from tab2_mod 
+explain (verbose on, nodes off, costs off) update tab1_mod set val2 = 1000 from tab2_mod 
 		where tab1_mod.val = tab2_mod.val and tab1_mod. val2 = tab2_mod.val2;
+                                                        QUERY PLAN                                                        
+--------------------------------------------------------------------------------------------------------------------------
+ Remote Subquery Scan on all
+   ->  Update on public.tab1_mod
+         ->  Merge Join
+               Output: tab1_mod.val, 1000, tab1_mod.val, tab1_mod.val2, tab1_mod.ctid, tab1_mod.xc_node_id, tab2_mod.ctid
+               Merge Cond: ((tab1_mod.val = tab2_mod.val) AND (tab1_mod.val2 = tab2_mod.val2))
+               ->  Sort
+                     Output: tab1_mod.val, tab1_mod.val2, tab1_mod.ctid, tab1_mod.xc_node_id
+                     Sort Key: tab1_mod.val, tab1_mod.val2
+                     ->  Seq Scan on public.tab1_mod
+                           Output: tab1_mod.val, tab1_mod.val2, tab1_mod.ctid, tab1_mod.xc_node_id
+               ->  Sort
+                     Output: tab2_mod.ctid, tab2_mod.val, tab2_mod.val2
+                     Sort Key: tab2_mod.val, tab2_mod.val2
+                     ->  Seq Scan on public.tab2_mod
+                           Output: tab2_mod.ctid, tab2_mod.val, tab2_mod.val2
+(15 rows)
+
+explain (verbose on, nodes off, costs off) delete from tab1_mod using tab2_mod
+		where tab1_mod.val = tab2_mod.val and tab1_mod.val2 = tab2_mod.val2;
                                                      QUERY PLAN                                                     
 --------------------------------------------------------------------------------------------------------------------
  Update on public.tab1_mod
    Node expr: tab1_mod.val
-   Remote query: UPDATE ONLY tab1_mod SET val2 = $2 WHERE ((tab1_mod.ctid = $5) AND (tab1_mod.xc_node_id = $6))
+   Remote query: UPDATE ONLY public.tab1_mod SET val2 = $2 WHERE ctid = $5 AND xc_node_id = $6 
    ->  Hash Join
          Output: tab1_mod.val, 1000, tab1_mod.val, tab1_mod.val2, tab1_mod.ctid, tab1_mod.xc_node_id, tab2_mod.ctid
          Hash Cond: ((tab1_mod.val = tab2_mod.val) AND (tab1_mod.val2 = tab2_mod.val2))
@@ -678,10 +710,10 @@ explain (costs off, verbose on, nodes off) update tab1_mod set val2 = 1000 from 
 
 explain (costs off, verbose on, nodes off) delete from tab1_mod using tab2_mod
 		where tab1_mod.val = tab2_mod.val and tab1_mod.val2 = tab2_mod.val2;
-                                              QUERY PLAN                                               
--------------------------------------------------------------------------------------------------------
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
  Delete on public.tab1_mod
-   Remote query: DELETE FROM ONLY tab1_mod WHERE ((tab1_mod.ctid = $3) AND (tab1_mod.xc_node_id = $4))
+   Remote query: DELETE FROM ONLY public.tab1_mod WHERE ctid = $3 AND xc_node_id = $4 
    ->  Hash Join
          Output: tab1_mod.val, tab1_mod.val2, tab1_mod.ctid, tab1_mod.xc_node_id, tab2_mod.ctid
          Hash Cond: ((tab1_mod.val = tab2_mod.val) AND (tab1_mod.val2 = tab2_mod.val2))
@@ -700,7 +732,7 @@ explain (costs off, verbose on, nodes off) update tab1_rep set val2 = 1000 from 
                                           QUERY PLAN                                           
 -----------------------------------------------------------------------------------------------
  Update on public.tab1_rep
-   Remote query: UPDATE ONLY tab1_rep SET val2 = $2 WHERE (tab1_rep.ctid = $5)
+   Remote query: UPDATE ONLY public.tab1_rep SET val2 = $2 WHERE ctid = $5 
    ->  Hash Join
          Output: tab1_rep.val, 1000, tab1_rep.val, tab1_rep.val2, tab1_rep.ctid, tab2_rep.ctid
          Hash Cond: ((tab1_rep.val = tab2_rep.val) AND (tab1_rep.val2 = tab2_rep.val2))
@@ -719,7 +751,7 @@ explain (costs off, verbose on, nodes off) delete from tab1_rep using tab2_rep
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
  Delete on public.tab1_rep
-   Remote query: DELETE FROM ONLY tab1_rep WHERE (tab1_rep.ctid = $3)
+   Remote query: DELETE FROM ONLY public.tab1_rep WHERE ctid = $3 
    ->  Hash Join
          Output: tab1_rep.val, tab1_rep.val2, tab1_rep.ctid, tab2_rep.ctid
          Hash Cond: ((tab1_rep.val = tab2_rep.val) AND (tab1_rep.val2 = tab2_rep.val2))
@@ -740,6 +772,4 @@ drop table tab3_rep;
 drop table tab4_rep;
 drop table tab1_mod;
 drop table tab2_mod;
-drop table tab3_mod;
-drop table single_node_mod_tab;
-drop table single_node_rep_tab;
+drop function cr_table(varchar, int[], varchar, varchar);

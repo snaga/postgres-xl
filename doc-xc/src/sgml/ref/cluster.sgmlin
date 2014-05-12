@@ -37,6 +37,9 @@ CLUSTER [VERBOSE]
 <!## XC>
    <command>CLUSTER</command> instructs <productname>Postgres-XC</productname>
 <!## end>
+<!## XL>
+   <command>CLUSTER</command> instructs <productname>Postgres-XL</productname>
+<!## end>
    to cluster the table specified
    by <replaceable class="parameter">table_name</replaceable>
    based on the index specified by
@@ -63,6 +66,9 @@ CLUSTER [VERBOSE]
 <!## end>
 <!## XC>
    When a table is clustered, <productname>Postgres-XC</productname>
+<!## end>
+<!## XL>
+   When a table is clustered, <productname>Postgres-XL</productname>
 <!## end>
    remembers which index it was clustered by.  The form
    <command>CLUSTER <replaceable class="parameter">table_name</replaceable></command>
@@ -91,6 +97,13 @@ CLUSTER [VERBOSE]
 &xconly;
   <para>
    In <productname>Postgres-XC</>, <command>CLUSTER</> will be
+   executed on all the Datanodes as well.
+  </para>
+<!## end>
+<!## XL>
+&xlonly;
+  <para>
+   In <productname>Postgres-XL</>, <command>CLUSTER</> will be
    executed on all the Datanodes as well.
   </para>
 <!## end>

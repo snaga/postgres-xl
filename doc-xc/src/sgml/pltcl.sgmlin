@@ -21,6 +21,9 @@
 <!## XC>
    <productname>Postgres-XC</productname> database system inherited from <productname>PostgreSQL</>
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> database system inherited from <productname>PostgreSQL</>
+<!## end>
    that enables the <ulink url="http://www.tcl.tk/">
    Tcl language</ulink> to be used to write functions and
    trigger procedures.
@@ -29,6 +32,11 @@
 <!## XC>
   <para>
    You can use PL/Tcl in <productname>Postgres-XC</> too.
+  </para>
+<!## end>
+<!## XL>
+  <para>
+   You can use PL/Tcl in <productname>Postgres-XL</> too.
   </para>
 <!## end>
 
@@ -58,6 +66,9 @@
 <!## XC>
     <productname>Postgres-XC</productname> server process, as a C
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> server process, as a C
+<!## end>
     function can do.  Thus, unprivileged database users can be trusted
     to use this language; it does not give them unlimited authority.
    </para>
@@ -86,6 +97,9 @@
 <!## end>
 <!## XC>
     installed in the <productname>Postgres-XC</productname> library
+<!## end>
+<!## XL>
+    installed in the <productname>Postgres-XL</productname> library
 <!## end>
     directory if Tcl support is specified in the configuration step of
     the installation procedure.  To install <application>PL/Tcl</>
@@ -394,6 +408,7 @@ spi_exec -array C "SELECT * FROM pg_class" {
         <function>spi_execp</function> for an example.
        </para>
       </listitem>
+     </varlistentry>
 <!## end>
 <!## XC>
       <listitem>
@@ -403,8 +418,15 @@ spi_exec -array C "SELECT * FROM pg_class" {
         supported in the future releases.
        </para>
       </listitem>
-<!## end>
      </varlistentry>
+<!## end>
+<!## XL>
+      <listitem>
+       <para>
+       </para>
+      </listitem>
+     </varlistentry>
+<!## end>
 
      <varlistentry>
       <term><literal><function>spi_execp</> <optional role="tcl">-count <replaceable>n</replaceable></optional> <optional role="tcl">-array <replaceable>name</replaceable></optional> <optional role="tcl">-nulls <replaceable>string</replaceable></optional> <replaceable>queryid</replaceable> <optional role="tcl"><replaceable>value-list</replaceable></optional> <optional role="tcl"><replaceable>loop-body</replaceable></optional></literal></term>
@@ -472,6 +494,12 @@ $$ LANGUAGE pltcl;
        </para>
       </listitem>
 <!## end>
+<!## XL>
+      <listitem>
+       <para>
+       </para>
+      </listitem>
+<!## end>
      </varlistentry>
 
      <varlistentry>
@@ -491,6 +519,13 @@ $$ LANGUAGE pltcl;
        <para>
         Please note that OID is maintained locally at each Datanode
         and Coordinator.
+       </para>
+<!## end>
+<!## XL>
+&xlonly;
+       <para>
+        Please note that OID is maintained locally at each Datanode
+        and Coordinator, and cannot be used globally throughout the cluster.
        </para>
 <!## end>
       </listitem>
@@ -596,6 +631,9 @@ SELECT 'doesn''t' AS ret
 <!## XC>
      <productname>Postgres-XC</productname> requires that a procedure that is to be called
 <!## end>
+<!## XL>
+     <productname>Postgres-XL</productname> requires that a procedure that is to be called
+<!## end>
      as a trigger must be declared as a function with no arguments
      and a return type of <literal>trigger</>.
     </para>
@@ -657,6 +695,9 @@ SELECT 'doesn''t' AS ret
 <!## end>
 <!## XC>
          numbered in <productname>Postgres-XC</productname>.  (Empty list
+<!## end>
+<!## XL>
+         numbered in <productname>Postgres-XL</productname>.  (Empty list
 <!## end>
          elements also appear in the positions of columns that have been
          dropped, so that the attribute numbering is correct for columns
@@ -795,6 +836,14 @@ CREATE TRIGGER trig_mytab_modcount BEFORE INSERT OR UPDATE ON mytab
      future releases.
     </para>
 <!## end>
+<!## XL>
+&xlonly;
+    <para>
+     Trigger is not supported in the current release
+     of <productname>Postgres-XL</>.  This may be supported in the
+     future releases.
+    </para>
+<!## end>
    </sect1>
 
    <sect1 id="pltcl-unknown">
@@ -830,6 +879,9 @@ CREATE TRIGGER trig_mytab_modcount BEFORE INSERT OR UPDATE ON mytab
 <!## XC>
         The <productname>Postgres-XC</productname> distribution includes
 <!## end>
+<!## XL>
+        The <productname>Postgres-XL</productname> distribution includes
+<!## end>
         support scripts to maintain these tables:
         <command>pltcl_loadmod</>, <command>pltcl_listmod</>,
         <command>pltcl_delmod</>, as well as source for the standard
@@ -859,6 +911,9 @@ CREATE TRIGGER trig_mytab_modcount BEFORE INSERT OR UPDATE ON mytab
 <!## XC>
      In <productname>Postgres-XC</productname>, the same function name can be used for
 <!## end>
+<!## XL>
+     In <productname>Postgres-XL</productname>, the same function name can be used for
+<!## end>
      different function definitions as long as the number of arguments or their types
      differ. Tcl, however, requires all procedure names to be distinct.
      PL/Tcl deals with this by making the internal Tcl procedure names contain
@@ -869,6 +924,9 @@ CREATE TRIGGER trig_mytab_modcount BEFORE INSERT OR UPDATE ON mytab
 <!## end>
 <!## XC>
      <productname>Postgres-XC</productname> functions with the same name
+<!## end>
+<!## XL>
+     <productname>Postgres-XL</productname> functions with the same name
 <!## end>
      and different argument types will be different Tcl procedures, too.  This
      is not normally a concern for a PL/Tcl programmer, but it might be visible

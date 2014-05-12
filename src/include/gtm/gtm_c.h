@@ -98,7 +98,7 @@ typedef GTM_SequenceKeyData *GTM_SequenceKey;
 #define InvalidSequenceValue		0x7fffffffffffffffLL
 #define SEQVAL_IS_VALID(v)		((v) != InvalidSequenceValue)
 
-#define GTM_MAX_GLOBAL_TRANSACTIONS	4096
+#define GTM_MAX_GLOBAL_TRANSACTIONS	16384
 
 typedef enum GTM_IsolationLevel
 {

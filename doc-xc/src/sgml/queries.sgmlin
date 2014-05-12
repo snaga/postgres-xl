@@ -913,6 +913,9 @@ SELECT product_id, p.name, (sum(s.units) * p.price) AS sales
 <!## XC>
     the source table but <productname>Postgres-XC</productname> extends
 <!## end>
+<!## XL>
+    the source table but <productname>Postgres-XL</productname> extends
+<!## end>
     this to also allow <literal>GROUP BY</> to group by columns in the
     select list.  Grouping by value expressions instead of simple
     column names is also allowed.
@@ -1128,6 +1131,9 @@ SELECT a AS value, b + c AS sum FROM ...
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname> keyword (see <xref
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> keyword (see <xref
 <!## end>
     linkend="sql-keywords-appendix">).  To avoid an accidental match to
     a keyword, you can double-quote the column name.  For example,
@@ -1349,6 +1355,9 @@ SELECT a, b FROM table1 ORDER BY a + b, c;
 <!## XC>
       Actually, <productname>Postgres-XC</> uses the <firstterm>default B-tree
 <!## end>
+<!## XL>
+      Actually, <productname>Postgres-XL</> uses the <firstterm>default B-tree
+<!## end>
       operator class</> for the expression's data type to determine the sort
       ordering for <literal>ASC</> and <literal>DESC</>.  Conventionally,
       data types will be set up so that the <literal>&lt;</literal> and
@@ -1517,6 +1526,9 @@ SELECT 3, 'three';
 <!## end>
 <!## XC>
    By default, <productname>Postgres-XC</productname> assigns the names
+<!## end>
+<!## XL>
+   By default, <productname>Postgres-XL</productname> assigns the names
 <!## end>
    <literal>column1</>, <literal>column2</>, etc. to the columns of a
    <literal>VALUES</> table.  The column names are not specified by the
@@ -1816,6 +1828,9 @@ SELECT n FROM t LIMIT 100;
 <!## end>
 <!## XC>
    This works because <productname>Postgres-XC</productname>'s implementation
+<!## end>
+<!## XL>
+   This works because <productname>Postgres-XL</productname>'s implementation
 <!## end>
    evaluates only as many rows of a <literal>WITH</> query as are actually
    fetched by the parent query.  Using this trick in production is not

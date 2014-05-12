@@ -13,6 +13,9 @@
 <!## XC>
   Every instance of a running <productname>Postgres-XC</productname>
 <!## end>
+<!## XL>
+  Every instance of a running <productname>Postgres-XL</productname>
+<!## end>
   server manages one or more databases.  Databases are therefore the
   topmost hierarchical level for organizing <acronym>SQL</acronym>
   objects (<quote>database objects</quote>).  This chapter describes
@@ -53,6 +56,9 @@
 <!## end>
 <!## XC>
    connection level.  If one <productname>Postgres-XC</> server
+<!## end>
+<!## XL>
+   connection level.  If one <productname>Postgres-XL</> server
 <!## end>
    instance is to house projects or users that should be separate and
    for the most part unaware of each other, it is therefore
@@ -98,6 +104,9 @@ SELECT datname FROM pg_database;
 <!## end>
 <!## XC>
    In order to create a database, the <productname>Postgres-XC</>
+<!## end>
+<!## XL>
+   In order to create a database, the <productname>Postgres-XL</>
 <!## end>
    server must be up and running (see <xref
    linkend="server-start">).
@@ -218,6 +227,9 @@ createdb -O <replaceable>rolename</> <replaceable>dbname</>
 <!## XC>
    <productname>Postgres-XC</productname>.  <literal>template0</>
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname>.  <literal>template0</>
+<!## end>
    should never be changed after the database cluster has been
    initialized.  By instructing
    <command>CREATE DATABASE</> to copy <literal>template0</> instead
@@ -308,6 +320,16 @@ createdb -T template0 <replaceable>dbname</>
     database is created.
    </para>
 <!## end>
+<!## XL>
+   <para>
+    <emphasis>For Postgres-XL only.</>
+   </para>
+   <para>
+    In <productname>Postgres-XL</>, template databases are held in
+    each Coordinator and Datanode.  They are locally copied when new
+    database is created.
+   </para>
+<!## end>
   </note>
  </sect1>
 
@@ -321,6 +343,9 @@ createdb -T template0 <replaceable>dbname</>
 <!## end>
 <!## XC>
    <productname>Postgres-XC</> server provides a large number of
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</> server provides a large number of
 <!## end>
    run-time configuration variables.  You can set database-specific
    default values for many of these settings.
@@ -399,6 +424,9 @@ dropdb <replaceable class="parameter">dbname</replaceable>
 <!## XC>
    Tablespaces in <productname>Postgres-XC</> allow database administrators to
 <!## end>
+<!## XL>
+   Tablespaces in <productname>Postgres-XL</> allow database administrators to
+<!## end>
    define locations in the file system where the files representing
    database objects can be stored. Once created, a tablespace can be referred
    to by name when creating database objects.
@@ -411,6 +439,9 @@ dropdb <replaceable class="parameter">dbname</replaceable>
 <!## end>
 <!## XC>
    of a <productname>Postgres-XC</> installation. This is useful in at
+<!## end>
+<!## XL>
+   of a <productname>Postgres-XL</> installation. This is useful in at
 <!## end>
    least two ways. First, if the partition or volume on which the
    cluster was initialized runs out of space and cannot be extended,
@@ -442,6 +473,9 @@ CREATE TABLESPACE fastspace LOCATION '/mnt/sda1/postgresql/data';
 <!## XC>
    the <productname>Postgres-XC</> operating system user.  All objects subsequently
 <!## end>
+<!## XL>
+   the <productname>Postgres-XL</> operating system user.  All objects subsequently
+<!## end>
    created within the tablespace will be stored in files underneath this
    directory.
   </para>
@@ -456,6 +490,9 @@ CREATE TABLESPACE fastspace LOCATION '/mnt/sda1/postgresql/data';
 <!## end>
 <!## XC>
     <productname>Postgres-XC</> does not enforce any such limitation, and
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</> does not enforce any such limitation, and
 <!## end>
     indeed it is not directly aware of the file system boundaries on your
     system.  It just stores files in the directories you tell it to use.
@@ -552,6 +589,9 @@ SELECT spcname FROM pg_tablespace;
 <!## end>
 <!## XC>
    <productname>Postgres-XC</> makes use of symbolic links
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</> makes use of symbolic links
 <!## end>
    to simplify the implementation of tablespaces. This
    means that tablespaces can be used <emphasis>only</> on systems

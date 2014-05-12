@@ -16,6 +16,10 @@
   <productname>Postgres-XC</productname> inherits supports of two localization
   facilities from <productname>PostgreSQL</>:
 <!## end>
+<!## XL>
+  <productname>Postgres-XL</productname> inherits supports of two localization
+  facilities from <productname>PostgreSQL</>:
+<!## end>
 
    <itemizedlist>
     <listitem>
@@ -54,6 +58,9 @@
 <!## end>
 <!## XC>
    formatting, etc.  <productname>Postgres-XC</> uses the standard ISO
+<!## end>
+<!## XL>
+   formatting, etc.  <productname>Postgres-XL</> uses the standard ISO
 <!## end>
    C and <acronym>POSIX</acronym> locale facilities provided by the server operating
    system.  For additional information refer to the documentation of your
@@ -278,6 +285,9 @@ initdb --locale=sv_SE
 <!## XC>
     <literal>POSIX</> in <productname>Postgres-XC</> is its performance
 <!## end>
+<!## XL>
+    <literal>POSIX</> in <productname>Postgres-XL</> is its performance
+<!## end>
     impact. It slows character handling and prevents ordinary indexes
     from being used by <literal>LIKE</>. For this reason use locales
     only if you actually need them.
@@ -289,6 +299,9 @@ initdb --locale=sv_SE
 <!## end>
 <!## XC>
     As a workaround to allow <productname>Postgres-XC</> to use indexes
+<!## end>
+<!## XL>
+    As a workaround to allow <productname>Postgres-XL</> to use indexes
 <!## end>
     with <literal>LIKE</> clauses under a non-C locale, several custom
     operator classes exist. These allow the creation of an index that
@@ -319,6 +332,9 @@ initdb --locale=sv_SE
 <!## XC>
     Check that <productname>Postgres-XC</> is actually using the locale
 <!## end>
+<!## XL>
+    Check that <productname>Postgres-XL</> is actually using the locale
+<!## end>
     that you think it is.  The <envar>LC_COLLATE</> and <envar>LC_CTYPE</>
     settings are determined when a database is created, and cannot be
     changed except by creating a new database.  Other locale
@@ -336,6 +352,9 @@ initdb --locale=sv_SE
 <!## end>
 <!## XC>
     <productname>Postgres-XC</>'s locale support.
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</>'s locale support.
 <!## end>
    </para>
 
@@ -355,6 +374,9 @@ initdb --locale=sv_SE
 <!## end>
 <!## XC>
     <productname>Postgres-XC</> speak their preferred language well.
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</> speak their preferred language well.
 <!## end>
     If messages in your language are currently not available or not fully
     translated, your assistance would be appreciated.  If you want to
@@ -639,6 +661,9 @@ SELECT a COLLATE "C" &lt; b COLLATE "POSIX" FROM test1;
 <!## XC>
    The character set support in <productname>Postgres-XC</productname>
 <!## end>
+<!## XL>
+   The character set support in <productname>Postgres-XL</productname>
+<!## end>
    allows you to store text in a variety of character sets (also called
    encodings), including
    single-byte character sets such as the ISO 8859 series and
@@ -652,6 +677,9 @@ SELECT a COLLATE "C" &lt; b COLLATE "POSIX" FROM test1;
 <!## end>
 <!## XC>
    initializing your <productname>Postgres-XC</productname> database
+<!## end>
+<!## XL>
+   initializing your <productname>Postgres-XL</productname> database
 <!## end>
    cluster using <command>initdb</>.  It can be overridden when you
    create a database, so you can have multiple
@@ -680,6 +708,9 @@ SELECT a COLLATE "C" &lt; b COLLATE "POSIX" FROM test1;
 <!## XC>
      for use in <productname>Postgres-XC</productname>.
 <!## end>
+<!## XL>
+     for use in <productname>Postgres-XL</productname>.
+<!## end>
     </para>
 
      <table id="charset-table">
@@ -688,6 +719,9 @@ SELECT a COLLATE "C" &lt; b COLLATE "POSIX" FROM test1;
 <!## end>
 <!## XC>
       <title><productname>Postgres-XC</productname> Character Sets</title>
+<!## end>
+<!## XL>
+      <title><productname>Postgres-XL</productname> Character Sets</title>
 <!## end>
       <tgroup cols="6">
        <thead>
@@ -1053,6 +1087,9 @@ SELECT a COLLATE "C" &lt; b COLLATE "POSIX" FROM test1;
 <!## XC>
       <productname>Postgres-XC</>
 <!## end>
+<!## XL>
+      <productname>Postgres-XL</>
+<!## end>
       JDBC driver does not support <literal>MULE_INTERNAL</>, <literal>LATIN6</>,
       <literal>LATIN8</>, and <literal>LATIN10</>.
      </para>
@@ -1074,6 +1111,9 @@ SELECT a COLLATE "C" &lt; b COLLATE "POSIX" FROM test1;
 <!## XC>
       <productname>Postgres-XC</productname> will be unable to help you by
 <!## end>
+<!## XL>
+      <productname>Postgres-XL</productname> will be unable to help you by
+<!## end>
       converting or validating non-ASCII characters.
      </para>
     </sect2>
@@ -1089,6 +1129,9 @@ SELECT a COLLATE "C" &lt; b COLLATE "POSIX" FROM test1;
 <!## end>
 <!## XC>
      for a <productname>Postgres-XC</productname> cluster. For example,
+<!## end>
+<!## XL>
+     for a <productname>Postgres-XL</productname> cluster. For example,
 <!## end>
 
 <screen>
@@ -1157,6 +1200,9 @@ $ <userinput>psql -l</userinput>
 <!## XC>
       On most modern operating systems, <productname>Postgres-XC</productname>
 <!## end>
+<!## XL>
+      On most modern operating systems, <productname>Postgres-XL</productname>
+<!## end>
       can determine which character set is implied by the <envar>LC_CTYPE</>
       setting, and it will enforce that only the matching database encoding is
       used.  On older systems it is your responsibility to ensure that you use
@@ -1171,6 +1217,9 @@ $ <userinput>psql -l</userinput>
 <!## end>
 <!## XC>
       <productname>Postgres-XC</productname> will allow superusers to create
+<!## end>
+<!## XL>
+      <productname>Postgres-XL</productname> will allow superusers to create
 <!## end>
       databases with <literal>SQL_ASCII</> encoding even when
       <envar>LC_CTYPE</> is not <literal>C</> or <literal>POSIX</>.  As noted
@@ -1193,6 +1242,9 @@ $ <userinput>psql -l</userinput>
 <!## XC>
      <productname>Postgres-XC</productname> supports automatic
 <!## end>
+<!## XL>
+     <productname>Postgres-XL</productname> supports automatic
+<!## end>
      character set conversion between server and client for certain
      character set combinations. The conversion information is stored in the
 <!## PG>
@@ -1200,6 +1252,9 @@ $ <userinput>psql -l</userinput>
 <!## end>
 <!## XC>
      <literal>pg_conversion</> system catalog.  <productname>Postgres-XC</>
+<!## end>
+<!## XL>
+     <literal>pg_conversion</> system catalog.  <productname>Postgres-XL</>
 <!## end>
      comes with some predefined conversions, as shown in <xref
      linkend="multibyte-translation-table">. You can create a new
@@ -1500,6 +1555,9 @@ $ <userinput>psql -l</userinput>
 <!## end>
 <!## XC>
      tell <productname>Postgres-XC</productname> the character set
+<!## end>
+<!## XL>
+     tell <productname>Postgres-XL</productname> the character set
 <!## end>
      (encoding) you would like to use in the client. There are several
      ways to accomplish this:

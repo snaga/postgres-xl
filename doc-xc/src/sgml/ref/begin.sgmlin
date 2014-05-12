@@ -47,6 +47,9 @@ BEGIN [ WORK | TRANSACTION ] [ <replaceable class="parameter">transaction_mode</
 <!## XC>
    <productname>Postgres-XC</productname> executes
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> executes
+<!## end>
    transactions in <quote>autocommit</quote> mode, that is, each
    statement is executed in its own transaction and a commit is
    implicitly performed at the end of the statement (if execution was
@@ -140,6 +143,9 @@ BEGIN;
 <!## end>
 <!## XC>
    <command>BEGIN</command> is a <productname>Postgres-XC</productname>
+<!## end>
+<!## XL>
+   <command>BEGIN</command> is a <productname>Postgres-XL</productname>
 <!## end>
    language extension.  It is equivalent to the SQL-standard command
    <xref linkend="sql-start-transaction">, whose reference page

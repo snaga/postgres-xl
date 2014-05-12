@@ -2,7 +2,7 @@
 -- XC_CREATE_FUNCTIONS
 --
 
--- Create a couple of functions used by Postgres-XC tests
+-- Create a couple of functions used by Postgres-XL tests
 -- A function to create table on specified nodes
 create or replace function create_table_nodes(tab_schema varchar, nodenums int[], distribution varchar, cmd_suffix varchar)
 returns void language plpgsql as $$
@@ -17,7 +17,7 @@ declare
 	tmp_node	int;
 	num_nodes	int;
 begin
-	nodenames_query := 'SELECT node_name FROM pgxc_node WHERE node_type = ''D'' ORDER BY xc_node_id';
+	nodenames_query := 'SELECT node_name FROM pgxc_node WHERE node_type = ''D''';
 	cr_command := 'CREATE TABLE ' || tab_schema || ' DISTRIBUTE BY ' || distribution || ' TO NODE ';
 	for nodename in execute nodenames_query loop
 		nodes := array_append(nodes, nodename);
@@ -67,7 +67,7 @@ BEGIN
 	IF command != 'delete' AND command != 'add' AND command != 'to' THEN
 		RETURN FALSE;
 	END IF;
-	nodenames_query := 'SELECT node_name FROM pgxc_node WHERE node_type = ''D'' ORDER BY xc_node_id';
+	nodenames_query := 'SELECT node_name FROM pgxc_node WHERE node_type = ''D''';
 	FOR nodename IN EXECUTE nodenames_query LOOP
 		nodes := array_append(nodes, nodename);
 	END LOOP;
@@ -180,23 +180,3 @@ BEGIN
 	str = 'execute direct on (' || node_name || ') $$ ' || query || ' $$'  ;
 	execute str;
 END $D$ language plpgsql;
-
--- A function to return a generic data node name given xc_node_id (called node_id in catalog)
-CREATE OR REPLACE FUNCTION get_xc_node_name_gen(node_id int) RETURNS varchar LANGUAGE plpgsql AS $$
-DECLARE
-	r		pgxc_node%rowtype;
-	nodenames_query	varchar;
-	node		int;
-BEGIN
-	nodenames_query := 'SELECT * FROM pgxc_node  WHERE node_type = ''D'' ORDER BY xc_node_id';
-
-	node := 1;
-	FOR r IN EXECUTE nodenames_query LOOP
-		IF r.node_id = node_id THEN
-			RETURN 'NODE_' || node;
-		END IF;
-		node := node + 1;
-	END LOOP;
-	RETURN 'NODE_?';
-END;
-$$;

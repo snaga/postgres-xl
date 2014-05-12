@@ -159,13 +159,10 @@ CREATE TABLE hash_txt_heap (
 	seqno 		int4,
 	random 		text
 );
--- PGXC: Here replication is used to ensure correct index creation
--- when a non-shippable expression is used.
--- PGXCTODO: this should be removed once global constraints are supported
 CREATE TABLE hash_f8_heap (
 	seqno		int4,
 	random 		float8
-) DISTRIBUTE BY REPLICATION;
+);
 -- don't include the hash_ovfl_heap stuff in the distribution
 -- the data set is too large for what it's worth
 --
@@ -212,7 +209,6 @@ NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "unlogged1_pkey" 
 INSERT INTO unlogged1 VALUES (42);
 CREATE UNLOGGED TABLE public.unlogged2 (a int primary key);		-- also OK
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "unlogged2_pkey" for table "unlogged2"
-SET enforce_two_phase_commit TO off;
 CREATE UNLOGGED TABLE pg_temp.unlogged3 (a int primary key);	-- not OK
 ERROR:  only temporary relations may be created in temporary schemas
 CREATE TABLE pg_temp.implicitly_temp (a int primary key);		-- OK

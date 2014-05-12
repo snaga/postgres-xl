@@ -76,9 +76,9 @@ SELECT max(student.gpa) AS max_3_7 FROM student;
 (1 row)
 
 SELECT stddev_pop(b) FROM aggtest;
-   stddev_pop    
------------------
- 131.10703231895
+    stddev_pop    
+------------------
+ 131.107032318951
 (1 row)
 
 SELECT stddev_samp(b) FROM aggtest;
@@ -90,13 +90,13 @@ SELECT stddev_samp(b) FROM aggtest;
 SELECT var_pop(b) FROM aggtest;
      var_pop      
 ------------------
- 17189.0539234823
+ 17189.0539234824
 (1 row)
 
 SELECT var_samp(b) FROM aggtest;
      var_samp     
 ------------------
- 22918.7385646431
+ 22918.7385646432
 (1 row)
 
 SELECT stddev_pop(b::numeric) FROM aggtest;
@@ -153,13 +153,13 @@ SELECT regr_sxx(b, a) FROM aggtest;
 SELECT regr_syy(b, a) FROM aggtest;
      regr_syy     
 ------------------
- 68756.2156939293
+ 68756.2156939297
 (1 row)
 
 SELECT regr_sxy(b, a) FROM aggtest;
      regr_sxy     
 ------------------
- 2614.51582155004
+ 2614.51582155001
 (1 row)
 
 SELECT regr_avgx(b, a), regr_avgy(b, a) FROM aggtest;
@@ -171,25 +171,25 @@ SELECT regr_avgx(b, a), regr_avgy(b, a) FROM aggtest;
 SELECT regr_r2(b, a) FROM aggtest;
       regr_r2       
 --------------------
- 0.0194977982031803
+ 0.0194977982031797
 (1 row)
 
 SELECT regr_slope(b, a), regr_intercept(b, a) FROM aggtest;
     regr_slope     |  regr_intercept  
 -------------------+------------------
- 0.512750700441271 | 82.5619926012309
+ 0.512750700441265 | 82.5619926012313
 (1 row)
 
 SELECT covar_pop(b, a), covar_samp(b, a) FROM aggtest;
-    covar_pop    |    covar_samp    
------------------+------------------
- 653.62895538751 | 871.505273850014
+    covar_pop     |    covar_samp    
+------------------+------------------
+ 653.628955387502 | 871.505273850003
 (1 row)
 
 SELECT corr(b, a) FROM aggtest;
        corr        
 -------------------
- 0.139634516517873
+ 0.139634516517871
 (1 row)
 
 SELECT count(four) AS cnt_1000 FROM onek;
@@ -309,8 +309,6 @@ from tenk1 o;
 --
 -- test for bitwise integer aggregates
 --
--- Enforce use of COMMIT instead of 2PC for temporary objects
-SET enforce_two_phase_commit TO off;
 CREATE TEMPORARY TABLE bitwise_test(
   i2 INT2,
   i4 INT4,
@@ -447,18 +445,23 @@ FROM bool_test;
 --
 -- Test cases that should be optimized into indexscans instead of
 -- the generic aggregate implementation.
--- In Postgres-XC, plans printed by explain are the ones created on the
+-- In Postgres-XL, plans printed by explain are the ones created on the
 -- coordinator. Coordinator does not generate index scan plans.
 --
 analyze tenk1;		-- ensure we get consistent plans here
 -- Basic cases
 explain (costs off, nodes off)
   select min(unique1) from tenk1;
-                    QUERY PLAN                    
---------------------------------------------------
- Aggregate
-   ->  Data Node Scan on "__REMOTE_GROUP_QUERY__"
-(2 rows)
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Result
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Remote Subquery Scan on all
+                 ->  Limit
+                       ->  Index Only Scan using tenk1_unique1 on tenk1
+                             Index Cond: (unique1 IS NOT NULL)
+(7 rows)
 
 select min(unique1) from tenk1;
  min 
@@ -468,11 +471,16 @@ select min(unique1) from tenk1;
 
 explain (costs off, nodes off)
   select max(unique1) from tenk1;
-                    QUERY PLAN                    
---------------------------------------------------
- Aggregate
-   ->  Data Node Scan on "__REMOTE_GROUP_QUERY__"
-(2 rows)
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ Result
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Remote Subquery Scan on all
+                 ->  Limit
+                       ->  Index Only Scan Backward using tenk1_unique1 on tenk1
+                             Index Cond: (unique1 IS NOT NULL)
+(7 rows)
 
 select max(unique1) from tenk1;
  max  
@@ -482,11 +490,16 @@ select max(unique1) from tenk1;
 
 explain (costs off, nodes off)
   select max(unique1) from tenk1 where unique1 < 42;
-                    QUERY PLAN                    
---------------------------------------------------
- Aggregate
-   ->  Data Node Scan on "__REMOTE_GROUP_QUERY__"
-(2 rows)
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Result
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Remote Subquery Scan on all
+                 ->  Limit
+                       ->  Index Only Scan Backward using tenk1_unique1 on tenk1
+                             Index Cond: ((unique1 IS NOT NULL) AND (unique1 < 42))
+(7 rows)
 
 select max(unique1) from tenk1 where unique1 < 42;
  max 
@@ -496,11 +509,16 @@ select max(unique1) from tenk1 where unique1 < 42;
 
 explain (costs off, nodes off)
   select max(unique1) from tenk1 where unique1 > 42;
-                    QUERY PLAN                    
---------------------------------------------------
- Aggregate
-   ->  Data Node Scan on "__REMOTE_GROUP_QUERY__"
-(2 rows)
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Result
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Remote Subquery Scan on all
+                 ->  Limit
+                       ->  Index Only Scan Backward using tenk1_unique1 on tenk1
+                             Index Cond: ((unique1 IS NOT NULL) AND (unique1 > 42))
+(7 rows)
 
 select max(unique1) from tenk1 where unique1 > 42;
  max  
@@ -510,11 +528,16 @@ select max(unique1) from tenk1 where unique1 > 42;
 
 explain (costs off, nodes off)
   select max(unique1) from tenk1 where unique1 > 42000;
-                    QUERY PLAN                    
---------------------------------------------------
- Aggregate
-   ->  Data Node Scan on "__REMOTE_GROUP_QUERY__"
-(2 rows)
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Result
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Remote Subquery Scan on all
+                 ->  Limit
+                       ->  Index Only Scan Backward using tenk1_unique1 on tenk1
+                             Index Cond: ((unique1 IS NOT NULL) AND (unique1 > 42000))
+(7 rows)
 
 select max(unique1) from tenk1 where unique1 > 42000;
  max 
@@ -525,11 +548,16 @@ select max(unique1) from tenk1 where unique1 > 42000;
 -- multi-column index (uses tenk1_thous_tenthous)
 explain (costs off, nodes off)
   select max(tenthous) from tenk1 where thousand = 33;
-                    QUERY PLAN                    
---------------------------------------------------
- Aggregate
-   ->  Data Node Scan on "__REMOTE_GROUP_QUERY__"
-(2 rows)
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Result
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Remote Subquery Scan on all
+                 ->  Limit
+                       ->  Index Only Scan Backward using tenk1_thous_tenthous on tenk1
+                             Index Cond: ((thousand = 33) AND (tenthous IS NOT NULL))
+(7 rows)
 
 select max(tenthous) from tenk1 where thousand = 33;
  max  
@@ -539,11 +567,16 @@ select max(tenthous) from tenk1 where thousand = 33;
 
 explain (costs off, nodes off)
   select min(tenthous) from tenk1 where thousand = 33;
-                    QUERY PLAN                    
---------------------------------------------------
- Aggregate
-   ->  Data Node Scan on "__REMOTE_GROUP_QUERY__"
-(2 rows)
+                                      QUERY PLAN                                      
+--------------------------------------------------------------------------------------
+ Result
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Remote Subquery Scan on all
+                 ->  Limit
+                       ->  Index Only Scan using tenk1_thous_tenthous on tenk1
+                             Index Cond: ((thousand = 33) AND (tenthous IS NOT NULL))
+(7 rows)
 
 select min(tenthous) from tenk1 where thousand = 33;
  min 
@@ -555,14 +588,19 @@ select min(tenthous) from tenk1 where thousand = 33;
 explain (costs off, nodes off)
   select f1, (select min(unique1) from tenk1 where unique1 > f1) AS gt
     from int4_tbl;
-                          QUERY PLAN                          
---------------------------------------------------------------
- Data Node Scan on int4_tbl "_REMOTE_TABLE_QUERY_"
-   SubPlan 1
-     ->  Aggregate
-           ->  Data Node Scan on tenk1 "_REMOTE_TABLE_QUERY_"
-                 Coordinator quals: (unique1 > int4_tbl.f1)
-(5 rows)
+                                                QUERY PLAN                                                 
+-----------------------------------------------------------------------------------------------------------
+ Remote Subquery Scan on all
+   ->  Seq Scan on int4_tbl
+         SubPlan 2
+           ->  Result
+                 InitPlan 1 (returns $1)
+                   ->  Limit
+                         ->  Remote Subquery Scan on all
+                               ->  Limit
+                                     ->  Index Only Scan using tenk1_unique1 on tenk1
+                                           Index Cond: ((unique1 IS NOT NULL) AND (unique1 > int4_tbl.f1))
+(10 rows)
 
 select f1, (select min(unique1) from tenk1 where unique1 > f1) AS gt
 from int4_tbl 
@@ -579,12 +617,17 @@ order by f1;
 -- check some cases that were handled incorrectly in 8.3.0
 explain (costs off, nodes off)
   select distinct max(unique2) from tenk1;
-                       QUERY PLAN                       
---------------------------------------------------------
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
  HashAggregate
-   ->  Aggregate
-         ->  Data Node Scan on "__REMOTE_GROUP_QUERY__"
-(3 rows)
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Remote Subquery Scan on all
+                 ->  Limit
+                       ->  Index Only Scan Backward using tenk1_unique2 on tenk1
+                             Index Cond: (unique2 IS NOT NULL)
+   ->  Result
+(8 rows)
 
 select distinct max(unique2) from tenk1;
  max  
@@ -594,13 +637,18 @@ select distinct max(unique2) from tenk1;
 
 explain (costs off, nodes off)
   select max(unique2) from tenk1 order by 1;
-                       QUERY PLAN                       
---------------------------------------------------------
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
  Sort
-   Sort Key: (max((max(tenk1.unique2))))
-   ->  Aggregate
-         ->  Data Node Scan on "__REMOTE_GROUP_QUERY__"
-(4 rows)
+   Sort Key: ($0)
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Remote Subquery Scan on all
+                 ->  Limit
+                       ->  Index Only Scan Backward using tenk1_unique2 on tenk1
+                             Index Cond: (unique2 IS NOT NULL)
+   ->  Result
+(9 rows)
 
 select max(unique2) from tenk1 order by 1;
  max  
@@ -610,13 +658,18 @@ select max(unique2) from tenk1 order by 1;
 
 explain (costs off, nodes off)
   select max(unique2) from tenk1 order by max(unique2);
-                       QUERY PLAN                       
---------------------------------------------------------
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
  Sort
-   Sort Key: (max((max(tenk1.unique2))))
-   ->  Aggregate
-         ->  Data Node Scan on "__REMOTE_GROUP_QUERY__"
-(4 rows)
+   Sort Key: ($0)
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Remote Subquery Scan on all
+                 ->  Limit
+                       ->  Index Only Scan Backward using tenk1_unique2 on tenk1
+                             Index Cond: (unique2 IS NOT NULL)
+   ->  Result
+(9 rows)
 
 select max(unique2) from tenk1 order by max(unique2);
  max  
@@ -626,13 +679,18 @@ select max(unique2) from tenk1 order by max(unique2);
 
 explain (costs off, nodes off)
   select max(unique2) from tenk1 order by max(unique2)+1;
-                       QUERY PLAN                       
---------------------------------------------------------
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
  Sort
-   Sort Key: ((max((max(tenk1.unique2))) + 1))
-   ->  Aggregate
-         ->  Data Node Scan on "__REMOTE_GROUP_QUERY__"
-(4 rows)
+   Sort Key: (($0 + 1))
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Remote Subquery Scan on all
+                 ->  Limit
+                       ->  Index Only Scan Backward using tenk1_unique2 on tenk1
+                             Index Cond: (unique2 IS NOT NULL)
+   ->  Result
+(9 rows)
 
 select max(unique2) from tenk1 order by max(unique2)+1;
  max  
@@ -642,13 +700,18 @@ select max(unique2) from tenk1 order by max(unique2)+1;
 
 explain (costs off, nodes off)
   select max(unique2), generate_series(1,3) as g from tenk1 order by g desc;
-                       QUERY PLAN                       
---------------------------------------------------------
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
  Sort
    Sort Key: (generate_series(1, 3))
-   ->  Aggregate
-         ->  Data Node Scan on "__REMOTE_GROUP_QUERY__"
-(4 rows)
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Remote Subquery Scan on all
+                 ->  Limit
+                       ->  Index Only Scan Backward using tenk1_unique2 on tenk1
+                             Index Cond: (unique2 IS NOT NULL)
+   ->  Result
+(9 rows)
 
 select max(unique2), generate_series(1,3) as g from tenk1 order by g desc;
  max  | g 
@@ -673,17 +736,45 @@ insert into minmaxtest2 values(15), (16);
 insert into minmaxtest3 values(17), (18);
 explain (costs off, nodes off)
   select min(f1), max(f1) from minmaxtest;
-                            QUERY PLAN                            
-------------------------------------------------------------------
+                      QUERY PLAN                      
+------------------------------------------------------
  Aggregate
    ->  Append
-         ->  Data Node Scan on minmaxtest "_REMOTE_TABLE_QUERY_"
-         ->  Data Node Scan on minmaxtest1 "_REMOTE_TABLE_QUERY_"
-         ->  Data Node Scan on minmaxtest2 "_REMOTE_TABLE_QUERY_"
-         ->  Data Node Scan on minmaxtest3 "_REMOTE_TABLE_QUERY_"
-(6 rows)
+         ->  Remote Subquery Scan on all
+               ->  Seq Scan on minmaxtest
+         ->  Remote Subquery Scan on all
+               ->  Seq Scan on minmaxtest1 minmaxtest
+         ->  Remote Subquery Scan on all
+               ->  Seq Scan on minmaxtest2 minmaxtest
+         ->  Remote Subquery Scan on all
+               ->  Seq Scan on minmaxtest3 minmaxtest
+(10 rows)
 
 select min(f1), max(f1) from minmaxtest;
+ min | max 
+-----+-----
+  11 |  18
+(1 row)
+
+-- DISTINCT doesn't do anything useful here, but it shouldn't fail
+explain (costs off)
+  select distinct min(f1), max(f1) from minmaxtest;
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ HashAggregate
+   ->  Aggregate
+         ->  Append
+               ->  Remote Subquery Scan on all (datanode_1,datanode_2)
+                     ->  Seq Scan on minmaxtest
+               ->  Remote Subquery Scan on all (datanode_1,datanode_2)
+                     ->  Seq Scan on minmaxtest1 minmaxtest
+               ->  Remote Subquery Scan on all (datanode_1,datanode_2)
+                     ->  Seq Scan on minmaxtest2 minmaxtest
+               ->  Remote Subquery Scan on all (datanode_1,datanode_2)
+                     ->  Seq Scan on minmaxtest3 minmaxtest
+(11 rows)
+
+select distinct min(f1), max(f1) from minmaxtest;
  min | max 
 -----+-----
   11 |  18
@@ -1012,36 +1103,36 @@ select string_agg(distinct f1::text, ',' order by f1::text) from varchar_tbl;  -
 
 -- string_agg bytea tests
 create table bytea_test_table(v bytea);
-select string_agg(v, '' order by v) from bytea_test_table;
+select string_agg(v, '') from bytea_test_table;
  string_agg 
 ------------
  
 (1 row)
 
 insert into bytea_test_table values(decode('ff','hex'));
-select string_agg(v, '' order by v) from bytea_test_table;
+select string_agg(v, '') from bytea_test_table;
  string_agg 
 ------------
  \xff
 (1 row)
 
 insert into bytea_test_table values(decode('aa','hex'));
-select string_agg(v, '' order by v) from bytea_test_table;
+select string_agg(v, '') from bytea_test_table;
  string_agg 
 ------------
- \xaaff
+ \xffaa
 (1 row)
 
-select string_agg(v, NULL order by v) from bytea_test_table;
+select string_agg(v, NULL) from bytea_test_table;
  string_agg 
 ------------
- \xaaff
+ \xffaa
 (1 row)
 
-select string_agg(v, decode('ee', 'hex') order by v) from bytea_test_table;
+select string_agg(v, decode('ee', 'hex')) from bytea_test_table;
  string_agg 
 ------------
- \xaaeeff
+ \xffeeaa
 (1 row)
 
 drop table bytea_test_table;

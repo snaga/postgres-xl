@@ -18,6 +18,9 @@
 <!## XC>
    <productname>Postgres-XC</productname>'s system catalogs are regular
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname>'s system catalogs are regular
+<!## end>
    tables.  You can drop and recreate the tables, add columns, insert
    and update values, and severely mess up your system that way.
    Normally, one should not change the system catalogs by hand, there
@@ -309,6 +312,20 @@
       <entry>Postgres-XC cluster node groups (Postgres-XC only)</entry>
      </row>
 <!## end>
+<!## XL>
+     <row>
+      <entry><link linkend="catalog-pgxc-class"><structname>pgxc_class</structname></link></entry>
+      <entry>replication or distribution information of tables (Postgres-XL only)</entry>
+     </row>
+     <row>
+      <entry><link linkend="catalog-pgxc-node"><structname>pgxc_node</structname></link></entry>
+      <entry>Postgres-XL cluster nodes (Postgres-XC only)</entry>
+     </row>
+     <row>
+      <entry><link linkend="catalog-pgxc-group"><structname>pgxc_group</structname></link></entry>
+      <entry>Postgres-XL cluster node groups (Postgres-XC only)</entry>
+     </row>
+<!## end>
     </tbody>
    </tgroup>
   </table>
@@ -337,7 +354,6 @@
    other information that is similar to ordinary functions.
   </para>
 
-&xconly;
   <table>
    <title><structname>pg_aggregate</> Columns</title>
 
@@ -371,6 +387,14 @@
       <entry>Collection function (Only for Postgres-XC></entry>
      </row>
 <!## end>
+<!## XL>
+     <row>
+      <entry><structfield>aggcollectfn</structfield></entry>
+      <entry><type>regproc</type></entry>
+      <entry><literal><link linkend="catalog-pg-proc"><structname>pg_proc</structname></link>.oid</literal></entry>
+      <entry>Collection function (Only for Postgres-XL>)</entry>
+     </row>
+<!## end>
      <row>
       <entry><structfield>aggfinalfn</structfield></entry>
       <entry><type>regproc</type></entry>
@@ -392,6 +416,9 @@
 <!## end>
 <!## XC>
       <entry>Data type of the aggregate function's internal transition and collection (state) data (Revised for Postgres-XC)</entry>
+<!## end>
+<!## XL>
+      <entry>Data type of the aggregate function's internal transition and collection (state) data (Revised for Postgres-XL)</entry>
 <!## end>
      </row>
      <row>
@@ -415,6 +442,19 @@
        field containing the initial value in its external string
        representation.  If this field is null, the collection state
        value starts out null. (Only for Postgres-XC)
+      </entry>
+     </row>
+<!## end>
+<!## XL>
+     <row>
+      <entry><structfield>agginitcollect</structfield></entry>
+      <entry><type>text</type></entry>
+      <entry></entry>
+      <entry>
+       The initial value of the collection state.  This is a text
+       field containing the initial value in its external string
+       representation.  If this field is null, the collection state
+       value starts out null. (Only for Postgres-XL)
       </entry>
      </row>
 <!## end>
@@ -6595,6 +6635,233 @@
   </indexterm>
 
 &xconly;
+  <para>
+   The catalog <structname>pgxc_group</structname> stores information
+   about cluster node group information, which is a list of cluster node
+   OIDs. Groups can be used as aliases.
+  </para>
+
+  <table>
+   <title><structname>pgxc_group</> Columns</title>
+
+   <tgroup cols="4">
+    <thead>
+     <row>
+      <entry>Name</entry>
+      <entry>Type</entry>
+      <entry>References</entry>
+      <entry>Description</entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry><structfield>group_name</structfield></entry>
+      <entry><type>name</type></entry>
+      <entry></entry>
+      <entry>Name of cluster node group</entry>
+     </row>
+
+     <row>
+      <entry><structfield>group_members</structfield></entry>
+      <entry><type>oidvector</type></entry>
+      <entry><literal><link linkend="catalog-pgxc-node"><structname>pgxc_node</structname></link>.oid</literal></entry>
+      <entry>List of node OIDs of the node group</entry>
+     </row>
+
+    </tbody>
+   </tgroup>
+  </table>
+ </sect1>
+<!## end>
+<!## XL>
+ <sect1 id="catalog-pgxc-class">
+  <title><structname>pgxc_class</structname></title>
+
+  <indexterm zone="catalog-pgxc-class">
+   <primary>pgxc_class</primary>
+  </indexterm>
+
+&xlonly;
+  <para>
+   The catalog <structname>pgxc_class</structname> stores information
+   whether each table is replicated or distributed, as well as
+   distribution method and the distribution column.
+  </para>
+
+  <table>
+   <title><structname>pgxc_class</> Columns</title>
+
+   <tgroup cols="4">
+    <thead>
+     <row>
+      <entry>Name</entry>
+      <entry>Type</entry>
+      <entry>References</entry>
+      <entry>Description</entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry><structfield>pcrelid</structfield></entry>
+      <entry><type>oid</type></entry>
+      <entry><link linkend="catalog-pg-class"><structname>pg_class</structname></link><literal>.oid</literal></entry>
+      <entry>OID of the table</entry>
+     </row>
+
+     <row>
+      <entry><structfield>pclocatortype</structfield></entry>
+      <entry><type>char</type></entry>
+      <entry></entry>
+      <entry>
+       Type of locator.
+      </entry>
+     </row>
+
+     <row>
+      <entry><structfield>pcattnum</structfield></entry>
+      <entry><type>int2</type></entry>
+      <entry></entry>
+      <entry>
+       Column number of used as distribution key.
+      </entry>
+     </row>
+
+     <row>
+      <entry><structfield>pchashalgorithm</structfield></entry>
+      <entry><type>int2</type></entry>
+      <entry></entry>
+      <entry>
+       Indicates hashing algorithm used to distribute the tuples.
+      </entry>
+     </row>
+
+     <row>
+      <entry><structfield>pchashbuckets</structfield></entry>
+      <entry><type>int2</type></entry>
+      <entry></entry>
+      <entry>
+       Indicates the number of hash buckets used to distribute duple.
+      </entry>
+     </row>
+
+     <row>
+      <entry><structfield>nodeoids</structfield></entry>
+      <entry><type>oidvector</type></entry>
+      <entry><literal><link linkend="catalog-pgxc-node"><structname>pgxc_node</structname></link>.oid</literal></entry>
+      <entry>
+       List of node OIDs where table is located.
+       This list is ordered by <literal><link linkend="catalog-pgxc-node"><structname>
+       pgxc_node</structname></link>.node_name</literal>. This list is then
+       indexed in information in user session cache and reused as a node target list
+       when doing SQL operations on cluster tables.
+      </entry>
+     </row>
+
+    </tbody>
+   </tgroup>
+  </table>
+ </sect1>
+
+ <sect1 id="catalog-pgxc-node">
+  <title><structname>pgxc_node</structname></title>
+
+  <indexterm zone="catalog-pgxc-node">
+   <primary>pgxc_node</primary>
+  </indexterm>
+
+&xlonly;
+  <para>
+   The catalog <structname>pgxc_node</structname> stores information
+   about cluster node information, such as connection information with
+   node port and host, node name, primary and preferred nodes.
+  </para>
+
+  <table>
+   <title><structname>pgxc_node</> Columns</title>
+
+   <tgroup cols="4">
+    <thead>
+     <row>
+      <entry>Name</entry>
+      <entry>Type</entry>
+      <entry>References</entry>
+      <entry>Description</entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry><structfield>node_name</structfield></entry>
+      <entry><type>name</type></entry>
+      <entry></entry>
+      <entry>Name of cluster node</entry>
+     </row>
+
+     <row>
+      <entry><structfield>node_type</structfield></entry>
+      <entry><type>char</type></entry>
+      <entry></entry>
+      <entry>Type of cluster node.
+       It is <literal>C</literal> for a Coordinator.
+       It is <literal>D</literal> for a Datanode.
+      </entry>
+     </row>
+
+     <row>
+      <entry><structfield>node_port</structfield></entry>
+      <entry><type>int4</type></entry>
+      <entry></entry>
+      <entry>Port number of cluster node</entry>
+     </row>
+
+     <row>
+      <entry><structfield>node_host</structfield></entry>
+      <entry><type>name</type></entry>
+      <entry></entry>
+      <entry>Host name or IP number of cluster node</entry>
+     </row>
+
+     <row>
+      <entry><structfield>nodeis_primary</structfield></entry>
+      <entry><type>bool</type></entry>
+      <entry></entry>
+      <entry>Defines if node is a primary node.
+       Only Datanode can be a primary node.
+      </entry>
+     </row>
+
+     <row>
+      <entry><structfield>nodeis_preferred</structfield></entry>
+      <entry><type>bool</type></entry>
+      <entry></entry>
+      <entry>Defines if node is a preferred node.
+       Only a Datanode can be a preferred node.
+      </entry>
+     </row>
+
+     <row>
+      <entry><structfield>node_id</structfield></entry>
+      <entry><type>int4</type></entry>
+      <entry></entry>
+      <entry>Integer node identifier of node.
+       It is generated when node is created.
+      </entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+ </sect1>
+
+ <sect1 id="catalog-pgxc-group">
+  <title><structname>pgxc_group</structname></title>
+
+  <indexterm zone="catalog-pgxc-group">
+   <primary>pgxc_group</primary>
+  </indexterm>
+
+&xlonly;
   <para>
    The catalog <structname>pgxc_group</structname> stores information
    about cluster node group information, which is a list of cluster node

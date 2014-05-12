@@ -91,14 +91,12 @@ FROM (SELECT $$a$$ || x AS b,
       FROM generate_series(1,2) x,
            generate_series(4,5) y) q;
 
--- Enforce use of COMMIT instead of 2PC for temporary objects
-SET enforce_two_phase_commit TO off;
 CREATE TEMP TABLE rows AS
 SELECT x, 'txt' || x as y
 FROM generate_series(1,3) AS x;
 
 SELECT row_to_json(q,true)
-FROM rows q order by x;
+FROM rows q;
 
 SELECT row_to_json(row((select array_agg(x) as d from generate_series(5,10) x)),false);
 

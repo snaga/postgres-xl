@@ -15,8 +15,15 @@
   Extensive facilities for searching through label trees are provided.
  </para>
 
-&xconly;
 <!## XC>
+&xconly;
+ <para>
+  Please note that a column of the type <type>ltree</> cannot be a
+  distribution column.
+ </para>
+<!## end>
+<!## XL>
+&xlonly;
  <para>
   Please note that a column of the type <type>ltree</> cannot be a
   distribution column.

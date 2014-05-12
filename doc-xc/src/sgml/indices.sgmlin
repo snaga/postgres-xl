@@ -24,6 +24,15 @@
     not performed in the current implementation.
    </para>
 <!## end>
+<!## XL>
+&xlonly;
+   <para>
+    Each index is maintained locally in Coordinator and Datanode
+    in <productname>Postgres-XL</>.
+    Cross validation of index entries among Coordinators and Datanodes is
+    not performed in the current implementation.
+   </para>
+<!## end>
 
 
  <sect1 id="indexes-intro">
@@ -108,6 +117,9 @@ CREATE INDEX test1_id_index ON test1 (id);
 <!## XC>
    <productname>Postgres-XC</productname> allows reads (<command>SELECT</command> statements) to occur
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> allows reads (<command>SELECT</command> statements) to occur
+<!## end>
    on the table in parallel with index creation, but writes (<command>INSERT</command>,
    <command>UPDATE</command>, <command>DELETE</command>) are blocked until the index build is finished.
    In production environments this is often unacceptable.
@@ -136,6 +148,9 @@ CREATE INDEX test1_id_index ON test1 (id);
 <!## XC>
    <productname>Postgres-XC</productname> provides several index types:
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> provides several index types:
+<!## end>
    B-tree, Hash, GiST and GIN.  Each index type uses a different
    algorithm that is best suited to different types of queries.
    By default, the <command>CREATE INDEX</command> command creates
@@ -158,6 +173,9 @@ CREATE INDEX test1_id_index ON test1 (id);
 <!## end>
 <!## XC>
    In particular, the <productname>Postgres-XC</productname> query planner
+<!## end>
+<!## XL>
+   In particular, the <productname>Postgres-XL</productname> query planner
 <!## end>
    will consider using a B-tree index whenever an indexed column is
    involved in a comparison using one of these operators:
@@ -247,6 +265,9 @@ CREATE INDEX <replaceable>name</replaceable> ON <replaceable>table</replaceable>
 <!## XC>
    <productname>Postgres-XC</productname> includes GiST operator classes
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> includes GiST operator classes
+<!## end>
    for several two-dimensional geometric data types, which support indexed
    queries using these operators:
 
@@ -303,6 +324,9 @@ SELECT * FROM places ORDER BY location <-> point '(101,456)' LIMIT 10;
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname> includes GIN operator classes
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> includes GIN operator classes
 <!## end>
    for one-dimensional arrays, which support indexed
    queries using these operators:
@@ -362,6 +386,9 @@ CREATE INDEX test2_mm_idx ON test2 (major, minor);
 <!## end>
 <!## XC>
    altered when building <productname>Postgres-XC</productname>; see the
+<!## end>
+<!## XL>
+   altered when building <productname>Postgres-XL</productname>; see the
 <!## end>
    file <filename>pg_config_manual.h</filename>.)
   </para>
@@ -439,6 +466,9 @@ CREATE INDEX test2_mm_idx ON test2 (major, minor);
 <!## end>
 <!## XC>
    supported by <productname>Postgres-XC</productname>, only B-tree
+<!## end>
+<!## XL>
+   supported by <productname>Postgres-XL</productname>, only B-tree
 <!## end>
    can produce sorted output &mdash; the other index types return
    matching rows in an unspecified, implementation-dependent order.
@@ -538,6 +568,9 @@ CREATE INDEX test3_desc_index ON test3 (id DESC NULLS LAST);
 <!## XC>
    <productname>Postgres-XC</> has the ability to combine multiple indexes
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</> has the ability to combine multiple indexes
+<!## end>
    (including multiple uses of the same index) to handle cases that cannot
    be implemented by single index scans.  The system can form <literal>AND</>
    and <literal>OR</> conditions across several index scans.  For example,
@@ -612,6 +645,14 @@ CREATE INDEX test3_desc_index ON test3 (id DESC NULLS LAST);
    tables, there's no such restriction.
   </para>
 <!## end>
+<!## XL>
+&xlonly;
+  <para>
+   In <productname>Postgres-XL</>, unique indexes on distributed tables
+   must contain the distribution column.  For replicated
+   tables, there's no such restriction.
+  </para>
+<!## end>
 &common;
   <para>
    Indexes can also be used to enforce uniqueness of a column's value,
@@ -635,6 +676,9 @@ CREATE UNIQUE INDEX <replaceable>name</replaceable> ON <replaceable>table</repla
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname> automatically creates a unique
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> automatically creates a unique
 <!## end>
    index when a unique constraint or primary key is defined for a table.
    The index covers the columns that make up the primary key or unique
@@ -875,6 +919,9 @@ SELECT * FROM orders WHERE order_nr = 3501;
 <!## XC>
    match.  <productname>Postgres-XC</productname> supports partial
 <!## end>
+<!## XL>
+   match.  <productname>Postgres-XL</productname> supports partial
+<!## end>
    indexes with arbitrary predicates, so long as only columns of the
    table being indexed are involved.  However, keep in mind that the
    predicate must match the conditions used in the queries that
@@ -887,6 +934,9 @@ SELECT * FROM orders WHERE order_nr = 3501;
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname> does not have a sophisticated
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> does not have a sophisticated
 <!## end>
    theorem prover that can recognize mathematically equivalent
    expressions that are written in different forms.  (Not
@@ -949,6 +999,9 @@ CREATE UNIQUE INDEX tests_success_constraint ON tests (subject, target)
 <!## XC>
    <productname>Postgres-XC</> makes reasonable choices about index
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</> makes reasonable choices about index
+<!## end>
    usage (e.g., it avoids them when retrieving common values, so the
    earlier example really only saves index size, it is not required to
    avoid index usage), and grossly incorrect plan choices are cause
@@ -965,6 +1018,9 @@ CREATE UNIQUE INDEX tests_success_constraint ON tests (subject, target)
 <!## end>
 <!## XC>
    <productname>Postgres-XC</> work.  In most cases, the advantage of a
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</> work.  In most cases, the advantage of a
 <!## end>
    partial index over a regular index will be minimal.
   </para>
@@ -1142,6 +1198,9 @@ CREATE INDEX test1c_content_y_index ON test1c (content COLLATE "y");
 <!## XC>
    Although indexes in <productname>Postgres-XC</> do not need
 <!## end>
+<!## XL>
+   Although indexes in <productname>Postgres-XL</> do not need
+<!## end>
    maintenance or tuning, it is still important to check
    which indexes are actually used by the real-life query workload.
    Examining index usage for an individual query is done with the
@@ -1253,6 +1312,9 @@ CREATE INDEX test1c_content_y_index ON test1c (content COLLATE "y");
 <!## end>
 <!## XC>
      <productname>Postgres-XC</> developers to examine the issue.
+<!## end>
+<!## XL>
+     <productname>Postgres-XL</> developers to examine the issue.
 <!## end>
     </para>
    </listitem>

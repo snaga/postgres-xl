@@ -2,9 +2,6 @@
 -- WINDOW FUNCTIONS
 --
 
--- Enforce use of COMMIT instead of 2PC for temporary objects
-SET enforce_two_phase_commit TO off;
-
 CREATE TEMPORARY TABLE empsalary (
     depname varchar,
     empno bigint,
@@ -149,6 +146,12 @@ select ten,
   rank() over (order by sum(unique1) + sum(unique2)) as rank
 from tenk1
 group by ten order by ten;
+
+-- window and aggregate with GROUP BY expression (9.2 bug)
+explain (costs off)
+select first_value(max(x)) over (), y
+  from (select unique1 as x, ten+four as y from tenk1) ss
+  group by y;
 
 -- test non-default frame specifications
 SELECT four, ten,

@@ -104,6 +104,9 @@ DROP TYPE box;
 <!## XC>
    option, which is a <productname>Postgres-XC</> extension inherited from <productname>PostgreSQL</>.
 <!## end>
+<!## XL>
+   option, which is a <productname>Postgres-XL</> extension inherited from <productname>PostgreSQL</>.
+<!## end>
    But note that much of the <command>CREATE TYPE</command> command
    and the data type extension mechanisms in
 <!## PG>
@@ -111,6 +114,9 @@ DROP TYPE box;
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname> differ from the SQL standard.
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> differ from the SQL standard.
 <!## end>
   </para>
  </refsect1>

@@ -299,7 +299,7 @@ IdentifySystem(void)
 			 GetSystemIdentifier());
 	snprintf(tli, sizeof(tli), "%u", ThisTimeLineID);
 
-	logptr = am_cascading_walsender ? GetStandbyFlushRecPtr() : GetInsertRecPtr();
+	logptr = am_cascading_walsender ? GetStandbyFlushRecPtr(NULL) : GetInsertRecPtr();
 
 	snprintf(xpos, sizeof(xpos), "%X/%X",
 			 logptr.xlogid, logptr.xrecoff);
@@ -834,7 +834,7 @@ WalSndLoop(void)
 
 			if (pq_is_send_pending())
 				wakeEvents |= WL_SOCKET_WRITEABLE;
-			else
+			else if (MyWalSnd->sendKeepalive)
 			{
 				WalSndKeepalive(output_message);
 				/* Try to flush pending output to the client */
@@ -1144,7 +1144,31 @@ XLogSend(char *msgbuf, bool *caughtup)
 	 * subsequently crashes and restarts, slaves must not have applied any WAL
 	 * that gets lost on the master.
 	 */
-	SendRqstPtr = am_cascading_walsender ? GetStandbyFlushRecPtr() : GetFlushRecPtr();
+	if (am_cascading_walsender)
+	{
+		TimeLineID	currentTargetTLI;
+		SendRqstPtr = GetStandbyFlushRecPtr(&currentTargetTLI);
+
+		/*
+		 * If the recovery target timeline changed, bail out. It's a bit
+		 * unfortunate that we have to just disconnect, but there is no way
+		 * to tell the client that the timeline changed. We also don't know
+		 * exactly where the switch happened, so we cannot safely try to send
+		 * up to the switchover point before disconnecting.
+		 */
+		if (currentTargetTLI != ThisTimeLineID)
+		{
+			if (!walsender_ready_to_stop)
+				ereport(LOG,
+						(errmsg("terminating walsender process to force cascaded standby "
+								"to update timeline and reconnect")));
+			walsender_ready_to_stop = true;
+			*caughtup = true;
+			return;
+		}
+	}
+	else
+		SendRqstPtr = GetFlushRecPtr();
 
 	/* Quick exit if nothing to do */
 	if (XLByteLE(SendRqstPtr, sentPtr))
@@ -1370,7 +1394,7 @@ WalSndSignals(void)
 	pqsignal(SIGINT, SIG_IGN);	/* not used */
 	pqsignal(SIGTERM, WalSndShutdownHandler);	/* request shutdown */
 	pqsignal(SIGQUIT, WalSndQuickDieHandler);	/* hard crash time */
-	pqsignal(SIGALRM, SIG_IGN);
+	pqsignal(SIGALRM, handle_sig_alarm);
 	pqsignal(SIGPIPE, SIG_IGN);
 	pqsignal(SIGUSR1, WalSndXLogSendHandler);	/* request WAL sending */
 	pqsignal(SIGUSR2, WalSndLastCycleHandler);	/* request a last cycle and
@@ -1530,12 +1554,19 @@ pg_stat_get_wal_senders(PG_FUNCTION_ARGS)
 
 		if (walsnd->pid != 0)
 		{
-			sync_priority[i] = walsnd->sync_standby_priority;
+			/*
+			 * Treat a standby such as a pg_basebackup background process
+			 * which always returns an invalid flush location, as an
+			 * asynchronous standby.
+			 */
+			sync_priority[i] = XLByteEQ(walsnd->flush, InvalidXLogRecPtr) ?
+				0 : walsnd->sync_standby_priority;
 
 			if (walsnd->state == WALSNDSTATE_STREAMING &&
 				walsnd->sync_standby_priority > 0 &&
 				(priority == 0 ||
-				 priority > walsnd->sync_standby_priority))
+				 priority > walsnd->sync_standby_priority) &&
+				!XLByteEQ(walsnd->flush, InvalidXLogRecPtr))
 			{
 				priority = walsnd->sync_standby_priority;
 				sync_standby = i;

@@ -12,6 +12,10 @@
   This is a list of acronyms commonly used in the <productname>Postgres-XC</>
   documentation and in discussions about <productname>Postgres-XC</>.
 <!## end>
+<!## XL>
+  This is a list of acronyms commonly used in the <productname>Postgres-XL</>
+  documentation and in discussions about <productname>Postgres-XL</>.
+<!## end>
 
   <variablelist>
 
@@ -197,6 +201,9 @@
 <!## XC>
       <link linkend="ecpg">Embedded C for Postgres-XC</link>
 <!## end>
+<!## XL>
+      <link linkend="ecpg">Embedded C for Postgres-XL</link>
+<!## end>
      </para>
     </listitem>
    </varlistentry>
@@ -286,6 +293,16 @@
     </listitem>
    </varlistentry>
 <!## end>
+<!## XL>
+   <varlistentry>
+    <term><acronym>GTM</acronym></term>
+    <listitem>
+     <para>
+      Global Transaction Manager
+     </para>
+    </listitem>
+   </varlistentry>
+<!## end>
 
    <varlistentry>
     <term><acronym>GSSAPI</acronym></term>
@@ -309,11 +326,24 @@
 <!## XC>
       the <productname>Postgres-XC</> subsystem that handles server configuration
 <!## end>
+<!## XL>
+      the <productname>Postgres-XL</> subsystem that handles server configuration
+<!## end>
      </para>
     </listitem>
    </varlistentry>
 
 <!## XC>
+   <varlistentry>
+    <term><acronym>GXID</acronym></term>
+    <listitem>
+     <para>
+      Global Transaction Identifier
+     </para>
+    </listitem>
+   </varlistentry>
+<!## end>
+<!## XL>
    <varlistentry>
     <term><acronym>GXID</acronym></term>
     <listitem>
@@ -520,6 +550,9 @@
 <!## XC>
       <link linkend="postgres"><productname>Postgres-XC</></link>
 <!## end>
+<!## XL>
+      <link linkend="postgres"><productname>Postgres-XL</></link>
+<!## end>
      </para>
     </listitem>
    </varlistentry>
@@ -533,6 +566,9 @@
 <!## end>
 <!## XC>
       <link linkend="extend-pgxs"><productname>Postgres-XC</> Extension System</link>
+<!## end>
+<!## XL>
+      <link linkend="extend-pgxs"><productname>Postgres-XL</> Extension System</link>
 <!## end>
      </para>
     </listitem>

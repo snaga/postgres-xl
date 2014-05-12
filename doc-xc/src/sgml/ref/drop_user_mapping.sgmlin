@@ -35,6 +35,14 @@ DROP USER MAPPING [ IF EXISTS ] FOR { <replaceable class="parameter">user_name</
    in the future releases.
   </para>
 <!## end>
+<!## XL>
+&xlonly;
+  <para>
+   <command>USER MAPPING</> has not been supported
+   by <productname>Postgres-XL</> yet.  This command may be supported
+   in the future releases.
+  </para>
+<!## end>
 <!## PG>
 &pgonly;
 

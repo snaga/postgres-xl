@@ -36,8 +36,16 @@ SAVEPOINT <replaceable>savepoint_name</replaceable>
 <!## XC>
 &xconly;
   <para>
+   <command>SAVEPOINT</> is not yet supported
+   by <productname>Postgres-XC</>.  This command may be supported
+   in the future releases.
+  </para>
+<!## end>
+<!## XL>
+&xlonly;
+  <para>
    <command>SAVEPOINT</> has not been supported
-   by <productname>Postgres-XC</> yet.  This command may be supported
+   by <productname>Postgres-XL</> yet.  This command may be supported
    in the future releases.
   </para>
 <!## end>

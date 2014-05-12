@@ -4,6 +4,11 @@
  *	  postgres transaction access method support code
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
@@ -173,6 +178,10 @@ extern TransactionId GetNewTransactionId(bool isSubXact, bool *timestamp_receive
 #else
 extern TransactionId GetNewTransactionId(bool isSubXact);
 #endif /* PGXC */
+#ifdef XCP
+extern bool TransactionIdIsCurrentGlobalTransactionId(TransactionId xid);
+extern TransactionId GetNextTransactionId(void);
+#endif
 extern TransactionId ReadNewTransactionId(void);
 extern void SetTransactionIdLimit(TransactionId oldest_datfrozenxid,
 					  Oid oldest_datoid);

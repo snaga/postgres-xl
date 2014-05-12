@@ -5,6 +5,11 @@
  *	  and related modules.
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -16,6 +21,9 @@
 #define EXECDESC_H
 
 #include "nodes/execnodes.h"
+#ifdef XCP
+#include "pgxc/squeue.h"
+#endif
 #include "tcop/dest.h"
 
 
@@ -47,6 +55,14 @@ typedef struct QueryDesc
 	TupleDesc	tupDesc;		/* descriptor for result tuples */
 	EState	   *estate;			/* executor's query-wide state */
 	PlanState  *planstate;		/* tree of per-plan-node state */
+
+#ifdef XCP
+	SharedQueue squeue; 		/* the shared memory queue to sent data to other
+								 * nodes */
+	int 		myindex;		/* -1 if locally executed subplan is producing
+								 * data and distribute via squeue. Otherwise
+								 * get local data from squeue */
+#endif
 
 	/* This is always set NULL by the core system, but plugins can change it */
 	struct Instrumentation *totaltime;	/* total time spent in ExecutorRun */

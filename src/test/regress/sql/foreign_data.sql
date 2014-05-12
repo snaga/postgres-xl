@@ -384,12 +384,12 @@ SELECT has_foreign_data_wrapper_privilege('regress_test_role',
     (SELECT oid FROM pg_foreign_data_wrapper WHERE fdwname='foo'), 'USAGE');
 SELECT has_foreign_data_wrapper_privilege('regress_test_role', 'foo', 'USAGE');
 SELECT has_foreign_data_wrapper_privilege(
-    (SELECT oid FROM pg_roles WHERE rolname='regress_test_role'),
+    (SELECT oid FROM pg_catalog.pg_roles WHERE rolname='regress_test_role'),
     (SELECT oid FROM pg_foreign_data_wrapper WHERE fdwname='foo'), 'USAGE');
 SELECT has_foreign_data_wrapper_privilege(
     (SELECT oid FROM pg_foreign_data_wrapper WHERE fdwname='foo'), 'USAGE');
 SELECT has_foreign_data_wrapper_privilege(
-    (SELECT oid FROM pg_roles WHERE rolname='regress_test_role'), 'foo', 'USAGE');
+    (SELECT oid FROM pg_catalog.pg_roles WHERE rolname='regress_test_role'), 'foo', 'USAGE');
 SELECT has_foreign_data_wrapper_privilege('foo', 'USAGE');
 GRANT USAGE ON FOREIGN DATA WRAPPER foo TO regress_test_role;
 SELECT has_foreign_data_wrapper_privilege('regress_test_role', 'foo', 'USAGE');
@@ -399,12 +399,12 @@ SELECT has_server_privilege('regress_test_role',
     (SELECT oid FROM pg_foreign_server WHERE srvname='s8'), 'USAGE');
 SELECT has_server_privilege('regress_test_role', 's8', 'USAGE');
 SELECT has_server_privilege(
-    (SELECT oid FROM pg_roles WHERE rolname='regress_test_role'),
+    (SELECT oid FROM pg_catalog.pg_roles WHERE rolname='regress_test_role'),
     (SELECT oid FROM pg_foreign_server WHERE srvname='s8'), 'USAGE');
 SELECT has_server_privilege(
     (SELECT oid FROM pg_foreign_server WHERE srvname='s8'), 'USAGE');
 SELECT has_server_privilege(
-    (SELECT oid FROM pg_roles WHERE rolname='regress_test_role'), 's8', 'USAGE');
+    (SELECT oid FROM pg_catalog.pg_roles WHERE rolname='regress_test_role'), 's8', 'USAGE');
 SELECT has_server_privilege('s8', 'USAGE');
 GRANT USAGE ON FOREIGN SERVER s8 TO regress_test_role;
 SELECT has_server_privilege('regress_test_role', 's8', 'USAGE');

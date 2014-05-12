@@ -280,6 +280,9 @@ REVOKE admins FROM joe;
 <!## XC>
     is required according to the standard, but <productname>Postgres-XC</>
 <!## end>
+<!## XL>
+    is required according to the standard, but <productname>Postgres-XL</>
+<!## end>
     assumes <literal>RESTRICT</literal> by default.
    </para>
  </refsect1>

@@ -104,6 +104,9 @@ DROP INDEX title_idx;
 <!## XC>
    <productname>Postgres-XC</productname> language extension.  There
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> language extension.  There
+<!## end>
    are no provisions for indexes in the SQL standard.
   </para>
  </refsect1>

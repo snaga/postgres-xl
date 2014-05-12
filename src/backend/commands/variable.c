@@ -4,6 +4,11 @@
  *		Routines for handling specialized SET variables.
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -20,6 +25,9 @@
 
 #include "access/xact.h"
 #include "catalog/pg_authid.h"
+#ifdef XCP
+#include "catalog/pgxc_node.h"
+#endif
 #include "commands/variable.h"
 #include "miscadmin.h"
 #include "utils/acl.h"
@@ -533,11 +541,16 @@ show_log_timezone(void)
  * read-only may be changed to read-write only when in a top-level transaction
  * that has not yet taken an initial snapshot.	Can't do it in a hot standby
  * slave, either.
+ *
+ * If we are not in a transaction at all, just allow the change; it means
+ * nothing since XactReadOnly will be reset by the next StartTransaction().
+ * The IsTransactionState() test protects us against trying to check
+ * RecoveryInProgress() in contexts where shared memory is not accessible.
  */
 bool
 check_transaction_read_only(bool *newval, void **extra, GucSource source)
 {
-	if (*newval == false && XactReadOnly)
+	if (*newval == false && XactReadOnly && IsTransactionState())
 	{
 		/* Can't go to r/w mode inside a r/o transaction */
 		if (IsSubTransaction())
@@ -556,6 +569,7 @@ check_transaction_read_only(bool *newval, void **extra, GucSource source)
 		/* Can't go to r/w mode while recovery is still active */
 		if (RecoveryInProgress())
 		{
+			GUC_check_errcode(ERRCODE_FEATURE_NOT_SUPPORTED);
 			GUC_check_errmsg("cannot set transaction read-write mode during recovery");
 			return false;
 		}
@@ -569,6 +583,8 @@ check_transaction_read_only(bool *newval, void **extra, GucSource source)
  *
  * We allow idempotent changes at any time, but otherwise this can only be
  * changed in a toplevel transaction that has not yet taken a snapshot.
+ *
+ * As in check_transaction_read_only, allow it if not inside a transaction.
  */
 bool
 check_XactIsoLevel(char **newval, void **extra, GucSource source)
@@ -605,7 +621,7 @@ check_XactIsoLevel(char **newval, void **extra, GucSource source)
 	else
 		return false;
 
-	if (newXactIsoLevel != XactIsoLevel)
+	if (newXactIsoLevel != XactIsoLevel && IsTransactionState())
 	{
 		if (FirstSnapshotSet)
 		{
@@ -623,6 +639,7 @@ check_XactIsoLevel(char **newval, void **extra, GucSource source)
 		/* Can't go to serializable mode while recovery is still active */
 		if (newXactIsoLevel == XACT_SERIALIZABLE && RecoveryInProgress())
 		{
+			GUC_check_errcode(ERRCODE_FEATURE_NOT_SUPPORTED);
 			GUC_check_errmsg("cannot use serializable mode in a hot standby");
 			GUC_check_errhint("You can use REPEATABLE READ instead.");
 			return false;
@@ -888,6 +905,126 @@ assign_session_authorization(const char *newval, void *extra)
 
 	SetSessionAuthorization(myextra->roleid, myextra->is_superuser);
 }
+
+
+#ifdef XCP
+
+/*
+ * SET GLOBAL SESSION
+ */
+
+typedef struct
+{
+	/* This is the "extra" state for GLOBAL SESSION */
+	Oid			coordid;
+	int			coordpid;
+} global_session_extra;
+
+
+bool
+check_global_session(char **newval, void **extra, GucSource source)
+{
+	HeapTuple	coordTup;
+	Oid			coordid;
+	char	   *separatorPos;
+	int 		coordpid;
+	global_session_extra *myextra;
+
+	/* Do nothing for the boot_val default of NULL */
+	if (*newval == NULL)
+		return true;
+
+	if (strcmp(*newval, "none") == 0)
+	{
+		/* hardwired translation */
+		coordid = InvalidOid;
+		coordpid = 0;
+	}
+	else
+	{
+		if (!IsTransactionState())
+		{
+			/*
+			 * Can't do catalog lookups, so fail.  The result of this is that
+			 * global_session cannot be set in postgresql.conf, which seems
+			 * like a good thing anyway, so we don't work hard to avoid it.
+			 */
+			return false;
+		}
+
+		/*
+		 * Get pointer on '_' character separating coordinator name from pid in the
+		 * global session identifier
+		 */
+		separatorPos = strrchr(*newval, '_');
+		if (separatorPos == NULL)
+		{
+			GUC_check_errmsg("malformed Global Session identifier: \"%s\"", *newval);
+			return false;
+		}
+
+		/*
+		 * The pid is written immediately after the separator
+		 */
+		coordpid = atoi(separatorPos + 1);
+		if (coordpid <= 0)
+		{
+			GUC_check_errmsg("malformed Global Session identifier: \"%s\"", *newval);
+			return false;
+		}
+
+
+		/*
+		 * Temporary truncate the Global Session identifier to extract session name
+		 */
+		*separatorPos = '\0';
+		/* Look up the nodename */
+		coordTup = SearchSysCache1(PGXCNODENAME, PointerGetDatum(*newval));
+		if (!HeapTupleIsValid(coordTup))
+		{
+			*separatorPos = '_';
+			GUC_check_errmsg("node \"%s\" does not exist", *newval);
+			return false;
+		}
+
+		if (((Form_pgxc_node) GETSTRUCT(coordTup))->node_type != PGXC_NODE_COORDINATOR)
+		{
+			ReleaseSysCache(coordTup);
+			*separatorPos = '_';
+			GUC_check_errmsg("node \"%s\" is not a coordinator", *newval);
+			return false;
+		}
+
+		coordid = HeapTupleGetOid(coordTup);
+
+		*separatorPos = '_';
+		ReleaseSysCache(coordTup);
+	}
+
+	/* Set up "extra" struct for assign_session_authorization to use */
+	myextra = (global_session_extra *) malloc(sizeof(global_session_extra));
+	if (!myextra)
+		return false;
+	myextra->coordid = coordid;
+	myextra->coordpid = coordpid;
+	*extra = (void *) myextra;
+
+	return true;
+}
+
+
+void
+assign_global_session(const char *newval, void *extra)
+{
+	global_session_extra *myextra = (global_session_extra *) extra;
+
+	/* Do nothing for the boot_val default of NULL */
+	if (!myextra)
+		return;
+
+	SetGlobalSession(myextra->coordid, myextra->coordpid);
+}
+#endif
 
 
 /*

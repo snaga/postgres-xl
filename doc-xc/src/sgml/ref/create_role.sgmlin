@@ -57,6 +57,9 @@ CREATE ROLE <replaceable class="PARAMETER">name</replaceable> [ [ WITH ] <replac
 <!## XC>
    <productname>Postgres-XC</productname> database cluster.  A role is
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> database cluster.  A role is
+<!## end>
    an entity that can own database objects and have database privileges;
    a role can be considered a <quote>user</>, a <quote>group</>, or both
    depending on how it is used.  Refer to
@@ -372,6 +375,9 @@ CREATE ROLE <replaceable class="PARAMETER">name</replaceable> [ [ WITH ] <replac
 <!## XC>
    compatibility: in prior releases of <productname>Postgres-XC</productname>,
 <!## end>
+<!## XL>
+   compatibility: in prior releases of <productname>Postgres-XL</productname>,
+<!## end>
    users always had access to all privileges of groups they were members of.
    However, <literal>NOINHERIT</> provides a closer match to the semantics
    specified in the SQL standard.
@@ -396,6 +402,9 @@ CREATE ROLE <replaceable class="PARAMETER">name</replaceable> [ [ WITH ] <replac
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname> includes a program <xref
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> includes a program <xref
 <!## end>
    linkend="APP-CREATEUSER"> that has
    the same functionality as <command>CREATE ROLE</command> (in fact,
@@ -476,6 +485,9 @@ CREATE ROLE <replaceable class="PARAMETER">name</> [ WITH ADMIN <replaceable cla
 <!## XC>
    <productname>Postgres-XC</productname> extensions.
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> extensions.
+<!## end>
   </para>
 
   <para>
@@ -487,6 +499,9 @@ CREATE ROLE <replaceable class="PARAMETER">name</> [ WITH ADMIN <replaceable cla
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname> we have chosen to unify
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> we have chosen to unify
 <!## end>
    users and roles into a single kind of entity.  Roles therefore
    have many more optional attributes than they do in the standard.

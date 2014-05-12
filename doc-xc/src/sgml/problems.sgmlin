@@ -3,7 +3,6 @@
 <sect1 id="bug-reporting">
  <title>Bug Reporting Guidelines</title>
 
-&xconly;
  <para>
 <!## PG>
   When you find a bug in <productname>PostgreSQL</productname> we want to
@@ -14,11 +13,21 @@
   will work on every platform under every circumstance.
 <!## end>
 <!## XC>
+&xconly;
   When you find a bug in <productname>Postgres-XC</productname> we want to
   hear about it. Your bug reports play an important part in making
   <productname>Postgres-XC</productname> more reliable because even the utmost
   care cannot guarantee that every part of
   <productname>Postgres-XC</productname> 
+  will work on every platform under every circumstance.
+<!## end>
+<!## XL>
+&xlonly;
+  When you find a bug in <productname>Postgres-XL</productname> we want to
+  hear about it. Your bug reports play an important part in making
+  <productname>Postgres-XL</productname> more reliable because even the utmost
+  care cannot guarantee that every part of
+  <productname>Postgres-XL</productname> 
   will work on every platform under every circumstance.
 <!## end>
  </para>
@@ -41,7 +50,6 @@
 
  <sect2>
   <title>Identifying Bugs</title>
-&xconly;
   <para>
    Before you report a bug, please read and re-read the
    documentation to verify that you can really do whatever it is you are
@@ -91,6 +99,10 @@
       <productname>Postgres-XC</productname> fails to compile, build, or
       install according to the instructions on supported platforms.
 <!## end>
+<!## XL>
+      <productname>Postgres-XL</productname> fails to compile, build, or
+      install according to the instructions on supported platforms.
+<!## end>
      </para>
     </listitem>
    </itemizedlist>
@@ -118,7 +130,6 @@
  <sect2>
   <title>What to Report</title>
 
-&xconly;
   <para>
    The most important thing to remember about bug reporting is to state all
    the facts and only facts. Do not speculate what you think went wrong, what
@@ -245,6 +256,9 @@
 <!## XC>
       The <productname>Postgres-XC</productname> version. You can run the command
 <!## end>
+<!## XL>
+      The <productname>Postgres-XL</productname> version. You can run the command
+<!## end>
       <literal>SELECT version();</literal> to
       find out the version of the server you are connected to.  Most executable
       programs also support a <option>--version</option> option; at least
@@ -278,6 +292,16 @@
       require more than we can provide, consider acquiring a
       commercial support contract.
 <!## end>
+<!## XL>
+      If your version is older than &version; we will almost certainly
+      tell you to upgrade. There are many bug fixes and improvements
+      in each new release, so it is quite possible that a bug you have
+      encountered in an older release of <productname>Postgres-XL</>
+      has already been fixed. We can only provide limited support for
+      sites using older releases of <productname>Postgres-XL</>; if you
+      require more than we can provide, consider acquiring a
+      commercial support contract.
+<!## end>
      </para>
      <para>
      </para>
@@ -306,6 +330,12 @@
    that outlines some more tips on reporting bugs.
 <!## end>
 <!## XC>
+   Do not be afraid if your bug report becomes rather lengthy. That is a fact of life.
+   It is better to report everything the first time than us having to squeeze the
+   facts out of you. On the other hand, if your input files are huge, it is
+   fair to ask first whether somebody is interested in looking into it.
+<!## end>
+<!## XL>
    Do not be afraid if your bug report becomes rather lengthy. That is a fact of life.
    It is better to report everything the first time than us having to squeeze the
    facts out of you. On the other hand, if your input files are huge, it is
@@ -354,13 +384,30 @@
    about whether the problem is on the client or server side.
   </para>
 <!## end>
+<!## XL>
+  <para>
+   When writing a bug report, please avoid confusing terminology.
+   The software package in total is called <quote>Postgres-XL</quote>.
+                                                            If you
+   are specifically talking about the backend server, mention that, do not
+   just say <quote>Postgres-XL crashes</quote>.  
+   <quote>Postgres-XL</> consists of several separate component.   Please
+   write which component crashes.
+   A crash of a single
+   backend server process is quite different from crash of the parent
+   <quote>postgres</> process; please don't say <quote>the server
+   crashed</> when you mean a single backend process went down, nor vice versa.
+   Also, client programs such as the interactive frontend <quote><application>psql</application></quote>
+   are completely separate from the backend.  Please try to be specific
+   about whether the problem is on the client or server side.
+  </para>
+<!## end>
 
  </sect2>
 
  <sect2>
   <title>Where to Report Bugs</title>
 
-&xconly;
   <para>
 <!## PG>
    In general, send bug reports to the bug report mailing list at
@@ -369,10 +416,22 @@
    message, perhaps parts of the error message.
 <!## end>
 <!## XC>
+&xconly;
    In general, send bug reports to the bug report mailing list.
   <footnote>
    <para>
-   <email>postgres-xc-bugs@lists.sourceforge.net</email>
+   <email>postgres-xl-bugs@lists.sourceforge.net</email>
+   </para>
+   </footnote>
+   You are requested to use a descriptive subject for your email
+   message, perhaps parts of the error message.
+<!## end>
+<!## XL>
+&xlonly;
+   In general, send bug reports to the bug report mailing list.
+  <footnote>
+   <para>
+   <email>postgres-xl-bugs@lists.sourceforge.net</email>
    </para>
    </footnote>
    You are requested to use a descriptive subject for your email
@@ -414,7 +473,18 @@
    Do not send bug reports to any of the user mailing lists.
    <footnote>
     <para>
-     <email>postgres-xc-general@lists.sourceforge.net</email>
+     <email>postgres-xl-general@lists.sourceforge.net</email>
+    </para>
+   </footnote>
+   These mailing lists are for answering
+   user questions, and their subscribers normally do not wish to receive
+   bug reports. More importantly, they are unlikely to fix them.
+<!## end>
+<!## XL>
+   Do not send bug reports to any of the user mailing lists.
+   <footnote>
+    <para>
+     <email>postgres-xl-general@lists.sourceforge.net</email>
     </para>
    </footnote>
    These mailing lists are for answering
@@ -448,7 +518,18 @@
    is the documentation mailing list.
    <footnote>
     <para>
-     <email>postgres-xc-general@lists.sourceforge.net</email>
+     <email>postgres-xl-general@lists.sourceforge.net</email>
+    </para>
+   </footnote>
+   Please be specific about what part of the documentation you are unhappy
+   with.
+<!## end>
+<!## XL>
+   If you have a problem with the documentation, the best place to report it
+   is the documentation mailing list.
+   <footnote>
+    <para>
+     <email>postgres-xl-general@lists.sourceforge.net</email>
     </para>
    </footnote>
    Please be specific about what part of the documentation you are unhappy
@@ -468,11 +549,22 @@
    send mail to the developers mailing list,
    <footnote>
     <para>
-     <email>postgres-xc-developers@lists.sourceforge.net</email>
+     <email>postgres-xl-developers@lists.sourceforge.net</email>
     </para>
    </footnote>
    so we (and you) can work on
    porting <productname>Postgres-XC</productname> to your platform.
+<!## end>
+<!## XL>
+   If your bug is a portability problem on a non-supported platform,
+   send mail to the developers mailing list,
+   <footnote>
+    <para>
+     <email>postgres-xl-developers@lists.sourceforge.net</email>
+    </para>
+   </footnote>
+   so we (and you) can work on
+   porting <productname>Postgres-XL</productname> to your platform.
 <!## end>
   </para>
 
@@ -490,6 +582,14 @@
     with the single word <literal>help</> in the body of the message.
 <!## end>
 <!## XC>
+    Due to the unfortunate amount of spam going around, all of the above
+    email addresses are closed mailing lists. That is, you need to be
+    subscribed to a list to be allowed to post on it.  (You need not be
+    subscribed to use the bug-report web form, however.)
+    If you would like to send mail but do not want to receive list traffic,
+    you can subscribe and set your subscription option to <literal>nomail</>.
+<!## end>
+<!## XL>
     Due to the unfortunate amount of spam going around, all of the above
     email addresses are closed mailing lists. That is, you need to be
     subscribed to a list to be allowed to post on it.  (You need not be

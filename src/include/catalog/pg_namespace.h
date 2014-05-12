@@ -5,6 +5,11 @@
  *	  along with the relation's initial contents.
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -75,6 +80,11 @@ DESCR("reserved schema for TOAST tables");
 DATA(insert OID = 2200 ( "public" PGUID _null_ ));
 DESCR("standard public schema");
 #define PG_PUBLIC_NAMESPACE 2200
+#ifdef XCP
+DATA(insert OID = 9 ( "storm_catalog" PGUID _null_ ));
+DESCR("StormDB catalog schema");
+#define STORM_CATALOG_NAMESPACE 9
+#endif
 
 
 /*

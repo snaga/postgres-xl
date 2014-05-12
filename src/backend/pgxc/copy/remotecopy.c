@@ -3,6 +3,11 @@
  * remotecopy.c
  *		Implements an extension of COPY command for remote management
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2011, PostgreSQL Global Development Group
  * Portions Copyright (c) 2010-2012, Postgres-XC Development Group
  *
@@ -16,13 +21,16 @@
 #include "postgres.h"
 #include "miscadmin.h"
 #include "lib/stringinfo.h"
-#include "optimizer/pgxcship.h"
 #include "optimizer/planner.h"
 #include "pgxc/pgxcnode.h"
+#include "pgxc/postgresql_fdw.h"
 #include "pgxc/remotecopy.h"
 #include "rewrite/rewriteHandler.h"
 #include "utils/builtins.h"
 #include "utils/rel.h"
+#ifdef PGXC
+#include "utils/lsyscache.h"
+#endif
 
 static void RemoteCopy_QuoteStr(StringInfo query_buf, char *value);
 
@@ -37,7 +45,11 @@ RemoteCopy_GetRelationLoc(RemoteCopyData *state,
 						  Relation rel,
                           List *attnums)
 {
+#ifndef XCP
+	ExecNodes  *exec_nodes = makeNode(ExecNodes);
+#else
 	ExecNodes  *exec_nodes = NULL;
+#endif
 
 	/*
 	 * If target table does not exists on nodes (e.g. system table)
@@ -46,6 +58,23 @@ RemoteCopy_GetRelationLoc(RemoteCopyData *state,
 	 */
 	state->rel_loc = GetRelationLocInfo(RelationGetRelid(rel));
 
+#ifdef XCP
+	if (state->rel_loc &&
+			AttributeNumberIsValid(state->rel_loc->partAttrNum))
+	{
+		TupleDesc tdesc;
+		Form_pg_attribute pattr;
+		/* determine distribution column data type */
+		tdesc = RelationGetDescr(rel);
+
+		pattr = tdesc->attrs[state->rel_loc->partAttrNum - 1];
+		state->dist_type = pattr->atttypid;
+	}
+	else
+		state->dist_type = InvalidOid;
+
+	state->locator = NULL;
+#else
 	if (state->rel_loc)
 	{
 		/*
@@ -55,7 +84,7 @@ RemoteCopy_GetRelationLoc(RemoteCopyData *state,
 		 */
 		exec_nodes = makeNode(ExecNodes);
 		if (!state->is_from &&
-			IsRelationReplicated(state->rel_loc))
+			IsLocatorReplicated(state->rel_loc->locatorType))
 			exec_nodes->nodeList = GetPreferredReplicationNode(state->rel_loc->nodeList);
 		else
 		{
@@ -96,6 +125,7 @@ RemoteCopy_GetRelationLoc(RemoteCopyData *state,
 
 	/* Then save obtained result */
 	state->exec_nodes = exec_nodes;
+#endif
 }
 
 /*
@@ -119,8 +149,18 @@ RemoteCopy_BuildStatement(RemoteCopyData *state,
 	 */
 	initStringInfo(&state->query_buf);
 	appendStringInfoString(&state->query_buf, "COPY ");
-	appendStringInfo(&state->query_buf, "%s",
-					 quote_identifier(RelationGetRelationName(rel)));
+
+	/*
+	 * The table name should be qualified, unless the table is a temporary table
+	 */
+	if (rel->rd_backend == MyBackendId)
+		appendStringInfo(&state->query_buf, "%s",
+						 quote_identifier(RelationGetRelationName(rel)));
+	else
+		appendStringInfo(&state->query_buf, "%s",
+						 quote_qualified_identifier(
+								get_namespace_name(RelationGetNamespace(rel)),
+								RelationGetRelationName(rel)));
 
 	if (attnamelist)
 	{
@@ -308,15 +348,18 @@ FreeRemoteCopyData(RemoteCopyData *state)
 	/* Leave if nothing */
 	if (state == NULL)
 		return;
-
+#ifdef XCP
+	if (state->locator)
+		freeLocator(state->locator);
+#else
 	if (state->connections)
 		pfree(state->connections);
+#endif
 	if (state->query_buf.data)
 		pfree(state->query_buf.data);
 	FreeRelationLocInfo(state->rel_loc);
 	pfree(state);
 }
-
 
 #define APPENDSOFAR(query_buf, start, current) \
 	if (current > start) \

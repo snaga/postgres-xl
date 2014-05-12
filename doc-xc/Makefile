@@ -1,6 +1,6 @@
 #----------------------------------------------------------------------------
 #
-# Postgres-XC documentation top-level makefile
+# PostgreSQL documentation top-level makefile
 #
 # Copyright (c) 1994, Regents of the University of California
 #
@@ -8,7 +8,7 @@
 #
 #----------------------------------------------------------------------------
 
-subdir = doc-xc
+subdir = doc
 top_builddir = ..
 include $(top_builddir)/src/Makefile.global
 

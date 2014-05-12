@@ -26,6 +26,9 @@
 <!## XC>
   server manual.
 <!## end>
+<!## XL>
+  server manual.
+<!## end>
  </para>
 
  <para>
@@ -207,6 +210,9 @@ pg_standby <optional> <replaceable>option</> ... </optional> <replaceable>archiv
 <!## XC>
         recommended.
 <!## end>
+<!## XL>
+        recommended.
+<!## end>
        </para>
       </listitem>
      </varlistentry>
@@ -236,6 +242,9 @@ pg_standby <optional> <replaceable>option</> ... </optional> <replaceable>archiv
         consult <xref linkend="warm-standby"> for discussion.
 <!## end>
 <!## XC>
+        The default setting is not necessarily recommended.
+<!## end>
+<!## XL>
         The default setting is not necessarily recommended.
 <!## end>
        </para>

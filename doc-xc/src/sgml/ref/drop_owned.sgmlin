@@ -110,6 +110,9 @@ DROP OWNED BY <replaceable class="PARAMETER">name</replaceable> [, ...] [ CASCAD
 <!## XC>
    <productname>Postgres-XC</productname> extension.
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> extension.
+<!## end>
   </para>
  </refsect1>
 

@@ -4,6 +4,11 @@
  *	  support for communication destinations
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -33,6 +38,9 @@
 #include "commands/copy.h"
 #include "commands/createas.h"
 #include "executor/functions.h"
+#ifdef XCP
+#include "executor/producerReceiver.h"
+#endif
 #include "executor/tstoreReceiver.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
@@ -125,6 +133,11 @@ CreateDestReceiver(CommandDest dest)
 
 		case DestSQLFunction:
 			return CreateSQLFunctionDestReceiver();
+
+#ifdef XCP
+		case DestProducer:
+			return CreateProducerDestReceiver();
+#endif
 	}
 
 	/* should never get here */

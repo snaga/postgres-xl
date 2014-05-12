@@ -2,6 +2,11 @@
  *
  * proxy_main.c
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
@@ -177,7 +182,7 @@ static void SetDataDir(void);
 static void ChangeToDataDir(void);
 static void checkDataDir(void);
 static void DeleteLockFile(const char *filename);
-static void RegisterProxy(bool is_reconnect, bool is_retry);
+static void RegisterProxy(bool is_reconnect);
 static void UnregisterProxy(void);
 static GTM_Conn *ConnectGTM(void);
 static void ReleaseCmdBackup(GTMProxy_CommandInfo *cmdinfo);
@@ -260,7 +265,7 @@ BaseInit()
 	Recovery_SaveRegisterFileName(GTMProxyDataDir);
 
 	/* Register Proxy on GTM */
-	RegisterProxy(false, false);
+	RegisterProxy(false);
 
 	DebugFileOpen();
 
@@ -395,7 +400,7 @@ GTMProxy_SigleHandler(int signal)
 {
 	int ii;
 
-	elog(LOG, "Received signal %d\n", signal);
+	elog(DEBUG1, "Received signal %d\n", signal);
 
 	switch (signal)
 	{
@@ -414,11 +419,11 @@ GTMProxy_SigleHandler(int signal)
 			 * The mask is set to block signals.  They're blocked until all the
 			 * threads reconnect to the new GTM.
 			 */
-			elog(LOG, "Accepted SIGUSR1\n");
+			elog(DEBUG1, "Accepted SIGUSR1\n");
 			if (MyThreadID != TopMostThreadID)
 			{
 
-				elog(LOG, "Not on main thread, proxy the signal to the main thread.");
+				elog(DEBUG1, "Not on main thread, proxy the signal to the main thread.");
 
 				pthread_kill(TopMostThreadID, SIGUSR1);
 				return;
@@ -428,18 +433,18 @@ GTMProxy_SigleHandler(int signal)
 			 */
 			PG_SETMASK(&BlockSig);
 
-			elog(LOG, "I'm the main thread. Accepted SIGUSR1.");
+			elog(DEBUG1, "I'm the main thread. Accepted SIGUSR1.");
 
 			/*
 			 * Set Reconnect Info
 			 */
 			if (!ReadyToReconnect)
 			{
-				elog(LOG, "SIGUSR1 detected, but not ready to handle this. Ignored");
+				elog(DEBUG1, "SIGUSR1 detected, but not ready to handle this. Ignored");
 				PG_SETMASK(&UnBlockSig);
 				return;
 			}
-			elog(LOG, "SIGUSR1 detected. Set reconnect info for each worker thread");
+			elog(DEBUG1, "SIGUSR1 detected. Set reconnect info for each worker thread");
 			if (GTMProxy_ReadReconnectInfo() != 0)
 			{
 				/* Failed to read reconnect information from reconnect data file */
@@ -477,7 +482,7 @@ GTMProxy_SigleHandler(int signal)
 			for (ii = 0; ii < GTMProxyWorkerThreads; ii++)
 				pthread_kill(Proxy_ThreadInfo[ii]->thr_id, SIGUSR2);
 
-			elog(LOG, "SIGUSR2 issued to all the worker threads.");
+			elog(DEBUG1, "SIGUSR2 issued to all the worker threads.");
 			PG_SETMASK(&UnBlockSig);
 
 			/*
@@ -490,13 +495,13 @@ GTMProxy_SigleHandler(int signal)
 			/* Main thread has nothing to do twith this signal and should not receive this. */
 			PG_SETMASK(&BlockSig);
 
-			elog(LOG, "Detected SIGUSR2, thread:%ld", MyThreadID);
+			elog(DEBUG1, "Detected SIGUSR2, thread:%ld", MyThreadID);
 
 			if (MyThreadID == TopMostThreadID)
 			{
 				/* This should not be reached. Just in case. */
 
-				elog(LOG, "SIGUSR2 received by the main thread.  Ignoring.");
+				elog(DEBUG1, "SIGUSR2 received by the main thread.  Ignoring.");
 
 				PG_SETMASK(&UnBlockSig);
 				return;
@@ -549,7 +554,6 @@ help(const char *progname)
 	printf(_("  -n count		Number of worker threads\n"));
 	printf(_("  -D directory	GTM proxy working directory\n"));
 	printf(_("  -l filename		GTM proxy log file name \n"));
-	printf(_("  -V, --version	output version information, then exit\n"));
 	printf(_("  --help          show this help, then exit\n"));
 }
 
@@ -588,11 +592,6 @@ main(int argc, char *argv[])
 		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
 		{
 			help(argv[0]);
-			exit(0);
-		}
-		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
-		{
-			puts("gtm_proxy (Postgres-XC) " PGXC_VERSION);
 			exit(0);
 		}
 	}
@@ -961,9 +960,9 @@ ServerLoop(void)
 			 * the resource but this may not happen so many times.
 			 */
 
-			elog(LOG, "Main Thread reconnecting to new GTM.");
-			RegisterProxy(TRUE, false);
-			elog(LOG, "Reconnected.");
+			elog(DEBUG1, "Main Thread reconnecting to new GTM.");
+			RegisterProxy(TRUE);
+			elog(DEBUG1, "Reconnected.");
 
 			/* If it is done, then release the lock for worker threads. */
 			GTM_RWLockRelease(&ReconnectControlLock);
@@ -1015,7 +1014,7 @@ ServerLoop(void)
 		{
 			if (errno != EINTR && errno != EWOULDBLOCK)
 			{
-				ereport(LOG,
+				ereport(DEBUG1,
 						(EACCES,
 						 errmsg("select() failed in postmaster: %m")));
 				return STATUS_ERROR;
@@ -1094,6 +1093,7 @@ GTMProxy_ThreadMain(void *argp)
 	int ii, nrfds;
 	char gtm_connect_string[1024];
 	int	first_turn = TRUE;	/* Used only to set longjmp target at the first turn of thread loop */
+	GTMProxy_CommandData cmd_data = {};
 
 	elog(DEBUG3, "Starting the connection helper thread");
 
@@ -1348,7 +1348,6 @@ setjmp_again:
 			/*
 			 * Correction of pending works.
 			 */
-			thrinfo->thr_processed_commands = gtm_NIL;
 			for (ii = 0; ii < MSG_TYPE_COUNT; ii++)
 			{
 				thrinfo->thr_pending_commands[ii] = gtm_NIL;
@@ -1387,7 +1386,8 @@ setjmp_again:
 				 * to the remove_list and cleanup at the end of this round of
 				 * cleanup.
 				 */
-				GTMProxy_HandleDisconnect(thrinfo->thr_conn, thrinfo->thr_gtm_conn);
+				GTMProxy_CommandPending(thrinfo->thr_conn,
+							MSG_BACKEND_DISCONNECT, cmd_data);
 				continue;
 			}
 
@@ -1421,7 +1421,8 @@ setjmp_again:
 						 * to the server to quickly find the backend connection
 						 * while processing proxied messages.
 						 */
-						GTMProxy_HandleDisconnect(thrinfo->thr_conn, thrinfo->thr_gtm_conn);
+						GTMProxy_CommandPending(thrinfo->thr_conn,
+												MSG_BACKEND_DISCONNECT, cmd_data);
 						break;
 					default:
 						/*
@@ -1565,6 +1566,9 @@ ProcessCommand(GTMProxy_ConnectionInfo *conninfo, GTM_Conn *gtm_conn,
 	{
 		case MSG_NODE_REGISTER:
 		case MSG_NODE_UNREGISTER:
+#ifdef XCP
+		case MSG_REGISTER_SESSION:
+#endif
 			ProcessPGXCNodeCommand(conninfo, gtm_conn, mtype, input_message);
 			break;
 
@@ -1587,6 +1591,7 @@ ProcessCommand(GTMProxy_ConnectionInfo *conninfo, GTM_Conn *gtm_conn,
 			break;
 
 		case MSG_SEQUENCE_INIT:
+		case MSG_SEQUENCE_GET_CURRENT:
 		case MSG_SEQUENCE_GET_NEXT:
 		case MSG_SEQUENCE_GET_LAST:
 		case MSG_SEQUENCE_SET_VAL:
@@ -1882,8 +1887,12 @@ ProcessResponse(GTMProxy_ThreadInfo *thrinfo, GTMProxy_CommandInfo *cmdinfo,
 		case MSG_TXN_GET_GID_DATA:
 		case MSG_NODE_REGISTER:
 		case MSG_NODE_UNREGISTER:
+#ifdef XCP
+		case MSG_REGISTER_SESSION:
+#endif
 		case MSG_SNAPSHOT_GXID_GET:
 		case MSG_SEQUENCE_INIT:
+		case MSG_SEQUENCE_GET_CURRENT:
 		case MSG_SEQUENCE_GET_NEXT:
 		case MSG_SEQUENCE_GET_LAST:
 		case MSG_SEQUENCE_SET_VAL:
@@ -2160,6 +2169,16 @@ ProcessPGXCNodeCommand(GTMProxy_ConnectionInfo *conninfo, GTM_Conn *gtm_conn,
 			/* Unregistering has to be saved in a place where it can be seen by all the threads */
 			oldContext = MemoryContextSwitchTo(TopMostMemoryContext);
 
+#ifdef XCP
+			/*
+			 * Unregister node. Ignore any error here, otherwise we enter
+			 * endless loop trying to execute command again and again
+			 */
+			Recovery_PGXCNodeUnregister(cmd_data.cd_reg.type,
+										cmd_data.cd_reg.nodename,
+										false,
+										conninfo->con_port->sock);
+#else
 			/* Unregister Node also on Proxy */
 			if (Recovery_PGXCNodeUnregister(cmd_data.cd_reg.type,
 								cmd_data.cd_reg.nodename,
@@ -2170,12 +2189,17 @@ ProcessPGXCNodeCommand(GTMProxy_ConnectionInfo *conninfo, GTM_Conn *gtm_conn,
 						(EINVAL,
 						 errmsg("Failed to Unregister node")));
 			}
-
+#endif
 			MemoryContextSwitchTo(oldContext);
 
 			GTMProxy_ProxyPGXCNodeCommand(conninfo, gtm_conn, mtype, cmd_data);
 			break;
 		}
+#ifdef XCP
+		case MSG_REGISTER_SESSION:
+			GTMProxy_ProxyCommand(conninfo, gtm_conn, mtype, message);
+			break;
+#endif
 		default:
 			Assert(0);			/* Shouldn't come here.. Keep compiler quiet */
 	}
@@ -2439,6 +2463,10 @@ GTMProxy_CommandPending(GTMProxy_ConnectionInfo *conninfo, GTM_MessageType mtype
 	GTMProxy_CommandInfo *cmdinfo;
 	GTMProxy_ThreadInfo *thrinfo = GetMyThreadInfo;
 
+#ifdef XCP
+	MemoryContext oldContext = MemoryContextSwitchTo(TopMemoryContext);
+#endif
+
 	/*
 	 * Add the message to the pending command list
 	 */
@@ -2448,6 +2476,10 @@ GTMProxy_CommandPending(GTMProxy_ConnectionInfo *conninfo, GTM_MessageType mtype
 	cmdinfo->ci_res_index = 0;
 	cmdinfo->ci_data = cmd_data;
 	thrinfo->thr_pending_commands[mtype] = gtm_lappend(thrinfo->thr_pending_commands[mtype], cmdinfo);
+
+#ifdef XCP
+	MemoryContextSwitchTo(oldContext);
+#endif
 
 	return;
 }
@@ -2529,7 +2561,8 @@ GTMProxy_HandleDisconnect(GTMProxy_ConnectionInfo *conninfo, GTM_Conn *gtm_conn)
 	/* Mark node as disconnected if it is a postmaster backend */
 	Recovery_PGXCNodeDisconnect(conninfo->con_port);
 
-	 /* Start the message. */
+	proxyhdr.ph_conid = conninfo->con_id;
+	/* Start the message. */
 	if (gtmpqPutMsgStart('C', true, gtm_conn) ||
 		gtmpqPutnchar((char *)&proxyhdr, sizeof (GTM_ProxyMsgHeader), gtm_conn) ||
 		gtmpqPutInt(MSG_BACKEND_DISCONNECT, sizeof (GTM_MessageType), gtm_conn) ||
@@ -2559,8 +2592,6 @@ GTMProxy_HandleDisconnect(GTMProxy_ConnectionInfo *conninfo, GTM_Conn *gtm_conn)
 	ConnFree(conninfo->con_port);
 	conninfo->con_port = NULL;
 
-	proxyhdr.ph_conid = conninfo->con_id;
-
 	return;
 }
 
@@ -2580,7 +2611,9 @@ GTMProxy_ProcessPendingCommands(GTMProxy_ThreadInfo *thrinfo)
 	{
 		int res_index = 0;
 
-		if (gtm_list_length(thrinfo->thr_pending_commands[ii]) == 0)
+		/* We process backend disconnects last! */
+		if (ii == MSG_BACKEND_DISCONNECT ||
+				gtm_list_length(thrinfo->thr_pending_commands[ii]) == 0)
 			continue;
 
 		/*
@@ -2755,7 +2788,15 @@ GTMProxy_ProcessPendingCommands(GTMProxy_ThreadInfo *thrinfo)
 			default:
 				elog(ERROR, "This message type (%d) can not be grouped together", ii);
 		}
-
+	}
+	/* Process backend disconnect messages now */
+	gtm_foreach (elem, thrinfo->thr_pending_commands[MSG_BACKEND_DISCONNECT])
+	{
+		ereport(COMMERROR,
+				(EPROTO,
+				 errmsg("cleaning up client disconnection")));
+		cmdinfo = (GTMProxy_CommandInfo *)gtm_lfirst(elem);
+		GTMProxy_HandleDisconnect(cmdinfo->ci_conn, gtm_conn);
 	}
 }
 
@@ -3151,7 +3192,7 @@ failed:
  * NewGTMServerPortNumber.
  */
 static void
-RegisterProxy(bool is_reconnect, bool is_retry)
+RegisterProxy(bool is_reconnect)
 {
 	GTM_PGXCNodeType type = GTM_NODE_GTM_PROXY;
 	GTM_PGXCNodePort port = (GTM_PGXCNodePort) GTMProxyPortNumber;
@@ -3236,14 +3277,7 @@ RegisterProxy(bool is_reconnect, bool is_retry)
 	return;
 
 failed:
-	if (!is_retry)
-	{
-		elog(NOTICE, "could not register Proxy on GTM. Trying to unregister myself and then retry.");
-		UnregisterProxy();
-		return RegisterProxy(is_reconnect, true);
-	}
-	else
-		elog(ERROR, "can not register Proxy on GTM");
+	elog(ERROR, "can not register Proxy on GTM");
 }
 
 static GTM_Conn*
@@ -3299,26 +3333,18 @@ workerThreadReconnectToGTM(void)
 	PG_SETMASK(&UnBlockSig);
 
 	/* Disconnect the current connection and re-connect to the new GTM */
-	/*
-	 * Because some error is expected, it is harmful to close GTM connection in
-	 * normal way.   Instead, just close the socket to save kernel resource.
-	 *
-	 * This is error recovery and we should be very careful what structure is
-	 * available.
-	 */
 	oldContext = MemoryContextSwitchTo(TopMostMemoryContext);
 
-	if (GetMyThreadInfo && GetMyThreadInfo->thr_gtm_conn && GetMyThreadInfo->thr_gtm_conn->sock != -1)
-		StreamClose(GetMyThreadInfo->thr_gtm_conn->sock);
-
+	if (GetMyThreadInfo->thr_gtm_conn)
+		GTMPQfinish(GetMyThreadInfo->thr_gtm_conn);
 	sprintf(gtm_connect_string, "host=%s port=%d node_name=%s remote_type=%d",
 			GTMServerHost, GTMServerPortNumber, GTMProxyNodeName, GTM_NODE_GTM_PROXY);
-	elog(LOG, "Worker thread connecting to %s", gtm_connect_string);
+	elog(DEBUG1, "Worker thread connecting to %s", gtm_connect_string);
 	GetMyThreadInfo->thr_gtm_conn = PQconnectGTM(gtm_connect_string);
 
 	if (GetMyThreadInfo->thr_gtm_conn == NULL)
 		elog(FATAL, "Worker thread GTM connection failed.");
-	elog(LOG, "Worker thread connection done.");
+	elog(DEBUG1, "Worker thread connection done.");
 
 	MemoryContextSwitchTo(oldContext);
 

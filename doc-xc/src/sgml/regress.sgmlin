@@ -19,6 +19,15 @@
    users.
   </para>
 <!## end>
+<!## XL>
+&xlonly;
+  <para>
+   Current version of <productname>Postgres-XL</productname> doesn't
+   support the regression test to run after building but before
+   installation.  You can use each test manually but it is left to
+   users.
+  </para>
+<!## end>
 
 <!## PG>
   <para>
@@ -36,6 +45,15 @@
 &xconly;
   <para>
    Current version of <productname>Postgres-XC</productname> doesn't
+   support the regression test to run after building but before
+   installation.  You can use each test manually but it is left to
+   users.
+  </para>
+<!## end>
+<!## XL>
+&xlonly;
+  <para>
+   Current version of <productname>Postgres-XL</productname> doesn't
    support the regression test to run after building but before
    installation.  You can use each test manually but it is left to
    users.
@@ -293,6 +311,15 @@ gmake check EXTRA_TESTS=collate.linux.utf8 LANG=en_US.utf8
    users.
   </para>
 <!## end>
+<!## XL>
+&xlonly;
+  <para>
+   Current version of <productname>Postgres-XL</productname> doesn't
+   support the regression test to run after building but before
+   installation.  You can use each test manually but it is left to
+   users.
+  </para>
+<!## end>
 
 <!## PG>
    <para>
@@ -517,6 +544,15 @@ diff results/random.out expected/random.out
    users.
   </para>
 <!## end>
+<!## XL>
+&xlonly;
+  <para>
+   Current version of <productname>Postgres-XL</productname> doesn't
+   support the regression test to run after building but before
+   installation.  You can use each test manually but it is left to
+   users.
+  </para>
+<!## end>
 
 <!## PG>
    <para>
@@ -618,6 +654,15 @@ float8:out:i.86-.*-openbsd=float8-small-is-zero.out
 &xconly;
   <para>
    Current version of <productname>Postgres-XC</productname> doesn't
+   support the regression test to run after building but before
+   installation.  You can use each test manually but it is left to
+   users.
+  </para>
+<!## end>
+<!## XL>
+&xlonly;
+  <para>
+   Current version of <productname>Postgres-XL</productname> doesn't
    support the regression test to run after building but before
    installation.  You can use each test manually but it is left to
    users.

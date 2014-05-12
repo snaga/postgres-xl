@@ -4,6 +4,11 @@
  *	  prototypes for pquery.c.
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -28,7 +33,7 @@ extern List *FetchPortalTargetList(Portal portal);
 extern List *FetchStatementTargetList(Node *stmt);
 
 extern void PortalStart(Portal portal, ParamListInfo params,
-			int eflags, bool use_active_snapshot);
+			int eflags, Snapshot snapshot);
 
 extern void PortalSetResultFormat(Portal portal, int nFormats,
 					  int16 *formats);
@@ -41,5 +46,10 @@ extern long PortalRunFetch(Portal portal,
 			   FetchDirection fdirection,
 			   long count,
 			   DestReceiver *dest);
+
+#ifdef XCP
+extern int	AdvanceProducingPortal(Portal portal, bool can_wait);
+extern void cleanupClosedProducers(void);
+#endif
 
 #endif   /* PQUERY_H */

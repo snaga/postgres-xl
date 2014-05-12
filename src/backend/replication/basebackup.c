@@ -18,6 +18,7 @@
 #include <time.h>
 
 #include "access/xlog_internal.h"		/* for pg_start/stop_backup */
+#include "catalog/catalog.h"
 #include "catalog/pg_type.h"
 #include "lib/stringinfo.h"
 #include "libpq/libpq.h"
@@ -44,8 +45,9 @@ typedef struct
 
 
 static int64 sendDir(char *path, int basepathlen, bool sizeonly);
-static void sendFile(char *readfilename, char *tarfilename,
-		 struct stat * statbuf);
+static int64 sendTablespace(char *path, bool sizeonly);
+static bool sendFile(char *readfilename, char *tarfilename,
+		 struct stat * statbuf, bool missing_ok);
 static void sendFileWithContent(const char *filename, const char *content);
 static void _tarWriteHeader(const char *filename, const char *linktarget,
 				struct stat * statbuf);
@@ -138,7 +140,7 @@ perform_base_backup(basebackup_options *opt, DIR *tblspcdir)
 			ti = palloc(sizeof(tablespaceinfo));
 			ti->oid = pstrdup(de->d_name);
 			ti->path = pstrdup(linkpath);
-			ti->size = opt->progress ? sendDir(linkpath, strlen(linkpath), true) : -1;
+			ti->size = opt->progress ? sendTablespace(fullpath, true) : -1;
 			tablespaces = lappend(tablespaces, ti);
 #else
 
@@ -173,29 +175,26 @@ perform_base_backup(basebackup_options *opt, DIR *tblspcdir)
 			pq_sendint(&buf, 0, 2);		/* natts */
 			pq_endmessage(&buf);
 
-			/* In the main tar, include the backup_label first. */
-			if (ti->path == NULL)
-				sendFileWithContent(BACKUP_LABEL_FILE, labelfile);
-
-			sendDir(ti->path == NULL ? "." : ti->path,
-					ti->path == NULL ? 1 : strlen(ti->path),
-					false);
-
-			/* In the main tar, include pg_control last. */
 			if (ti->path == NULL)
 			{
 				struct stat statbuf;
 
+				/* In the main tar, include the backup_label first... */
+				sendFileWithContent(BACKUP_LABEL_FILE, labelfile);
+
+				/* ... then the bulk of the files ... */
+				sendDir(".", 1, false);
+
+				/* ... and pg_control after everything else. */
 				if (lstat(XLOG_CONTROL_FILE, &statbuf) != 0)
-				{
 					ereport(ERROR,
 							(errcode_for_file_access(),
 							 errmsg("could not stat control file \"%s\": %m",
 									XLOG_CONTROL_FILE)));
-				}
-
-				sendFile(XLOG_CONTROL_FILE, XLOG_CONTROL_FILE, &statbuf);
+				sendFile(XLOG_CONTROL_FILE, XLOG_CONTROL_FILE, &statbuf, false);
 			}
+			else
+				sendTablespace(ti->path, false);
 
 			/*
 			 * If we're including WAL, and this is the main data directory we
@@ -571,8 +570,51 @@ sendFileWithContent(const char *filename, const char *content)
 }
 
 /*
+ * Include the tablespace directory pointed to by 'path' in the output tar
+ * stream.  If 'sizeonly' is true, we just calculate a total length and return
+ * it, without actually sending anything.
+ */
+static int64
+sendTablespace(char *path, bool sizeonly)
+{
+	int64		size;
+	char		pathbuf[MAXPGPATH];
+	struct stat statbuf;
+
+	/*
+	 * 'path' points to the tablespace location, but we only want to include
+	 * the version directory in it that belongs to us.
+	 */
+	snprintf(pathbuf, sizeof(pathbuf), "%s/%s", path,
+			 TABLESPACE_VERSION_DIRECTORY);
+
+	/*
+	 * Store a directory entry in the tar file so we get the permissions right.
+	 */
+	if (lstat(pathbuf, &statbuf) != 0)
+	{
+		if (errno != ENOENT)
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("could not stat file or directory \"%s\": %m",
+							pathbuf)));
+
+		/* If the tablespace went away while scanning, it's no error. */
+		return 0;
+	}
+	if (!sizeonly)
+		_tarWriteHeader(TABLESPACE_VERSION_DIRECTORY, NULL, &statbuf);
+	size = 512;		/* Size of the header just added */
+
+	/* Send all the files in the tablespace version directory */
+	size += sendDir(pathbuf, strlen(path), sizeonly);
+
+	return size;
+}
+
+/*
  * Include all files from the given directory in the output tar stream. If
- * 'sizeonly' is true, we just calculate a total length and return ig, without
+ * 'sizeonly' is true, we just calculate a total length and return it, without
  * actually sending anything.
  */
 static int64
@@ -715,11 +757,18 @@ sendDir(char *path, int basepathlen, bool sizeonly)
 		}
 		else if (S_ISREG(statbuf.st_mode))
 		{
-			/* Add size, rounded up to 512byte block */
-			size += ((statbuf.st_size + 511) & ~511);
+			bool sent = false;
+
 			if (!sizeonly)
-				sendFile(pathbuf, pathbuf + basepathlen + 1, &statbuf);
-			size += 512;		/* Size of the header of the file */
+				sent = sendFile(pathbuf, pathbuf + basepathlen + 1, &statbuf,
+								true);
+
+			if (sent || sizeonly)
+			{
+				/* Add size, rounded up to 512byte block */
+				size += ((statbuf.st_size + 511) & ~511);
+				size += 512;		/* Size of the header of the file */
+			}
 		}
 		else
 			ereport(WARNING,
@@ -767,16 +816,29 @@ _tarChecksum(char *header)
 	int			i,
 				sum;
 
-	sum = 0;
+	/*
+	 * Per POSIX, the checksum is the simple sum of all bytes in the header,
+	 * treating the bytes as unsigned, and treating the checksum field (at
+	 * offset 148) as though it contained 8 spaces.
+	 */
+	sum = 8 * ' ';				/* presumed value for checksum field */
 	for (i = 0; i < 512; i++)
 		if (i < 148 || i >= 156)
 			sum += 0xFF & header[i];
-	return sum + 256;			/* Assume 8 blanks in checksum field */
+	return sum;
 }
 
-/* Given the member, write the TAR header & send the file */
-static void
-sendFile(char *readfilename, char *tarfilename, struct stat * statbuf)
+/*
+ * Given the member, write the TAR header & send the file.
+ *
+ * If 'missing_ok' is true, will not throw an error if the file is not found.
+ *
+ * Returns true if the file was successfully sent, false if 'missing_ok',
+ * and the file did not exist.
+ */
+static bool
+sendFile(char *readfilename, char *tarfilename, struct stat *statbuf,
+		 bool missing_ok)
 {
 	FILE	   *fp;
 	char		buf[TAR_SEND_SIZE];
@@ -786,9 +848,13 @@ sendFile(char *readfilename, char *tarfilename, struct stat * statbuf)
 
 	fp = AllocateFile(readfilename, "rb");
 	if (fp == NULL)
+	{
+		if (errno == ENOENT && missing_ok)
+			return false;
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("could not open file \"%s\": %m", readfilename)));
+	}
 
 	/*
 	 * Some compilers will throw a warning knowing this test can never be true
@@ -842,6 +908,8 @@ sendFile(char *readfilename, char *tarfilename, struct stat * statbuf)
 	}
 
 	FreeFile(fp);
+
+	return true;
 }
 
 
@@ -850,9 +918,13 @@ _tarWriteHeader(const char *filename, const char *linktarget,
 				struct stat * statbuf)
 {
 	char		h[512];
-	int			lastSum = 0;
-	int			sum;
 
+	/*
+	 * Note: most of the fields in a tar header are not supposed to be
+	 * null-terminated.  We use sprintf, which will write a null after the
+	 * required bytes; that null goes into the first byte of the next field.
+	 * This is okay as long as we fill the fields in order.
+	 */
 	memset(h, 0, sizeof(h));
 
 	/* Name 100 */
@@ -864,8 +936,11 @@ _tarWriteHeader(const char *filename, const char *linktarget,
 		 * indicated in the tar format by adding a slash at the end of the
 		 * name, the same as for regular directories.
 		 */
-		h[strlen(filename)] = '/';
-		h[strlen(filename) + 1] = '\0';
+		int			flen = strlen(filename);
+
+		flen = Min(flen, 99);
+		h[flen] = '/';
+		h[flen + 1] = '\0';
 	}
 
 	/* Mode 8 */
@@ -875,9 +950,9 @@ _tarWriteHeader(const char *filename, const char *linktarget,
 	sprintf(&h[108], "%07o ", statbuf->st_uid);
 
 	/* Group 8 */
-	sprintf(&h[117], "%07o ", statbuf->st_gid);
+	sprintf(&h[116], "%07o ", statbuf->st_gid);
 
-	/* File size 12 - 11 digits, 1 space, no NUL */
+	/* File size 12 - 11 digits, 1 space; use print_val for 64 bit support */
 	if (linktarget != NULL || S_ISDIR(statbuf->st_mode))
 		/* Symbolic link or directory has size zero */
 		print_val(&h[124], 0, 8, 11);
@@ -888,13 +963,13 @@ _tarWriteHeader(const char *filename, const char *linktarget,
 	/* Mod Time 12 */
 	sprintf(&h[136], "%011o ", (int) statbuf->st_mtime);
 
-	/* Checksum 8 */
-	sprintf(&h[148], "%06o ", lastSum);
+	/* Checksum 8 cannot be calculated until we've filled all other fields */
 
 	if (linktarget != NULL)
 	{
 		/* Type - Symbolic link */
 		sprintf(&h[156], "2");
+		/* Link Name 100 */
 		sprintf(&h[157], "%.99s", linktarget);
 	}
 	else if (S_ISDIR(statbuf->st_mode))
@@ -904,10 +979,11 @@ _tarWriteHeader(const char *filename, const char *linktarget,
 		/* Type - regular file */
 		sprintf(&h[156], "0");
 
-	/* Link tag 100 (NULL) */
+	/* Magic 6 */
+	sprintf(&h[257], "ustar");
 
-	/* Magic 6 + Version 2 */
-	sprintf(&h[257], "ustar00");
+	/* Version 2 */
+	sprintf(&h[263], "00");
 
 	/* User 32 */
 	/* XXX: Do we need to care about setting correct username? */
@@ -917,17 +993,21 @@ _tarWriteHeader(const char *filename, const char *linktarget,
 	/* XXX: Do we need to care about setting correct group name? */
 	sprintf(&h[297], "%.31s", "postgres");
 
-	/* Maj Dev 8 */
-	sprintf(&h[329], "%6o ", 0);
+	/* Major Dev 8 */
+	sprintf(&h[329], "%07o ", 0);
 
-	/* Min Dev 8 */
-	sprintf(&h[337], "%6o ", 0);
+	/* Minor Dev 8 */
+	sprintf(&h[337], "%07o ", 0);
 
-	while ((sum = _tarChecksum(h)) != lastSum)
-	{
-		sprintf(&h[148], "%06o ", sum);
-		lastSum = sum;
-	}
+	/* Prefix 155 - not used, leave as nulls */
 
+	/*
+	 * We mustn't overwrite the next field while inserting the checksum.
+	 * Fortunately, the checksum can't exceed 6 octal digits, so we just write
+	 * 6 digits, a space, and a null, which is legal per POSIX.
+	 */
+	sprintf(&h[148], "%06o ", _tarChecksum(h));
+
+	/* Now send the completed header. */
 	pq_putmessage('d', h, 512);
 }

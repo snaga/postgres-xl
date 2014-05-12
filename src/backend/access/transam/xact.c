@@ -5,6 +5,11 @@
  *
  * See src/backend/access/transam/README for more information.
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
@@ -24,10 +29,12 @@
 #ifdef PGXC
 #include "pgxc/pgxc.h"
 #include "access/gtm.h"
-#include "pgxc/xc_maintenance_mode.h"
 /* PGXC_COORD */
 #include "gtm/gtm_c.h"
 #include "pgxc/execRemote.h"
+#ifdef XCP
+#include "pgxc/pause.h"
+#endif
 /* PGXC_DATANODE */
 #include "postmaster/autovacuum.h"
 #include "libpq/pqformat.h"
@@ -65,6 +72,11 @@
 #include "utils/snapmgr.h"
 #include "utils/timestamp.h"
 #include "pg_trace.h"
+
+
+#ifdef XCP
+#define implicit2PC_head "_$XC$"
+#endif
 
 
 /*
@@ -148,8 +160,10 @@ typedef struct TransactionStateData
 	GlobalTransactionId transactionId;
 	GlobalTransactionId	topGlobalTransansactionId;
 	GlobalTransactionId	auxilliaryTransactionId;
+#ifndef XCP
 	bool				isLocalParameterUsed;		/* Check if a local parameter is active
 													 * in transaction block (SET LOCAL, DEFERRED) */
+#endif
 #else
 	TransactionId transactionId;	/* my XID, or Invalid if none */
 #endif
@@ -184,7 +198,9 @@ static TransactionStateData TopTransactionStateData = {
 	0,							/* global transaction id */
 	0,							/* prepared global transaction id */
 	0,							/* commit prepared global transaction id */
+#ifndef XCP
 	false,						/* isLocalParameterUsed */
+#endif
 #else
 	0,							/* transaction id */
 #endif
@@ -270,6 +286,9 @@ static TimestampTz GTMdeltaTimestamp = 0;
  */
 static char *prepareGID;
 static char *savePrepareGID;
+#ifdef XCP
+static char *saveNodeString = NULL;
+#endif
 static bool XactLocalNodePrepared;
 static bool  XactReadLocalNode;
 static bool  XactWriteLocalNode;
@@ -455,6 +474,15 @@ GetCurrentTransactionId(void)
 {
 	TransactionState s = CurrentTransactionState;
 
+#ifdef XCP
+	/*
+	 * Never assign xid to the secondary session, that causes conflicts when
+	 * writing to the clog at the transaction end.
+	 */
+	if (IsConnFromDatanode())
+		return GetNextTransactionId();
+#endif
+
 	if (!TransactionIdIsValid(s->transactionId))
 		AssignTransactionId(s);
 	return s->transactionId;
@@ -501,6 +529,7 @@ GetStableLatestTransactionId(void)
 }
 
 #ifdef PGXC
+#ifndef XCP
 /*
  *	GetCurrentLocalParamStatus
  *
@@ -523,6 +552,7 @@ SetCurrentLocalParamStatus(bool status)
 {
 	CurrentTransactionState->isLocalParameterUsed = status;
 }
+#endif
 #endif
 
 /*
@@ -595,7 +625,7 @@ AssignTransactionId(TransactionState s)
 	}
 #else
 	s->transactionId = GetNewTransactionId(isSubXact);
-#endif
+#endif /* PGXC */
 
 	if (isSubXact)
 		SubTransSetParent(s->transactionId, s->parent->transactionId, false);
@@ -723,6 +753,28 @@ GetCurrentSubTransactionId(void)
 }
 
 /*
+ *	SubTransactionIsActive
+ *
+ * Test if the specified subxact ID is still active.  Note caller is
+ * responsible for checking whether this ID is relevant to the current xact.
+ */
+bool
+SubTransactionIsActive(SubTransactionId subxid)
+{
+	TransactionState s;
+
+	for (s = CurrentTransactionState; s != NULL; s = s->parent)
+	{
+		if (s->state == TRANS_ABORT)
+			continue;
+		if (s->subTransactionId == subxid)
+			return true;
+	}
+	return false;
+}
+
+
+/*
  *	GetCurrentCommandId
  *
  * "used" must be TRUE if the caller intends to use the command ID to mark
@@ -735,7 +787,11 @@ GetCurrentCommandId(bool used)
 {
 #ifdef PGXC
 	/* If coordinator has sent a command id, remote node should use it */
+#ifdef XCP
+	if (isCommandIdReceived)
+#else
 	if (IsConnFromCoord() && isCommandIdReceived)
+#endif
 	{
 		/*
 		 * Indicate to successive calls of this function that the sent command id has
@@ -909,6 +965,16 @@ TransactionIdIsCurrentTransactionId(TransactionId xid)
 	 */
 	if (!TransactionIdIsNormal(xid))
 		return false;
+
+#ifdef XCP
+	/*
+	 * The current TransactionId of secondary datanode session is never
+	 * associated with the current transaction, so if it is a secondary
+	 * Datanode session look into xid sent from the parent.
+	 */
+	if (IsConnFromDatanode() && TransactionIdIsCurrentGlobalTransactionId(xid))
+		return true;
+#endif
 
 	/*
 	 * We will return true for the Xid of the current subtransaction, any of
@@ -1968,7 +2034,9 @@ StartTransaction(void)
 	 */
 	s->state = TRANS_START;
 #ifdef PGXC
+#ifndef XCP
 	s->isLocalParameterUsed = false;
+#endif
 #endif
 	s->transactionId = InvalidTransactionId;	/* until assigned */
 	/*
@@ -1990,8 +2058,7 @@ StartTransaction(void)
 		XactReadOnly = DefaultXactReadOnly;
 #ifdef PGXC
 		/* Save Postgres-XC session as read-only if necessary */
-		if (!xc_maintenance_mode)
-			XactReadOnly |= IsPGXCNodeXactReadOnly();
+		XactReadOnly |= IsPGXCNodeXactReadOnly();
 #endif
 	}
 	XactDeferrable = DefaultXactDeferrable;
@@ -2153,6 +2220,15 @@ CommitTransaction(void)
 			savePrepareGID = NULL;
 		}
 
+#ifdef XCP
+		if (saveNodeString)
+		{
+			pfree(saveNodeString);
+			saveNodeString = NULL;
+		}
+#endif
+
+#ifndef XCP
 		/*
 		 * Check if there are any ON COMMIT actions or if temporary objects are in use.
 		 * If session is set-up to enforce 2PC for such transactions, return an error.
@@ -2168,16 +2244,28 @@ CommitTransaction(void)
 						 errmsg("cannot PREPARE a transaction that has operated on temporary tables"),
 						 errdetail("Disabling enforce_two_phase_commit is recommended to enforce COMMIT")));
 		}
+#endif
 
 		/*
 		 * If the local node has done some write activity, prepare the local node
 		 * first. If that fails, the transaction is aborted on all the remote
 		 * nodes
 		 */
+#ifdef XCP
+		/*
+		 * Fired OnCommit actions would fail 2PC process
+		 */
+		if (!IsOnCommitActions() && IsTwoPhaseCommitRequired(XactWriteLocalNode))
+#else
 		if (IsTwoPhaseCommitRequired(XactWriteLocalNode))
+#endif
 		{
 			prepareGID = MemoryContextAlloc(TopTransactionContext, 256);
+#ifdef XCP
+			sprintf(prepareGID, implicit2PC_head"%u", GetTopTransactionId());
+#else
 			sprintf(prepareGID, "T%u", GetTopTransactionId());
+#endif
 
 			savePrepareGID = MemoryContextStrdup(TopMemoryContext, prepareGID);
 
@@ -2205,7 +2293,14 @@ CommitTransaction(void)
 				s->auxilliaryTransactionId = GetTopTransactionId();
 			}
 			else
+#ifdef XCP
+			{
 				s->auxilliaryTransactionId = InvalidGlobalTransactionId;
+				PrePrepare_Remote(prepareGID, false, true);
+			}
+#else
+				s->auxilliaryTransactionId = InvalidGlobalTransactionId;
+#endif
 		}
 	}
 #endif
@@ -2266,14 +2361,21 @@ CommitTransaction(void)
 	PreCommit_Notify();
 
 #ifdef PGXC
+#ifdef XCP
+	if (IS_PGXC_DATANODE || !IsConnFromCoord())
+#else
 	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+#endif
 	{
 		/*
 		 * Now run 2PC on the remote nodes. Any errors will be reported via
 		 * ereport and we will run error recovery as part of AbortTransaction
 		 */
+#ifdef XCP
+		PreCommit_Remote(savePrepareGID, saveNodeString, XactLocalNodePrepared);
+#else
 		PreCommit_Remote(savePrepareGID, XactLocalNodePrepared);
-
+#endif
 		/*
 		 * Now that all the remote nodes have successfully prepared and
 		 * commited, commit the local transaction as well. Remember, any errors
@@ -2392,6 +2494,16 @@ CommitTransaction(void)
 
 	AtEOXact_MultiXact();
 
+#ifdef XCP
+	/* If the cluster lock was held at commit time, keep it locked! */
+	if (cluster_ex_lock_held)
+	{
+		elog(DEBUG2, "PAUSE CLUSTER still held at commit");
+		/*if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+			RequestClusterPause(false, NULL);*/
+	}
+#endif
+
 	ResourceOwnerRelease(TopTransactionResourceOwner,
 						 RESOURCE_RELEASE_LOCKS,
 						 true, true);
@@ -2407,7 +2519,7 @@ CommitTransaction(void)
 	AtEOXact_SPI(true);
 	AtEOXact_on_commit_actions(true);
 	AtEOXact_Namespace(true);
-	/* smgrcommit already done */
+	AtEOXact_SMgr();
 	AtEOXact_Files();
 	AtEOXact_ComboCid();
 	AtEOXact_HashTables(true);
@@ -2436,7 +2548,9 @@ CommitTransaction(void)
 	s->maxChildXids = 0;
 
 #ifdef PGXC
+#ifndef XCP
 	s->isLocalParameterUsed = false;
+#endif
 	ForgetTransactionLocalNode();
 
 	/*
@@ -2506,6 +2620,27 @@ AtEOXact_GlobalTxn(bool commit)
 				RollbackTranGTM(s->topGlobalTransansactionId);
 		}
 	}
+#ifdef XCP
+	/*
+	 * If GTM is connected the current gxid is acquired from GTM directly.
+	 * So directly report transaction end. However this applies only if
+	 * the connection is directly from a client.
+	 */
+	else if (IsXidFromGTM)
+	{
+		IsXidFromGTM = false;
+		if (commit)
+			CommitTranGTM(s->topGlobalTransansactionId);
+		else
+			RollbackTranGTM(s->topGlobalTransansactionId);
+		
+		if (IsGTMConnected() &&
+				!IsConnFromCoord() && !IsConnFromDatanode())
+		{
+			CloseGTM();
+		}
+	}
+#else
 	else if (IS_PGXC_DATANODE || IsConnFromCoord())
 	{
 		/* If we are autovacuum, commit on GTM */
@@ -2525,7 +2660,7 @@ AtEOXact_GlobalTxn(bool commit)
 				RollbackTranGTM(currentGxid);
 		}
 	}
-
+#endif
 	s->topGlobalTransansactionId = InvalidGlobalTransactionId;
 	s->auxilliaryTransactionId = InvalidGlobalTransactionId;
 
@@ -2552,7 +2687,9 @@ PrepareTransaction(void)
 	TimestampTz prepared_at;
 #ifdef PGXC
 	bool		isImplicit = !(s->blockState == TBLOCK_PREPARE);
+#ifndef XCP
 	char		*nodestring = NULL;
+#endif
 #endif
 
 	ShowTransactionState("PrepareTransaction");
@@ -2566,6 +2703,7 @@ PrepareTransaction(void)
 	Assert(s->parent == NULL);
 
 #ifdef PGXC
+#ifndef XCP
 	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
 	{
 		if (savePrepareGID)
@@ -2580,6 +2718,7 @@ PrepareTransaction(void)
 		 */
 		CallGTMCallbacks(GTM_EVENT_PREPARE);
 	}
+#endif
 #endif
 
 	/*
@@ -2603,6 +2742,35 @@ PrepareTransaction(void)
 		if (!PreCommit_Portals(true))
 			break;
 	}
+
+#ifdef XCP
+	/*
+	 * Remote nodes must be done AFTER portals. If portal is still active it may
+	 * need to send down a message to close remote objects on Datanode, but
+	 * PrePrepare_Remote releases connections to remote nodes.
+	 */
+	if (IS_PGXC_DATANODE || !IsConnFromCoord())
+	{
+		char		*nodestring;
+		if (saveNodeString)
+			pfree(saveNodeString);
+
+		/* Needed in PrePrepare_Remote to submit nodes to GTM */
+		s->topGlobalTransansactionId = s->transactionId;
+		if (savePrepareGID)
+			pfree(savePrepareGID);
+		savePrepareGID = MemoryContextStrdup(TopMemoryContext, prepareGID);
+		nodestring = PrePrepare_Remote(savePrepareGID, XactWriteLocalNode, isImplicit);
+		if (nodestring)
+			saveNodeString = MemoryContextStrdup(TopMemoryContext, nodestring);
+
+		/*
+		 * Callback on GTM if necessary, this needs to be done before HOLD_INTERRUPTS
+		 * as this is not a part of the end of transaction processing involving clean up.
+		 */
+		CallGTMCallbacks(GTM_EVENT_PREPARE);
+	}
+#endif
 
 	/*
 	 * The remaining actions cannot call any user-defined code, so it's safe
@@ -2779,7 +2947,7 @@ PrepareTransaction(void)
 	AtEOXact_SPI(true);
 	AtEOXact_on_commit_actions(true);
 	AtEOXact_Namespace(true);
-	/* smgrcommit already done */
+	AtEOXact_SMgr();
 	AtEOXact_Files();
 	AtEOXact_ComboCid();
 	AtEOXact_HashTables(true);
@@ -2827,7 +2995,11 @@ PrepareTransaction(void)
 	 */
 	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
 	{
+#ifdef XCP
+		PostPrepare_Remote(savePrepareGID, isImplicit);
+#else
 		PostPrepare_Remote(savePrepareGID, nodestring, isImplicit);
+#endif
 		if (!isImplicit)
 			s->topGlobalTransansactionId = InvalidGlobalTransactionId;
 		ForgetTransactionLocalNode();
@@ -3004,6 +3176,7 @@ AbortTransaction(void)
 		AtEOXact_SPI(false);
 		AtEOXact_on_commit_actions(false);
 		AtEOXact_Namespace(false);
+		AtEOXact_SMgr();
 		AtEOXact_Files();
 		AtEOXact_ComboCid();
 		AtEOXact_HashTables(false);
@@ -5365,29 +5538,52 @@ xact_redo_commit_internal(TransactionId xid, XLogRecPtr lsn,
 		/*
 		 * Release locks, if any. We do this for both two phase and normal one
 		 * phase transactions. In effect we are ignoring the prepare phase and
-		 * just going straight to lock release.
+		 * just going straight to lock release. At commit we release all locks
+		 * via their top-level xid only, so no need to provide subxact list,
+		 * which will save time when replaying commits.
 		 */
-		StandbyReleaseLockTree(xid, nsubxacts, sub_xids);
+		StandbyReleaseLockTree(xid, 0, NULL);
 	}
 
 	/* Make sure files supposed to be dropped are dropped */
-	for (i = 0; i < nrels; i++)
+	if (nrels > 0)
 	{
-		SMgrRelation srel = smgropen(xnodes[i], InvalidBackendId);
-		ForkNumber	fork;
+		/*
+		 * First update minimum recovery point to cover this WAL record. Once
+		 * a relation is deleted, there's no going back. The buffer manager
+		 * enforces the WAL-first rule for normal updates to relation files,
+		 * so that the minimum recovery point is always updated before the
+		 * corresponding change in the data file is flushed to disk, but we
+		 * have to do the same here since we're bypassing the buffer manager.
+		 *
+		 * Doing this before deleting the files means that if a deletion fails
+		 * for some reason, you cannot start up the system even after restart,
+		 * until you fix the underlying situation so that the deletion will
+		 * succeed. Alternatively, we could update the minimum recovery point
+		 * after deletion, but that would leave a small window where the
+		 * WAL-first rule would be violated.
+		 */
+		XLogFlush(lsn);
 
-		for (fork = 0; fork <= MAX_FORKNUM; fork++)
-			XLogDropRelation(xnodes[i], fork);
-		smgrdounlink(srel, true);
-		smgrclose(srel);
+		for (i = 0; i < nrels; i++)
+		{
+			SMgrRelation srel = smgropen(xnodes[i], InvalidBackendId);
+			ForkNumber	fork;
+
+			for (fork = 0; fork <= MAX_FORKNUM; fork++)
+				XLogDropRelation(xnodes[i], fork);
+			smgrdounlink(srel, true);
+			smgrclose(srel);
+		}
 	}
 
 	/*
 	 * We issue an XLogFlush() for the same reason we emit ForceSyncCommit()
-	 * in normal operation. For example, in DROP DATABASE, we delete all the
-	 * files belonging to the database, and then commit the transaction. If we
-	 * crash after all the files have been deleted but before the commit, you
-	 * have an entry in pg_database without any files. To minimize the window
+	 * in normal operation. For example, in CREATE DATABASE, we copy all files
+	 * from the template database, and then commit the transaction. If we
+	 * crash after all the files have been copied but before the commit, you
+	 * have files in the data directory without an entry in pg_database. To
+	 * minimize the window
 	 * for that, we use ForceSyncCommit() to rush the commit record to disk as
 	 * quick as possible. We have the same window during recovery, and forcing
 	 * an XLogFlush() (which updates minRecoveryPoint during recovery) helps
@@ -5798,7 +5994,9 @@ IsTransactionLocalNode(bool write)
 bool
 IsXidImplicit(const char *xid)
 {
+#ifndef XCP
 #define implicit2PC_head "_$XC$"
+#endif
 	const size_t implicit2PC_head_len = strlen(implicit2PC_head);
 
 	if (strncmp(xid, implicit2PC_head, implicit2PC_head_len))
@@ -5820,7 +6018,9 @@ SaveReceivedCommandId(CommandId cid)
 	 * Change command ID information status to report any changes in remote ID
 	 * for a remote node. A new command ID has also been received.
 	 */
+#ifndef XCP
 	if (IsConnFromCoord())
+#endif
 	{
 		SetSendCommandId(true);
 		isCommandIdReceived = true;
@@ -5899,9 +6099,9 @@ IsPGXCNodeXactReadOnly(void)
 	 * For the time being a Postgres-XC session is read-only
 	 * under very specific conditions.
 	 * This is the case of an application accessing directly
-	 * a Datanode.
+	 * a Datanode provided the server was not started in restore mode.
 	 */
-	return IsPGXCNodeXactDatanodeDirect();
+	return IsPGXCNodeXactDatanodeDirect() && !isRestoreMode;
 }
 
 /*
@@ -5929,6 +6129,9 @@ IsPGXCNodeXactDatanodeDirect(void)
 		   (IsPostmasterEnvironment || !useLocalXid) &&
 		   IsNormalProcessingMode() &&
 		   !IsAutoVacuumLauncherProcess() &&
+#ifdef XCP
+		   !IsConnFromDatanode() &&
+#endif
 		   !IsConnFromCoord();
 }
 #endif

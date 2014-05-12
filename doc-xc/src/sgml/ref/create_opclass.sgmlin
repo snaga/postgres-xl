@@ -311,6 +311,9 @@ CREATE OPERATOR CLASS gist__int_ops
 <!## XC>
    <productname>Postgres-XC</productname> extension.  There is no
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> extension.  There is no
+<!## end>
    <command>CREATE OPERATOR CLASS</command> statement in the SQL
    standard.
   </para>

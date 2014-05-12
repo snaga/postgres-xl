@@ -92,7 +92,7 @@ ROLLBACK PREPARED 'foo4';
 
 SELECT gid FROM pg_prepared_xacts;
 
--- In Postgres-XC, serializable is not yet supported, and SERIALIZABLE falls to
+-- In Postgres-XL, serializable is not yet supported, and SERIALIZABLE falls to
 -- read-committed silently, so rollback transaction properly
 ROLLBACK PREPARED 'foo5';
 

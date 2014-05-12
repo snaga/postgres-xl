@@ -90,6 +90,9 @@ CREATE TABLESPACE <replaceable class="parameter">tablespace_name</replaceable> [
 <!## XC>
         <productname>Postgres-XC</> system user.  The directory must be
 <!## end>
+<!## XL>
+        <productname>Postgres-XL</> system user.  The directory must be
+<!## end>
         specified by an absolute path name.
        </para>
       </listitem>
@@ -112,6 +115,22 @@ CREATE TABLESPACE <replaceable class="parameter">tablespace_name</replaceable> [
 &xconly;
    <para>
     <productname>Postgres-XC</> assigns the same path to a tablespace
+    for all the Coordinators and Datanodes.  So when creating a tablespace,
+    user needs to have permission to the same location path on all the servers
+    involved in the cluster.
+   </para>
+
+   <para>
+    <command>CREATE TABLESPACE</> can be run with EXECUTE DIRECT to control
+    tablespace existence on remote nodes. This works for both remote Coordinators
+    and Datanodes but not on this operation is not authorized on node where
+    application client is connected.
+   </para>
+<!## end>
+<!## XL>
+&xlonly;
+   <para>
+    <productname>Postgres-XL</> assigns the same path to a tablespace
     for all the Coordinators and Datanodes.  So when creating a tablespace,
     user needs to have permission to the same location path on all the servers
     involved in the cluster.
@@ -154,6 +173,9 @@ CREATE TABLESPACE indexspace OWNER genevieve LOCATION '/data/indexes';
 <!## end>
 <!## XC>
    <command>CREATE TABLESPACE</command> is a <productname>Postgres-XC</>
+<!## end>
+<!## XL>
+   <command>CREATE TABLESPACE</command> is a <productname>Postgres-XL</>
 <!## end>
    extension.
   </para>

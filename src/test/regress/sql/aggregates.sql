@@ -91,9 +91,6 @@ from tenk1 o;
 -- test for bitwise integer aggregates
 --
 
--- Enforce use of COMMIT instead of 2PC for temporary objects
-SET enforce_two_phase_commit TO off;
-
 CREATE TEMPORARY TABLE bitwise_test(
   i2 INT2,
   i4 INT4,
@@ -212,7 +209,7 @@ FROM bool_test;
 --
 -- Test cases that should be optimized into indexscans instead of
 -- the generic aggregate implementation.
--- In Postgres-XC, plans printed by explain are the ones created on the
+-- In Postgres-XL, plans printed by explain are the ones created on the
 -- coordinator. Coordinator does not generate index scan plans.
 --
 analyze tenk1;		-- ensure we get consistent plans here
@@ -285,6 +282,11 @@ insert into minmaxtest3 values(17), (18);
 explain (costs off, nodes off)
   select min(f1), max(f1) from minmaxtest;
 select min(f1), max(f1) from minmaxtest;
+
+-- DISTINCT doesn't do anything useful here, but it shouldn't fail
+explain (costs off)
+  select distinct min(f1), max(f1) from minmaxtest;
+select distinct min(f1), max(f1) from minmaxtest;
 
 drop table minmaxtest cascade;
 
@@ -428,16 +430,16 @@ select string_agg(distinct f1::text, ',' order by f1::text) from varchar_tbl;  -
 -- string_agg bytea tests
 create table bytea_test_table(v bytea);
 
-select string_agg(v, '' order by v) from bytea_test_table;
+select string_agg(v, '') from bytea_test_table;
 
 insert into bytea_test_table values(decode('ff','hex'));
 
-select string_agg(v, '' order by v) from bytea_test_table;
+select string_agg(v, '') from bytea_test_table;
 
 insert into bytea_test_table values(decode('aa','hex'));
 
-select string_agg(v, '' order by v) from bytea_test_table;
-select string_agg(v, NULL order by v) from bytea_test_table;
-select string_agg(v, decode('ee', 'hex') order by v) from bytea_test_table;
+select string_agg(v, '') from bytea_test_table;
+select string_agg(v, NULL) from bytea_test_table;
+select string_agg(v, decode('ee', 'hex')) from bytea_test_table;
 
 drop table bytea_test_table;

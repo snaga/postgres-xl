@@ -84,6 +84,9 @@ INSERT INTO products VALUES (1, 'Cheese');
 <!## XC>
    The second form is a <productname>Postgres-XC</productname>
 <!## end>
+<!## XL>
+   The second form is a <productname>Postgres-XL</productname>
+<!## end>
    extension.  It fills the columns from the left with as many values
    as are given, and the rest will be defaulted.
   </para>
@@ -217,6 +220,13 @@ UPDATE mytable SET a = 5, b = 3, c = 1 WHERE a &gt; 0;
 &xconly;
   <para>
    Please remember that <productname>Postgres-XC</> does not allow to
+   modify the value of distribution column.
+  </para>
+<!## end>
+<!## XL>
+&xlonly;
+  <para>
+   Please remember that <productname>Postgres-XL</> does not allow to
    modify the value of distribution column.
   </para>
 <!## end>

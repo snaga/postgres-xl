@@ -2,8 +2,6 @@
 -- XC_PREPARED_XACTS
 --
 
-set enable_fast_query_shipping = true;
-
 -- Test to make sure prepared transactions are working as expected
 -- If a transcation is preared and contains only a select, it should NOT be preapred on data nodes
 
@@ -119,8 +117,6 @@ commit prepared 'pt_1';
 
 delete from t3;
 
-set enable_fast_query_shipping=false;
-
 -- ****  
 
 begin;
@@ -212,8 +208,6 @@ select is_prepared_on_node('pt_1', 1); -- false
 commit prepared 'pt_1';
 
 -- ****  
-
-set enable_fast_query_shipping=true;
 
 -- drop objects created
 drop table c1;

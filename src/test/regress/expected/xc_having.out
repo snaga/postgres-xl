@@ -6,6 +6,7 @@
 -- Since we are testing, the plan reduction of GROUP and AGG nodes, we should
 -- disable fast query shipping
 set enable_fast_query_shipping to off;
+ERROR:  unrecognized configuration parameter "enable_fast_query_shipping"
 -- Combination 1: enable_hashagg on and distributed tables
 set enable_hashagg to on;
 -- create required tables and fill them with data
@@ -21,14 +22,18 @@ select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_hav
 (1 row)
 
 explain (verbose true, costs false, nodes false) select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_having_tab1 group by val2 having val2 + 1 > 3;
-                                                                                                                     QUERY PLAN                                                                                                                      
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                       QUERY PLAN                                                                                        
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  HashAggregate
-   Output: pg_catalog.count(*), pg_catalog.sum((sum(xc_having_tab1.val))), pg_catalog.avg((avg(xc_having_tab1.val))), ((pg_catalog.sum((sum(xc_having_tab1.val))))::double precision / (pg_catalog.count(*))::double precision), xc_having_tab1.val2
-   ->  Data Node Scan on "__REMOTE_GROUP_QUERY__"
-         Output: (count(*)), (sum(xc_having_tab1.val)), (avg(xc_having_tab1.val)), xc_having_tab1.val2
-         Remote query: SELECT count(*), sum(val), avg(val), val2 FROM ONLY xc_having_tab1 WHERE ((val2 + 1) > 3) GROUP BY 4
-(5 rows)
+   Output: pg_catalog.count(*), pg_catalog.sum((sum(val))), pg_catalog.avg((avg(val))), ((pg_catalog.sum((sum(val))))::double precision / (pg_catalog.count(*))::double precision), val2
+   ->  Remote Subquery Scan on all
+         Output: count(*), sum(val), avg(val), val2
+         ->  HashAggregate
+               Output: count(*), sum(val), avg(val), val2
+               ->  Seq Scan on public.xc_having_tab1
+                     Output: val, val2
+                     Filter: ((xc_having_tab1.val2 + 1) > 3)
+(9 rows)
 
 -- having clause containing aggregate
 select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_having_tab1 group by val2 having avg(val) > 3.75;
@@ -38,35 +43,38 @@ select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_hav
 (1 row)
 
 explain (verbose true, costs false, nodes false) select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_having_tab1 group by val2 having avg(val) > 3.75;
-                                                                                                                     QUERY PLAN                                                                                                                      
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                       QUERY PLAN                                                                                        
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  HashAggregate
-   Output: pg_catalog.count(*), pg_catalog.sum((sum(xc_having_tab1.val))), pg_catalog.avg((avg(xc_having_tab1.val))), ((pg_catalog.sum((sum(xc_having_tab1.val))))::double precision / (pg_catalog.count(*))::double precision), xc_having_tab1.val2
+   Output: pg_catalog.count(*), pg_catalog.sum((sum(val))), pg_catalog.avg((avg(val))), ((pg_catalog.sum((sum(val))))::double precision / (pg_catalog.count(*))::double precision), val2
    Filter: (pg_catalog.avg((avg(xc_having_tab1.val))) > 3.75)
-   ->  Data Node Scan on "__REMOTE_GROUP_QUERY__"
-         Output: (count(*)), (sum(xc_having_tab1.val)), (avg(xc_having_tab1.val)), xc_having_tab1.val2
-         Remote query: SELECT count(*), sum(val), avg(val), val2 FROM ONLY xc_having_tab1 WHERE true GROUP BY 4
-(6 rows)
+   ->  Remote Subquery Scan on all
+         Output: count(*), sum(val), avg(val), val2
+         ->  HashAggregate
+               Output: count(*), sum(val), avg(val), val2
+               ->  Seq Scan on public.xc_having_tab1
+                     Output: val, val2
+(9 rows)
 
-select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_having_tab1 group by val2 having avg(val) > 3.75 or val2 > 2 order by val2;
+select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_having_tab1 group by val2 having avg(val) > 3.75 or val2 > 2;
  count | sum |        avg         |     ?column?     | val2 
 -------+-----+--------------------+------------------+------
-     2 |   8 | 4.0000000000000000 |                4 |    2
      3 |  11 | 3.6666666666666667 | 3.66666666666667 |    3
+     2 |   8 | 4.0000000000000000 |                4 |    2
 (2 rows)
 
-explain (verbose true, costs false, nodes false) select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_having_tab1 group by val2 having avg(val) > 3.75 or val2 > 2 order by val2;
-                                                                                                                     QUERY PLAN                                                                                                                      
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- GroupAggregate
-   Output: pg_catalog.count(*), pg_catalog.sum((sum(xc_having_tab1.val))), pg_catalog.avg((avg(xc_having_tab1.val))), ((pg_catalog.sum((sum(xc_having_tab1.val))))::double precision / (pg_catalog.count(*))::double precision), xc_having_tab1.val2
+explain (verbose true, costs false, nodes false) select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_having_tab1 group by val2 having avg(val) > 3.75 or val2 > 2;
+                                                                                       QUERY PLAN                                                                                        
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ HashAggregate
+   Output: pg_catalog.count(*), pg_catalog.sum((sum(val))), pg_catalog.avg((avg(val))), ((pg_catalog.sum((sum(val))))::double precision / (pg_catalog.count(*))::double precision), val2
    Filter: ((pg_catalog.avg((avg(xc_having_tab1.val))) > 3.75) OR (xc_having_tab1.val2 > 2))
-   ->  Sort
-         Output: (count(*)), (sum(xc_having_tab1.val)), (avg(xc_having_tab1.val)), xc_having_tab1.val2
-         Sort Key: xc_having_tab1.val2
-         ->  Data Node Scan on "__REMOTE_GROUP_QUERY__"
-               Output: (count(*)), (sum(xc_having_tab1.val)), (avg(xc_having_tab1.val)), xc_having_tab1.val2
-               Remote query: SELECT count(*), sum(val), avg(val), val2 FROM ONLY xc_having_tab1 WHERE true GROUP BY 4 ORDER BY 4
+   ->  Remote Subquery Scan on all
+         Output: count(*), sum(val), avg(val), val2, val2
+         ->  HashAggregate
+               Output: count(*), sum(val), avg(val), val2, val2
+               ->  Seq Scan on public.xc_having_tab1
+                     Output: val, val2
 (9 rows)
 
 select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_having_tab1 group by val2 having avg(val) > 3.75 and val2 > 2;
@@ -75,15 +83,19 @@ select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_hav
 (0 rows)
 
 explain (verbose true, costs false, nodes false) select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_having_tab1 group by val2 having avg(val) > 3.75 and val2 > 2;
-                                                                                                                     QUERY PLAN                                                                                                                      
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                       QUERY PLAN                                                                                        
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  HashAggregate
-   Output: pg_catalog.count(*), pg_catalog.sum((sum(xc_having_tab1.val))), pg_catalog.avg((avg(xc_having_tab1.val))), ((pg_catalog.sum((sum(xc_having_tab1.val))))::double precision / (pg_catalog.count(*))::double precision), xc_having_tab1.val2
+   Output: pg_catalog.count(*), pg_catalog.sum((sum(val))), pg_catalog.avg((avg(val))), ((pg_catalog.sum((sum(val))))::double precision / (pg_catalog.count(*))::double precision), val2
    Filter: (pg_catalog.avg((avg(xc_having_tab1.val))) > 3.75)
-   ->  Data Node Scan on "__REMOTE_GROUP_QUERY__"
-         Output: (count(*)), (sum(xc_having_tab1.val)), (avg(xc_having_tab1.val)), xc_having_tab1.val2
-         Remote query: SELECT count(*), sum(val), avg(val), val2 FROM ONLY xc_having_tab1 WHERE (val2 > 2) GROUP BY 4
-(6 rows)
+   ->  Remote Subquery Scan on all
+         Output: count(*), sum(val), avg(val), val2
+         ->  HashAggregate
+               Output: count(*), sum(val), avg(val), val2
+               ->  Seq Scan on public.xc_having_tab1
+                     Output: val, val2
+                     Filter: (xc_having_tab1.val2 > 2)
+(10 rows)
 
 -- joins and group by and having
 select count(*), sum(xc_having_tab1.val * xc_having_tab2.val), avg(xc_having_tab1.val*xc_having_tab2.val), sum(xc_having_tab1.val*xc_having_tab2.val)::float8/count(*), xc_having_tab1.val2, xc_having_tab2.val2 from xc_having_tab1 full outer join xc_having_tab2 on xc_having_tab1.val2 = xc_having_tab2.val2 group by xc_having_tab1.val2, xc_having_tab2.val2 having xc_having_tab1.val2 + xc_having_tab2.val2 > 2;
@@ -119,17 +131,20 @@ select val2 from xc_having_tab1 group by val2 having sum(val) > 8;
 (1 row)
 
 explain (verbose true, costs false, nodes false) select val2 from xc_having_tab1 group by val2 having sum(val) > 8;
-                                         QUERY PLAN                                         
---------------------------------------------------------------------------------------------
+                        QUERY PLAN                         
+-----------------------------------------------------------
  HashAggregate
-   Output: xc_having_tab1.val2
+   Output: val2
    Filter: (pg_catalog.sum((sum(xc_having_tab1.val))) > 8)
-   ->  Data Node Scan on "__REMOTE_GROUP_QUERY__"
-         Output: xc_having_tab1.val2, (sum(xc_having_tab1.val))
-         Remote query: SELECT val2, sum(val) FROM ONLY xc_having_tab1 WHERE true GROUP BY 1
-(6 rows)
+   ->  Remote Subquery Scan on all
+         Output: val2, sum(val)
+         ->  HashAggregate
+               Output: val2, sum(val)
+               ->  Seq Scan on public.xc_having_tab1
+                     Output: val, val2
+(9 rows)
 
-select val + val2 sum from xc_having_tab1 group by val + val2 having sum(val) > 5 order by sum;
+select * from (select val + val2 sum from xc_having_tab1 group by val + val2 having sum(val) > 5) q order by q.sum;
  sum 
 -----
    4
@@ -137,18 +152,18 @@ select val + val2 sum from xc_having_tab1 group by val + val2 having sum(val) > 
    9
 (3 rows)
 
-explain (verbose true, costs false, nodes false) select val + val2 sum from xc_having_tab1 group by val + val2 having sum(val) > 5 order by sum;
+explain (verbose true, costs false, nodes false) select * from (select val + val2 sum from xc_having_tab1 group by val + val2 having sum(val) > 5) q order by q.sum;
                                                      QUERY PLAN                                                      
 ---------------------------------------------------------------------------------------------------------------------
- GroupAggregate
+ Sort
    Output: ((xc_having_tab1.val + xc_having_tab1.val2))
-   Filter: (pg_catalog.sum((sum(xc_having_tab1.val))) > 5)
-   ->  Sort
-         Output: ((xc_having_tab1.val + xc_having_tab1.val2)), (sum(xc_having_tab1.val))
-         Sort Key: ((xc_having_tab1.val + xc_having_tab1.val2))
+   Sort Key: ((xc_having_tab1.val + xc_having_tab1.val2))
+   ->  HashAggregate
+         Output: ((xc_having_tab1.val + xc_having_tab1.val2))
+         Filter: (pg_catalog.sum((sum(xc_having_tab1.val))) > 5)
          ->  Data Node Scan on "__REMOTE_GROUP_QUERY__"
                Output: ((xc_having_tab1.val + xc_having_tab1.val2)), (sum(xc_having_tab1.val))
-               Remote query: SELECT (val + val2), sum(val) FROM ONLY xc_having_tab1 WHERE true GROUP BY 1 ORDER BY 1
+               Remote query: SELECT (val + val2), sum(val) FROM ONLY xc_having_tab1 WHERE true GROUP BY (val + val2)
 (9 rows)
 
 -- group by with aggregates in expression
@@ -159,15 +174,18 @@ select count(*) + sum(val) + avg(val), val2 from xc_having_tab1 group by val2 ha
 (1 row)
 
 explain (verbose true, costs false, nodes false) select count(*) + sum(val) + avg(val), val2 from xc_having_tab1 group by val2 having min(val) < val2;
-                                                                        QUERY PLAN                                                                         
------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                  QUERY PLAN                                                  
+--------------------------------------------------------------------------------------------------------------
  HashAggregate
-   Output: (((pg_catalog.count(*) + pg_catalog.sum((sum(xc_having_tab1.val)))))::numeric + pg_catalog.avg((avg(xc_having_tab1.val)))), xc_having_tab1.val2
+   Output: (((pg_catalog.count(*) + pg_catalog.sum((sum(val)))))::numeric + pg_catalog.avg((avg(val)))), val2
    Filter: (min((min(xc_having_tab1.val))) < xc_having_tab1.val2)
-   ->  Data Node Scan on "__REMOTE_GROUP_QUERY__"
-         Output: (count(*)), (sum(xc_having_tab1.val)), (avg(xc_having_tab1.val)), xc_having_tab1.val2, (min(xc_having_tab1.val))
-         Remote query: SELECT count(*), sum(val), avg(val), val2, min(val) FROM ONLY xc_having_tab1 WHERE true GROUP BY 4
-(6 rows)
+   ->  Remote Subquery Scan on all
+         Output: count(*), sum(val), avg(val), val2, min(val), val2
+         ->  HashAggregate
+               Output: count(*), sum(val), avg(val), val2, min(val), val2
+               ->  Seq Scan on public.xc_having_tab1
+                     Output: val, val2
+(9 rows)
 
 drop table xc_having_tab1;
 drop table xc_having_tab2;
@@ -186,12 +204,16 @@ select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_hav
 (1 row)
 
 explain (verbose true, costs false, nodes false) select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_having_tab1 group by val2 having val2 + 1 > 3;
-                                                                                                QUERY PLAN                                                                                                
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Data Node Scan on "__REMOTE_GROUP_QUERY__"
-   Output: (count(*)), (sum(xc_having_tab1.val)), (avg(xc_having_tab1.val)), (((sum(xc_having_tab1.val))::double precision / (count(*))::double precision)), xc_having_tab1.val2
-   Remote query: SELECT count(*), sum(val), pg_catalog.int8_avg(avg(val)), ((sum(val))::double precision / (count(*))::double precision), val2 FROM ONLY xc_having_tab1 WHERE ((val2 + 1) > 3) GROUP BY 5
-(3 rows)
+                                                    QUERY PLAN                                                     
+-------------------------------------------------------------------------------------------------------------------
+ Remote Subquery Scan on all
+   Output: count(*), sum(val), avg(val), ((sum(val))::double precision / (count(*))::double precision), val2
+   ->  HashAggregate
+         Output: count(*), sum(val), avg(val), ((sum(val))::double precision / (count(*))::double precision), val2
+         ->  Seq Scan on public.xc_having_tab1
+               Output: val, val2
+               Filter: ((xc_having_tab1.val2 + 1) > 3)
+(7 rows)
 
 -- having clause containing aggregate
 select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_having_tab1 group by val2 having avg(val) > 3.75;
@@ -201,27 +223,35 @@ select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_hav
 (1 row)
 
 explain (verbose true, costs false, nodes false) select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_having_tab1 group by val2 having avg(val) > 3.75;
-                                                                                                                 QUERY PLAN                                                                                                                 
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Data Node Scan on "__REMOTE_GROUP_QUERY__"
-   Output: (count(*)), (sum(xc_having_tab1.val)), (avg(xc_having_tab1.val)), (((sum(xc_having_tab1.val))::double precision / (count(*))::double precision)), xc_having_tab1.val2
-   Remote query: SELECT count(*), sum(val), pg_catalog.int8_avg(avg(val)), ((sum(val))::double precision / (count(*))::double precision), val2 FROM ONLY xc_having_tab1 WHERE true GROUP BY 5 HAVING (pg_catalog.int8_avg(avg(val)) > 3.75)
-(3 rows)
+                                                    QUERY PLAN                                                     
+-------------------------------------------------------------------------------------------------------------------
+ Remote Subquery Scan on all
+   Output: count(*), sum(val), avg(val), ((sum(val))::double precision / (count(*))::double precision), val2
+   ->  HashAggregate
+         Output: count(*), sum(val), avg(val), ((sum(val))::double precision / (count(*))::double precision), val2
+         Filter: (avg(xc_having_tab1.val) > 3.75)
+         ->  Seq Scan on public.xc_having_tab1
+               Output: val, val2
+(7 rows)
 
-select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_having_tab1 group by val2 having avg(val) > 3.75 or val2 > 2 order by val2;
+select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_having_tab1 group by val2 having avg(val) > 3.75 or val2 > 2;
  count | sum |        avg         |     ?column?     | val2 
 -------+-----+--------------------+------------------+------
-     2 |   8 | 4.0000000000000000 |                4 |    2
      3 |  11 | 3.6666666666666667 | 3.66666666666667 |    3
+     2 |   8 | 4.0000000000000000 |                4 |    2
 (2 rows)
 
-explain (verbose true, costs false, nodes false) select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_having_tab1 group by val2 having avg(val) > 3.75 or val2 > 2 order by val2;
-                                                                                                                              QUERY PLAN                                                                                                                               
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Data Node Scan on "__REMOTE_GROUP_QUERY__"
-   Output: (count(*)), (sum(xc_having_tab1.val)), (avg(xc_having_tab1.val)), (((sum(xc_having_tab1.val))::double precision / (count(*))::double precision)), xc_having_tab1.val2
-   Remote query: SELECT count(*), sum(val), pg_catalog.int8_avg(avg(val)), ((sum(val))::double precision / (count(*))::double precision), val2 FROM ONLY xc_having_tab1 WHERE true GROUP BY 5 HAVING ((pg_catalog.int8_avg(avg(val)) > 3.75) OR (val2 > 2)) ORDER BY 5
-(3 rows)
+explain (verbose true, costs false, nodes false) select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_having_tab1 group by val2 having avg(val) > 3.75 or val2 > 2;
+                                                    QUERY PLAN                                                     
+-------------------------------------------------------------------------------------------------------------------
+ Remote Subquery Scan on all
+   Output: count(*), sum(val), avg(val), ((sum(val))::double precision / (count(*))::double precision), val2
+   ->  HashAggregate
+         Output: count(*), sum(val), avg(val), ((sum(val))::double precision / (count(*))::double precision), val2
+         Filter: ((avg(xc_having_tab1.val) > 3.75) OR (xc_having_tab1.val2 > 2))
+         ->  Seq Scan on public.xc_having_tab1
+               Output: val, val2
+(7 rows)
 
 select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_having_tab1 group by val2 having avg(val) > 3.75 and val2 > 2;
  count | sum | avg | ?column? | val2 
@@ -229,12 +259,17 @@ select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_hav
 (0 rows)
 
 explain (verbose true, costs false, nodes false) select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_having_tab1 group by val2 having avg(val) > 3.75 and val2 > 2;
-                                                                                                                    QUERY PLAN                                                                                                                    
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Data Node Scan on "__REMOTE_GROUP_QUERY__"
-   Output: (count(*)), (sum(xc_having_tab1.val)), (avg(xc_having_tab1.val)), (((sum(xc_having_tab1.val))::double precision / (count(*))::double precision)), xc_having_tab1.val2
-   Remote query: SELECT count(*), sum(val), pg_catalog.int8_avg(avg(val)), ((sum(val))::double precision / (count(*))::double precision), val2 FROM ONLY xc_having_tab1 WHERE (val2 > 2) GROUP BY 5 HAVING (pg_catalog.int8_avg(avg(val)) > 3.75)
-(3 rows)
+                                                    QUERY PLAN                                                     
+-------------------------------------------------------------------------------------------------------------------
+ Remote Subquery Scan on all
+   Output: count(*), sum(val), avg(val), ((sum(val))::double precision / (count(*))::double precision), val2
+   ->  HashAggregate
+         Output: count(*), sum(val), avg(val), ((sum(val))::double precision / (count(*))::double precision), val2
+         Filter: (avg(xc_having_tab1.val) > 3.75)
+         ->  Seq Scan on public.xc_having_tab1
+               Output: val, val2
+               Filter: (xc_having_tab1.val2 > 2)
+(8 rows)
 
 -- joins and group by and having
 select count(*), sum(xc_having_tab1.val * xc_having_tab2.val), avg(xc_having_tab1.val*xc_having_tab2.val), sum(xc_having_tab1.val*xc_having_tab2.val)::float8/count(*), xc_having_tab1.val2, xc_having_tab2.val2 from xc_having_tab1 full outer join xc_having_tab2 on xc_having_tab1.val2 = xc_having_tab2.val2 group by xc_having_tab1.val2, xc_having_tab2.val2 having xc_having_tab1.val2 + xc_having_tab2.val2 > 2;
@@ -244,12 +279,27 @@ select count(*), sum(xc_having_tab1.val * xc_having_tab2.val), avg(xc_having_tab
 (1 row)
 
 explain (verbose true, costs false, nodes false) select count(*), sum(xc_having_tab1.val * xc_having_tab2.val), avg(xc_having_tab1.val*xc_having_tab2.val), sum(xc_having_tab1.val*xc_having_tab2.val)::float8/count(*), xc_having_tab1.val2, xc_having_tab2.val2 from xc_having_tab1 full outer join xc_having_tab2 on xc_having_tab1.val2 = xc_having_tab2.val2 group by xc_having_tab1.val2, xc_having_tab2.val2 having xc_having_tab1.val2 + xc_having_tab2.val2 > 2;
-                                                                                                                                                                                                                                    QUERY PLAN                                                                                                                                                                                                                                     
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Data Node Scan on "__REMOTE_GROUP_QUERY__"
-   Output: (count(*)), (sum((xc_having_tab1.val * xc_having_tab2.val))), (avg((xc_having_tab1.val * xc_having_tab2.val))), (((sum((xc_having_tab1.val * xc_having_tab2.val)))::double precision / (count(*))::double precision)), xc_having_tab1.val2, xc_having_tab2.val2
-   Remote query: SELECT count(*), sum((l.a_2 * r.a_2)), pg_catalog.int8_avg(avg((l.a_2 * r.a_2))), ((sum((l.a_2 * r.a_2)))::double precision / (count(*))::double precision), l.a_1, r.a_1 FROM ((SELECT xc_having_tab1.val2, xc_having_tab1.val FROM ONLY xc_having_tab1 WHERE true) l(a_1, a_2) JOIN (SELECT xc_having_tab2.val2, xc_having_tab2.val FROM ONLY xc_having_tab2 WHERE true) r(a_1, a_2) ON (true)) WHERE (((l.a_1 + r.a_1) > 2) AND (l.a_1 = r.a_1)) GROUP BY 5, 6
-(3 rows)
+                                                                                                                               QUERY PLAN                                                                                                                                
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Remote Subquery Scan on all
+   Output: count(*), sum((xc_having_tab1.val * xc_having_tab2.val)), avg((xc_having_tab1.val * xc_having_tab2.val)), ((sum((xc_having_tab1.val * xc_having_tab2.val)))::double precision / (count(*))::double precision), xc_having_tab1.val2, xc_having_tab2.val2
+   ->  GroupAggregate
+         Output: count(*), sum((xc_having_tab1.val * xc_having_tab2.val)), avg((xc_having_tab1.val * xc_having_tab2.val)), ((sum((xc_having_tab1.val * xc_having_tab2.val)))::double precision / (count(*))::double precision), xc_having_tab1.val2, xc_having_tab2.val2
+         ->  Merge Join
+               Output: xc_having_tab1.val2, xc_having_tab1.val, xc_having_tab2.val2, xc_having_tab2.val
+               Merge Cond: (xc_having_tab1.val2 = xc_having_tab2.val2)
+               Join Filter: ((xc_having_tab1.val2 + xc_having_tab2.val2) > 2)
+               ->  Sort
+                     Output: xc_having_tab1.val2, xc_having_tab1.val
+                     Sort Key: xc_having_tab1.val2
+                     ->  Seq Scan on public.xc_having_tab1
+                           Output: xc_having_tab1.val2, xc_having_tab1.val
+               ->  Sort
+                     Output: xc_having_tab2.val2, xc_having_tab2.val
+                     Sort Key: xc_having_tab2.val2
+                     ->  Seq Scan on public.xc_having_tab2
+                           Output: xc_having_tab2.val2, xc_having_tab2.val
+(18 rows)
 
 -- group by and having, without aggregate in the target list
 select val2 from xc_having_tab1 group by val2 having sum(val) > 8;
@@ -259,14 +309,18 @@ select val2 from xc_having_tab1 group by val2 having sum(val) > 8;
 (1 row)
 
 explain (verbose true, costs false, nodes false) select val2 from xc_having_tab1 group by val2 having sum(val) > 8;
-                                            QUERY PLAN                                            
---------------------------------------------------------------------------------------------------
- Data Node Scan on "__REMOTE_GROUP_QUERY__"
-   Output: xc_having_tab1.val2
-   Remote query: SELECT val2 FROM ONLY xc_having_tab1 WHERE true GROUP BY 1 HAVING (sum(val) > 8)
-(3 rows)
+                  QUERY PLAN                   
+-----------------------------------------------
+ Remote Subquery Scan on all
+   Output: val2
+   ->  HashAggregate
+         Output: val2
+         Filter: (sum(xc_having_tab1.val) > 8)
+         ->  Seq Scan on public.xc_having_tab1
+               Output: val, val2
+(7 rows)
 
-select val + val2 sum from xc_having_tab1 group by val + val2 having sum(val) > 5 order by sum;
+select * from (select val + val2 sum from xc_having_tab1 group by val + val2 having sum(val) > 5) q order by q.sum;
  sum 
 -----
    4
@@ -274,13 +328,19 @@ select val + val2 sum from xc_having_tab1 group by val + val2 having sum(val) > 
    9
 (3 rows)
 
-explain (verbose true, costs false, nodes false) select val + val2 sum from xc_having_tab1 group by val + val2 having sum(val) > 5 order by sum;
+explain (verbose true, costs false, nodes false) select * from (select val + val2 sum from xc_having_tab1 group by val + val2 having sum(val) > 5) q order by q.sum;
                                                      QUERY PLAN                                                      
 ---------------------------------------------------------------------------------------------------------------------
- Data Node Scan on "__REMOTE_GROUP_QUERY__"
+ Sort
    Output: ((xc_having_tab1.val + xc_having_tab1.val2))
-   Remote query: SELECT (val + val2) FROM ONLY xc_having_tab1 WHERE true GROUP BY 1 HAVING (sum(val) > 5) ORDER BY 1
-(3 rows)
+   Sort Key: ((xc_having_tab1.val + xc_having_tab1.val2))
+   ->  HashAggregate
+         Output: ((xc_having_tab1.val + xc_having_tab1.val2))
+         Filter: (pg_catalog.sum((sum(xc_having_tab1.val))) > 5)
+         ->  Data Node Scan on "__REMOTE_GROUP_QUERY__"
+               Output: ((xc_having_tab1.val + xc_having_tab1.val2)), (sum(xc_having_tab1.val))
+               Remote query: SELECT (val + val2), sum(val) FROM ONLY xc_having_tab1 WHERE true GROUP BY (val + val2)
+(9 rows)
 
 -- group by with aggregates in expression
 select count(*) + sum(val) + avg(val), val2 from xc_having_tab1 group by val2 having min(val) < val2;
@@ -290,12 +350,16 @@ select count(*) + sum(val) + avg(val), val2 from xc_having_tab1 group by val2 ha
 (1 row)
 
 explain (verbose true, costs false, nodes false) select count(*) + sum(val) + avg(val), val2 from xc_having_tab1 group by val2 having min(val) < val2;
-                                                                               QUERY PLAN                                                                                
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Data Node Scan on "__REMOTE_GROUP_QUERY__"
-   Output: ((((count(*) + sum(xc_having_tab1.val)))::numeric + avg(xc_having_tab1.val))), xc_having_tab1.val2
-   Remote query: SELECT (((count(*) + sum(val)))::numeric + pg_catalog.int8_avg(avg(val))), val2 FROM ONLY xc_having_tab1 WHERE true GROUP BY 2 HAVING (min(val) < val2)
-(3 rows)
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ Remote Subquery Scan on all
+   Output: (((count(*) + sum(val)))::numeric + avg(val)), val2
+   ->  HashAggregate
+         Output: (((count(*) + sum(val)))::numeric + avg(val)), val2
+         Filter: (min(xc_having_tab1.val) < xc_having_tab1.val2)
+         ->  Seq Scan on public.xc_having_tab1
+               Output: val, val2
+(7 rows)
 
 drop table xc_having_tab1;
 drop table xc_having_tab2;
@@ -314,17 +378,21 @@ select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_hav
 (1 row)
 
 explain (verbose true, costs false, nodes false) select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_having_tab1 group by val2 having val2 + 1 > 3;
-                                                                                                                     QUERY PLAN                                                                                                                      
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                       QUERY PLAN                                                                                        
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  GroupAggregate
-   Output: pg_catalog.count(*), pg_catalog.sum((sum(xc_having_tab1.val))), pg_catalog.avg((avg(xc_having_tab1.val))), ((pg_catalog.sum((sum(xc_having_tab1.val))))::double precision / (pg_catalog.count(*))::double precision), xc_having_tab1.val2
-   ->  Sort
-         Output: (count(*)), (sum(xc_having_tab1.val)), (avg(xc_having_tab1.val)), xc_having_tab1.val2
-         Sort Key: xc_having_tab1.val2
-         ->  Data Node Scan on "__REMOTE_GROUP_QUERY__"
-               Output: (count(*)), (sum(xc_having_tab1.val)), (avg(xc_having_tab1.val)), xc_having_tab1.val2
-               Remote query: SELECT count(*), sum(val), avg(val), val2 FROM ONLY xc_having_tab1 WHERE ((val2 + 1) > 3) GROUP BY 4 ORDER BY 4
-(8 rows)
+   Output: pg_catalog.count(*), pg_catalog.sum((sum(val))), pg_catalog.avg((avg(val))), ((pg_catalog.sum((sum(val))))::double precision / (pg_catalog.count(*))::double precision), val2
+   ->  Remote Subquery Scan on all
+         Output: count(*), sum(val), avg(val), val2
+         ->  GroupAggregate
+               Output: count(*), sum(val), avg(val), val2
+               ->  Sort
+                     Output: val2, val
+                     Sort Key: xc_having_tab1.val2
+                     ->  Seq Scan on public.xc_having_tab1
+                           Output: val2, val
+                           Filter: ((xc_having_tab1.val2 + 1) > 3)
+(12 rows)
 
 -- having clause containing aggregate
 select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_having_tab1 group by val2 having avg(val) > 3.75;
@@ -334,39 +402,45 @@ select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_hav
 (1 row)
 
 explain (verbose true, costs false, nodes false) select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_having_tab1 group by val2 having avg(val) > 3.75;
-                                                                                                                     QUERY PLAN                                                                                                                      
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                       QUERY PLAN                                                                                        
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  GroupAggregate
-   Output: pg_catalog.count(*), pg_catalog.sum((sum(xc_having_tab1.val))), pg_catalog.avg((avg(xc_having_tab1.val))), ((pg_catalog.sum((sum(xc_having_tab1.val))))::double precision / (pg_catalog.count(*))::double precision), xc_having_tab1.val2
+   Output: pg_catalog.count(*), pg_catalog.sum((sum(val))), pg_catalog.avg((avg(val))), ((pg_catalog.sum((sum(val))))::double precision / (pg_catalog.count(*))::double precision), val2
    Filter: (pg_catalog.avg((avg(xc_having_tab1.val))) > 3.75)
-   ->  Sort
-         Output: (count(*)), (sum(xc_having_tab1.val)), (avg(xc_having_tab1.val)), xc_having_tab1.val2
-         Sort Key: xc_having_tab1.val2
-         ->  Data Node Scan on "__REMOTE_GROUP_QUERY__"
-               Output: (count(*)), (sum(xc_having_tab1.val)), (avg(xc_having_tab1.val)), xc_having_tab1.val2
-               Remote query: SELECT count(*), sum(val), avg(val), val2 FROM ONLY xc_having_tab1 WHERE true GROUP BY 4 ORDER BY 4
-(9 rows)
+   ->  Remote Subquery Scan on all
+         Output: count(*), sum(val), avg(val), val2
+         ->  GroupAggregate
+               Output: count(*), sum(val), avg(val), val2
+               ->  Sort
+                     Output: val2, val
+                     Sort Key: xc_having_tab1.val2
+                     ->  Seq Scan on public.xc_having_tab1
+                           Output: val2, val
+(12 rows)
 
-select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_having_tab1 group by val2 having avg(val) > 3.75 or val2 > 2 order by val2;
+select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_having_tab1 group by val2 having avg(val) > 3.75 or val2 > 2;
  count | sum |        avg         |     ?column?     | val2 
 -------+-----+--------------------+------------------+------
      2 |   8 | 4.0000000000000000 |                4 |    2
      3 |  11 | 3.6666666666666667 | 3.66666666666667 |    3
 (2 rows)
 
-explain (verbose true, costs false, nodes false) select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_having_tab1 group by val2 having avg(val) > 3.75 or val2 > 2 order by val2;
-                                                                                                                     QUERY PLAN                                                                                                                      
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+explain (verbose true, costs false, nodes false) select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_having_tab1 group by val2 having avg(val) > 3.75 or val2 > 2;
+                                                                                       QUERY PLAN                                                                                        
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  GroupAggregate
-   Output: pg_catalog.count(*), pg_catalog.sum((sum(xc_having_tab1.val))), pg_catalog.avg((avg(xc_having_tab1.val))), ((pg_catalog.sum((sum(xc_having_tab1.val))))::double precision / (pg_catalog.count(*))::double precision), xc_having_tab1.val2
+   Output: pg_catalog.count(*), pg_catalog.sum((sum(val))), pg_catalog.avg((avg(val))), ((pg_catalog.sum((sum(val))))::double precision / (pg_catalog.count(*))::double precision), val2
    Filter: ((pg_catalog.avg((avg(xc_having_tab1.val))) > 3.75) OR (xc_having_tab1.val2 > 2))
-   ->  Sort
-         Output: (count(*)), (sum(xc_having_tab1.val)), (avg(xc_having_tab1.val)), xc_having_tab1.val2
-         Sort Key: xc_having_tab1.val2
-         ->  Data Node Scan on "__REMOTE_GROUP_QUERY__"
-               Output: (count(*)), (sum(xc_having_tab1.val)), (avg(xc_having_tab1.val)), xc_having_tab1.val2
-               Remote query: SELECT count(*), sum(val), avg(val), val2 FROM ONLY xc_having_tab1 WHERE true GROUP BY 4 ORDER BY 4
-(9 rows)
+   ->  Remote Subquery Scan on all
+         Output: count(*), sum(val), avg(val), val2, val2
+         ->  GroupAggregate
+               Output: count(*), sum(val), avg(val), val2, val2
+               ->  Sort
+                     Output: val2, val
+                     Sort Key: xc_having_tab1.val2
+                     ->  Seq Scan on public.xc_having_tab1
+                           Output: val2, val
+(12 rows)
 
 select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_having_tab1 group by val2 having avg(val) > 3.75 and val2 > 2;
  count | sum | avg | ?column? | val2 
@@ -374,18 +448,22 @@ select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_hav
 (0 rows)
 
 explain (verbose true, costs false, nodes false) select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_having_tab1 group by val2 having avg(val) > 3.75 and val2 > 2;
-                                                                                                                     QUERY PLAN                                                                                                                      
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                       QUERY PLAN                                                                                        
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  GroupAggregate
-   Output: pg_catalog.count(*), pg_catalog.sum((sum(xc_having_tab1.val))), pg_catalog.avg((avg(xc_having_tab1.val))), ((pg_catalog.sum((sum(xc_having_tab1.val))))::double precision / (pg_catalog.count(*))::double precision), xc_having_tab1.val2
+   Output: pg_catalog.count(*), pg_catalog.sum((sum(val))), pg_catalog.avg((avg(val))), ((pg_catalog.sum((sum(val))))::double precision / (pg_catalog.count(*))::double precision), val2
    Filter: (pg_catalog.avg((avg(xc_having_tab1.val))) > 3.75)
-   ->  Sort
-         Output: (count(*)), (sum(xc_having_tab1.val)), (avg(xc_having_tab1.val)), xc_having_tab1.val2
-         Sort Key: xc_having_tab1.val2
-         ->  Data Node Scan on "__REMOTE_GROUP_QUERY__"
-               Output: (count(*)), (sum(xc_having_tab1.val)), (avg(xc_having_tab1.val)), xc_having_tab1.val2
-               Remote query: SELECT count(*), sum(val), avg(val), val2 FROM ONLY xc_having_tab1 WHERE (val2 > 2) GROUP BY 4 ORDER BY 4
-(9 rows)
+   ->  Remote Subquery Scan on all
+         Output: count(*), sum(val), avg(val), val2
+         ->  GroupAggregate
+               Output: count(*), sum(val), avg(val), val2
+               ->  Sort
+                     Output: val2, val
+                     Sort Key: xc_having_tab1.val2
+                     ->  Seq Scan on public.xc_having_tab1
+                           Output: val2, val
+                           Filter: (xc_having_tab1.val2 > 2)
+(13 rows)
 
 -- joins and group by and having
 select count(*), sum(xc_having_tab1.val * xc_having_tab2.val), avg(xc_having_tab1.val*xc_having_tab2.val), sum(xc_having_tab1.val*xc_having_tab2.val)::float8/count(*), xc_having_tab1.val2, xc_having_tab2.val2 from xc_having_tab1 full outer join xc_having_tab2 on xc_having_tab1.val2 = xc_having_tab2.val2 group by xc_having_tab1.val2, xc_having_tab2.val2 having xc_having_tab1.val2 + xc_having_tab2.val2 > 2;
@@ -395,8 +473,8 @@ select count(*), sum(xc_having_tab1.val * xc_having_tab2.val), avg(xc_having_tab
 (1 row)
 
 explain (verbose true, costs false, nodes false) select count(*), sum(xc_having_tab1.val * xc_having_tab2.val), avg(xc_having_tab1.val*xc_having_tab2.val), sum(xc_having_tab1.val*xc_having_tab2.val)::float8/count(*), xc_having_tab1.val2, xc_having_tab2.val2 from xc_having_tab1 full outer join xc_having_tab2 on xc_having_tab1.val2 = xc_having_tab2.val2 group by xc_having_tab1.val2, xc_having_tab2.val2 having xc_having_tab1.val2 + xc_having_tab2.val2 > 2;
-                                                                                                                            QUERY PLAN                                                                                                                             
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                                                  QUERY PLAN                                                                                                                                                                   
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  GroupAggregate
    Output: count(*), sum((xc_having_tab1.val * xc_having_tab2.val)), avg((xc_having_tab1.val * xc_having_tab2.val)), ((sum((xc_having_tab1.val * xc_having_tab2.val)))::double precision / (count(*))::double precision), xc_having_tab1.val2, xc_having_tab2.val2
    ->  Sort
@@ -424,18 +502,21 @@ select val2 from xc_having_tab1 group by val2 having sum(val) > 8;
 (1 row)
 
 explain (verbose true, costs false, nodes false) select val2 from xc_having_tab1 group by val2 having sum(val) > 8;
-                                                 QUERY PLAN                                                  
--------------------------------------------------------------------------------------------------------------
+                        QUERY PLAN                         
+-----------------------------------------------------------
  GroupAggregate
-   Output: xc_having_tab1.val2
+   Output: val2
    Filter: (pg_catalog.sum((sum(xc_having_tab1.val))) > 8)
-   ->  Sort
-         Output: xc_having_tab1.val2, (sum(xc_having_tab1.val))
-         Sort Key: xc_having_tab1.val2
-         ->  Data Node Scan on "__REMOTE_GROUP_QUERY__"
-               Output: xc_having_tab1.val2, (sum(xc_having_tab1.val))
-               Remote query: SELECT val2, sum(val) FROM ONLY xc_having_tab1 WHERE true GROUP BY 1 ORDER BY 1
-(9 rows)
+   ->  Remote Subquery Scan on all
+         Output: val2, sum(val)
+         ->  GroupAggregate
+               Output: val2, sum(val)
+               ->  Sort
+                     Output: val2, val
+                     Sort Key: xc_having_tab1.val2
+                     ->  Seq Scan on public.xc_having_tab1
+                           Output: val2, val
+(12 rows)
 
 select val + val2 from xc_having_tab1 group by val + val2 having sum(val) > 5;
  ?column? 
@@ -446,18 +527,21 @@ select val + val2 from xc_having_tab1 group by val + val2 having sum(val) > 5;
 (3 rows)
 
 explain (verbose true, costs false, nodes false) select val + val2 from xc_having_tab1 group by val + val2 having sum(val) > 5;
-                                                     QUERY PLAN                                                      
----------------------------------------------------------------------------------------------------------------------
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
  GroupAggregate
-   Output: ((xc_having_tab1.val + xc_having_tab1.val2))
+   Output: ((val + val2))
    Filter: (pg_catalog.sum((sum(xc_having_tab1.val))) > 5)
-   ->  Sort
-         Output: ((xc_having_tab1.val + xc_having_tab1.val2)), (sum(xc_having_tab1.val))
-         Sort Key: ((xc_having_tab1.val + xc_having_tab1.val2))
-         ->  Data Node Scan on "__REMOTE_GROUP_QUERY__"
-               Output: ((xc_having_tab1.val + xc_having_tab1.val2)), (sum(xc_having_tab1.val))
-               Remote query: SELECT (val + val2), sum(val) FROM ONLY xc_having_tab1 WHERE true GROUP BY 1 ORDER BY 1
-(9 rows)
+   ->  Remote Subquery Scan on all
+         Output: (val + val2), sum(val)
+         ->  GroupAggregate
+               Output: ((val + val2)), sum(val)
+               ->  Sort
+                     Output: ((val + val2)), val
+                     Sort Key: ((xc_having_tab1.val + xc_having_tab1.val2))
+                     ->  Seq Scan on public.xc_having_tab1
+                           Output: (val + val2), val
+(12 rows)
 
 -- group by with aggregates in expression
 select count(*) + sum(val) + avg(val), val2 from xc_having_tab1 group by val2 having min(val) < val2;
@@ -467,18 +551,21 @@ select count(*) + sum(val) + avg(val), val2 from xc_having_tab1 group by val2 ha
 (1 row)
 
 explain (verbose true, costs false, nodes false) select count(*) + sum(val) + avg(val), val2 from xc_having_tab1 group by val2 having min(val) < val2;
-                                                                        QUERY PLAN                                                                         
------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                  QUERY PLAN                                                  
+--------------------------------------------------------------------------------------------------------------
  GroupAggregate
-   Output: (((pg_catalog.count(*) + pg_catalog.sum((sum(xc_having_tab1.val)))))::numeric + pg_catalog.avg((avg(xc_having_tab1.val)))), xc_having_tab1.val2
+   Output: (((pg_catalog.count(*) + pg_catalog.sum((sum(val)))))::numeric + pg_catalog.avg((avg(val)))), val2
    Filter: (min((min(xc_having_tab1.val))) < xc_having_tab1.val2)
-   ->  Sort
-         Output: (count(*)), (sum(xc_having_tab1.val)), (avg(xc_having_tab1.val)), xc_having_tab1.val2, (min(xc_having_tab1.val))
-         Sort Key: xc_having_tab1.val2
-         ->  Data Node Scan on "__REMOTE_GROUP_QUERY__"
-               Output: (count(*)), (sum(xc_having_tab1.val)), (avg(xc_having_tab1.val)), xc_having_tab1.val2, (min(xc_having_tab1.val))
-               Remote query: SELECT count(*), sum(val), avg(val), val2, min(val) FROM ONLY xc_having_tab1 WHERE true GROUP BY 4 ORDER BY 4
-(9 rows)
+   ->  Remote Subquery Scan on all
+         Output: count(*), sum(val), avg(val), val2, min(val), val2
+         ->  GroupAggregate
+               Output: count(*), sum(val), avg(val), val2, min(val), val2
+               ->  Sort
+                     Output: val2, val
+                     Sort Key: xc_having_tab1.val2
+                     ->  Seq Scan on public.xc_having_tab1
+                           Output: val2, val
+(12 rows)
 
 drop table xc_having_tab1;
 drop table xc_having_tab2;
@@ -497,12 +584,19 @@ select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_hav
 (1 row)
 
 explain (verbose true, costs false, nodes false) select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_having_tab1 group by val2 having val2 + 1 > 3;
-                                                                                                     QUERY PLAN                                                                                                      
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Data Node Scan on "__REMOTE_GROUP_QUERY__"
-   Output: (count(*)), (sum(xc_having_tab1.val)), (avg(xc_having_tab1.val)), (((sum(xc_having_tab1.val))::double precision / (count(*))::double precision)), xc_having_tab1.val2
-   Remote query: SELECT count(*), sum(val), pg_catalog.int8_avg(avg(val)), ((sum(val))::double precision / (count(*))::double precision), val2 FROM ONLY xc_having_tab1 WHERE ((val2 + 1) > 3) GROUP BY 5 ORDER BY 5
-(3 rows)
+                                                    QUERY PLAN                                                     
+-------------------------------------------------------------------------------------------------------------------
+ Remote Subquery Scan on all
+   Output: count(*), sum(val), avg(val), ((sum(val))::double precision / (count(*))::double precision), val2
+   ->  GroupAggregate
+         Output: count(*), sum(val), avg(val), ((sum(val))::double precision / (count(*))::double precision), val2
+         ->  Sort
+               Output: val2, val
+               Sort Key: xc_having_tab1.val2
+               ->  Seq Scan on public.xc_having_tab1
+                     Output: val2, val
+                     Filter: ((xc_having_tab1.val2 + 1) > 3)
+(10 rows)
 
 -- having clause containing aggregate
 select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_having_tab1 group by val2 having avg(val) > 3.75;
@@ -512,27 +606,41 @@ select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_hav
 (1 row)
 
 explain (verbose true, costs false, nodes false) select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_having_tab1 group by val2 having avg(val) > 3.75;
-                                                                                                                      QUERY PLAN                                                                                                                       
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Data Node Scan on "__REMOTE_GROUP_QUERY__"
-   Output: (count(*)), (sum(xc_having_tab1.val)), (avg(xc_having_tab1.val)), (((sum(xc_having_tab1.val))::double precision / (count(*))::double precision)), xc_having_tab1.val2
-   Remote query: SELECT count(*), sum(val), pg_catalog.int8_avg(avg(val)), ((sum(val))::double precision / (count(*))::double precision), val2 FROM ONLY xc_having_tab1 WHERE true GROUP BY 5 HAVING (pg_catalog.int8_avg(avg(val)) > 3.75) ORDER BY 5
-(3 rows)
+                                                    QUERY PLAN                                                     
+-------------------------------------------------------------------------------------------------------------------
+ Remote Subquery Scan on all
+   Output: count(*), sum(val), avg(val), ((sum(val))::double precision / (count(*))::double precision), val2
+   ->  GroupAggregate
+         Output: count(*), sum(val), avg(val), ((sum(val))::double precision / (count(*))::double precision), val2
+         Filter: (avg(xc_having_tab1.val) > 3.75)
+         ->  Sort
+               Output: val2, val
+               Sort Key: xc_having_tab1.val2
+               ->  Seq Scan on public.xc_having_tab1
+                     Output: val2, val
+(10 rows)
 
-select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_having_tab1 group by val2 having avg(val) > 3.75 or val2 > 2 order by val2;
+select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_having_tab1 group by val2 having avg(val) > 3.75 or val2 > 2;
  count | sum |        avg         |     ?column?     | val2 
 -------+-----+--------------------+------------------+------
      2 |   8 | 4.0000000000000000 |                4 |    2
      3 |  11 | 3.6666666666666667 | 3.66666666666667 |    3
 (2 rows)
 
-explain (verbose true, costs false, nodes false) select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_having_tab1 group by val2 having avg(val) > 3.75 or val2 > 2 order by val2;
-                                                                                                                              QUERY PLAN                                                                                                                               
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Data Node Scan on "__REMOTE_GROUP_QUERY__"
-   Output: (count(*)), (sum(xc_having_tab1.val)), (avg(xc_having_tab1.val)), (((sum(xc_having_tab1.val))::double precision / (count(*))::double precision)), xc_having_tab1.val2
-   Remote query: SELECT count(*), sum(val), pg_catalog.int8_avg(avg(val)), ((sum(val))::double precision / (count(*))::double precision), val2 FROM ONLY xc_having_tab1 WHERE true GROUP BY 5 HAVING ((pg_catalog.int8_avg(avg(val)) > 3.75) OR (val2 > 2)) ORDER BY 5
-(3 rows)
+explain (verbose true, costs false, nodes false) select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_having_tab1 group by val2 having avg(val) > 3.75 or val2 > 2;
+                                                    QUERY PLAN                                                     
+-------------------------------------------------------------------------------------------------------------------
+ Remote Subquery Scan on all
+   Output: count(*), sum(val), avg(val), ((sum(val))::double precision / (count(*))::double precision), val2
+   ->  GroupAggregate
+         Output: count(*), sum(val), avg(val), ((sum(val))::double precision / (count(*))::double precision), val2
+         Filter: ((avg(xc_having_tab1.val) > 3.75) OR (xc_having_tab1.val2 > 2))
+         ->  Sort
+               Output: val2, val
+               Sort Key: xc_having_tab1.val2
+               ->  Seq Scan on public.xc_having_tab1
+                     Output: val2, val
+(10 rows)
 
 select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_having_tab1 group by val2 having avg(val) > 3.75 and val2 > 2;
  count | sum | avg | ?column? | val2 
@@ -540,12 +648,20 @@ select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_hav
 (0 rows)
 
 explain (verbose true, costs false, nodes false) select count(*), sum(val), avg(val), sum(val)::float8/count(*), val2 from xc_having_tab1 group by val2 having avg(val) > 3.75 and val2 > 2;
-                                                                                                                         QUERY PLAN                                                                                                                          
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Data Node Scan on "__REMOTE_GROUP_QUERY__"
-   Output: (count(*)), (sum(xc_having_tab1.val)), (avg(xc_having_tab1.val)), (((sum(xc_having_tab1.val))::double precision / (count(*))::double precision)), xc_having_tab1.val2
-   Remote query: SELECT count(*), sum(val), pg_catalog.int8_avg(avg(val)), ((sum(val))::double precision / (count(*))::double precision), val2 FROM ONLY xc_having_tab1 WHERE (val2 > 2) GROUP BY 5 HAVING (pg_catalog.int8_avg(avg(val)) > 3.75) ORDER BY 5
-(3 rows)
+                                                    QUERY PLAN                                                     
+-------------------------------------------------------------------------------------------------------------------
+ Remote Subquery Scan on all
+   Output: count(*), sum(val), avg(val), ((sum(val))::double precision / (count(*))::double precision), val2
+   ->  GroupAggregate
+         Output: count(*), sum(val), avg(val), ((sum(val))::double precision / (count(*))::double precision), val2
+         Filter: (avg(xc_having_tab1.val) > 3.75)
+         ->  Sort
+               Output: val2, val
+               Sort Key: xc_having_tab1.val2
+               ->  Seq Scan on public.xc_having_tab1
+                     Output: val2, val
+                     Filter: (xc_having_tab1.val2 > 2)
+(11 rows)
 
 -- joins and group by and having
 select count(*), sum(xc_having_tab1.val * xc_having_tab2.val), avg(xc_having_tab1.val*xc_having_tab2.val), sum(xc_having_tab1.val*xc_having_tab2.val)::float8/count(*), xc_having_tab1.val2, xc_having_tab2.val2 from xc_having_tab1 full outer join xc_having_tab2 on xc_having_tab1.val2 = xc_having_tab2.val2 group by xc_having_tab1.val2, xc_having_tab2.val2 having xc_having_tab1.val2 + xc_having_tab2.val2 > 2;
@@ -555,12 +671,27 @@ select count(*), sum(xc_having_tab1.val * xc_having_tab2.val), avg(xc_having_tab
 (1 row)
 
 explain (verbose true, costs false, nodes false) select count(*), sum(xc_having_tab1.val * xc_having_tab2.val), avg(xc_having_tab1.val*xc_having_tab2.val), sum(xc_having_tab1.val*xc_having_tab2.val)::float8/count(*), xc_having_tab1.val2, xc_having_tab2.val2 from xc_having_tab1 full outer join xc_having_tab2 on xc_having_tab1.val2 = xc_having_tab2.val2 group by xc_having_tab1.val2, xc_having_tab2.val2 having xc_having_tab1.val2 + xc_having_tab2.val2 > 2;
-                                                                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                                                                            
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Data Node Scan on "__REMOTE_GROUP_QUERY__"
-   Output: (count(*)), (sum((xc_having_tab1.val * xc_having_tab2.val))), (avg((xc_having_tab1.val * xc_having_tab2.val))), (((sum((xc_having_tab1.val * xc_having_tab2.val)))::double precision / (count(*))::double precision)), xc_having_tab1.val2, xc_having_tab2.val2
-   Remote query: SELECT count(*), sum((l.a_2 * r.a_2)), pg_catalog.int8_avg(avg((l.a_2 * r.a_2))), ((sum((l.a_2 * r.a_2)))::double precision / (count(*))::double precision), l.a_1, r.a_1 FROM ((SELECT xc_having_tab1.val2, xc_having_tab1.val FROM ONLY xc_having_tab1 WHERE true) l(a_1, a_2) JOIN (SELECT xc_having_tab2.val2, xc_having_tab2.val FROM ONLY xc_having_tab2 WHERE true) r(a_1, a_2) ON (true)) WHERE (((l.a_1 + r.a_1) > 2) AND (l.a_1 = r.a_1)) GROUP BY 5, 6 ORDER BY 5, 6
-(3 rows)
+                                                                                                                               QUERY PLAN                                                                                                                                
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Remote Subquery Scan on all
+   Output: count(*), sum((xc_having_tab1.val * xc_having_tab2.val)), avg((xc_having_tab1.val * xc_having_tab2.val)), ((sum((xc_having_tab1.val * xc_having_tab2.val)))::double precision / (count(*))::double precision), xc_having_tab1.val2, xc_having_tab2.val2
+   ->  GroupAggregate
+         Output: count(*), sum((xc_having_tab1.val * xc_having_tab2.val)), avg((xc_having_tab1.val * xc_having_tab2.val)), ((sum((xc_having_tab1.val * xc_having_tab2.val)))::double precision / (count(*))::double precision), xc_having_tab1.val2, xc_having_tab2.val2
+         ->  Merge Join
+               Output: xc_having_tab1.val2, xc_having_tab1.val, xc_having_tab2.val2, xc_having_tab2.val
+               Merge Cond: (xc_having_tab1.val2 = xc_having_tab2.val2)
+               Join Filter: ((xc_having_tab1.val2 + xc_having_tab2.val2) > 2)
+               ->  Sort
+                     Output: xc_having_tab1.val2, xc_having_tab1.val
+                     Sort Key: xc_having_tab1.val2
+                     ->  Seq Scan on public.xc_having_tab1
+                           Output: xc_having_tab1.val2, xc_having_tab1.val
+               ->  Sort
+                     Output: xc_having_tab2.val2, xc_having_tab2.val
+                     Sort Key: xc_having_tab2.val2
+                     ->  Seq Scan on public.xc_having_tab2
+                           Output: xc_having_tab2.val2, xc_having_tab2.val
+(18 rows)
 
 -- group by and having, without aggregate in the target list
 select val2 from xc_having_tab1 group by val2 having sum(val) > 8;
@@ -570,12 +701,19 @@ select val2 from xc_having_tab1 group by val2 having sum(val) > 8;
 (1 row)
 
 explain (verbose true, costs false, nodes false) select val2 from xc_having_tab1 group by val2 having sum(val) > 8;
-                                                 QUERY PLAN                                                  
--------------------------------------------------------------------------------------------------------------
- Data Node Scan on "__REMOTE_GROUP_QUERY__"
-   Output: xc_having_tab1.val2
-   Remote query: SELECT val2 FROM ONLY xc_having_tab1 WHERE true GROUP BY 1 HAVING (sum(val) > 8) ORDER BY 1
-(3 rows)
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Remote Subquery Scan on all
+   Output: val2
+   ->  GroupAggregate
+         Output: val2
+         Filter: (sum(xc_having_tab1.val) > 8)
+         ->  Sort
+               Output: val2, val
+               Sort Key: xc_having_tab1.val2
+               ->  Seq Scan on public.xc_having_tab1
+                     Output: val2, val
+(10 rows)
 
 select val + val2 from xc_having_tab1 group by val + val2 having sum(val) > 5;
  ?column? 
@@ -586,12 +724,19 @@ select val + val2 from xc_having_tab1 group by val + val2 having sum(val) > 5;
 (3 rows)
 
 explain (verbose true, costs false, nodes false) select val + val2 from xc_having_tab1 group by val + val2 having sum(val) > 5;
-                                                     QUERY PLAN                                                      
----------------------------------------------------------------------------------------------------------------------
- Data Node Scan on "__REMOTE_GROUP_QUERY__"
-   Output: ((xc_having_tab1.val + xc_having_tab1.val2))
-   Remote query: SELECT (val + val2) FROM ONLY xc_having_tab1 WHERE true GROUP BY 1 HAVING (sum(val) > 5) ORDER BY 1
-(3 rows)
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Remote Subquery Scan on all
+   Output: (val + val2)
+   ->  GroupAggregate
+         Output: ((val + val2))
+         Filter: (sum(xc_having_tab1.val) > 5)
+         ->  Sort
+               Output: ((val + val2)), val
+               Sort Key: ((xc_having_tab1.val + xc_having_tab1.val2))
+               ->  Seq Scan on public.xc_having_tab1
+                     Output: (val + val2), val
+(10 rows)
 
 -- group by with aggregates in expression
 select count(*) + sum(val) + avg(val), val2 from xc_having_tab1 group by val2 having min(val) < val2;
@@ -601,14 +746,22 @@ select count(*) + sum(val) + avg(val), val2 from xc_having_tab1 group by val2 ha
 (1 row)
 
 explain (verbose true, costs false, nodes false) select count(*) + sum(val) + avg(val), val2 from xc_having_tab1 group by val2 having min(val) < val2;
-                                                                                     QUERY PLAN                                                                                     
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Data Node Scan on "__REMOTE_GROUP_QUERY__"
-   Output: ((((count(*) + sum(xc_having_tab1.val)))::numeric + avg(xc_having_tab1.val))), xc_having_tab1.val2
-   Remote query: SELECT (((count(*) + sum(val)))::numeric + pg_catalog.int8_avg(avg(val))), val2 FROM ONLY xc_having_tab1 WHERE true GROUP BY 2 HAVING (min(val) < val2) ORDER BY 2
-(3 rows)
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ Remote Subquery Scan on all
+   Output: (((count(*) + sum(val)))::numeric + avg(val)), val2
+   ->  GroupAggregate
+         Output: (((count(*) + sum(val)))::numeric + avg(val)), val2
+         Filter: (min(xc_having_tab1.val) < xc_having_tab1.val2)
+         ->  Sort
+               Output: val2, val
+               Sort Key: xc_having_tab1.val2
+               ->  Seq Scan on public.xc_having_tab1
+                     Output: val2, val
+(10 rows)
 
 drop table xc_having_tab1;
 drop table xc_having_tab2;
 reset enable_hashagg;
 reset enable_fast_query_shipping;
+ERROR:  unrecognized configuration parameter "enable_fast_query_shipping"

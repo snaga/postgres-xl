@@ -46,12 +46,40 @@ CREATE [ OR REPLACE ] FUNCTION
   <note>
    <para>
     <productname>Postgres-XC</> currently does not support creation of SQL functions 
-    containing utility statemets. This limitation is however enforced only when the 
+    containing utility statements. This limitation is however enforced only when the 
     GUC <varname>check_function_bodies</varname> is <literal>on</>. 
     If SQL functions are created after setting <varname>check_function_bodies</varname> to <literal>off</>, 
     the behaviour of the function when executed is un-defined. 
     Other than this limitation the following description applies both to 
     <productname>Postgres-XC</> and <productname>PostgreSQL</> if not described explicitly.
+   </para>
+  </note>
+<!## end>
+<!## XL>
+  <note>
+   <para>
+    <productname>Postgres-XL</> function usage currently requires a lot of care,
+    otherwise unexepected results may occur, and you may bring your data in an inconsistent state. 
+    This behavior may change in a future version to make it safer.
+   </para>
+
+   <para>
+    A call such as <literal>SELECT my_function(1,2);</>, without any FROM clause,
+     will execute on a local coordinator, and 
+    may involve other datanodes and behave as expected, being driven from a coordinator.
+   </para>
+
+   <para>
+    A call such as <literal>SELECT col1, my_table_function(col2) FROM mytable</> will be
+    pushed down to the datanodes involved. If <literal>my_table_function</> happens to 
+    do a SELECT, it will only be from data local to that node. Similarly, if it
+    executes an UPDATE, it will only update data local to that node. 
+    If the UPDATE writes to a replicated table for example, it would mean that 
+    the tables would be out of sync.
+   </para>
+
+   <para>
+    In summary, one should be very careful in creating and using functions in Postgres-XL.
    </para>
   </note>
 <!## end>
@@ -496,6 +524,13 @@ CREATE [ OR REPLACE ] FUNCTION
        servers where Coordinator or Datanode may run.
       </para>
 <!## end>
+<!## XL>
+&xlonly;
+      <para>
+       It is user's responsibility to deploy the file to all the
+       servers where Coordinator or Datanode may run.
+      </para>
+<!## end>
 
      </listitem>
     </varlistentry>
@@ -554,6 +589,9 @@ CREATE [ OR REPLACE ] FUNCTION
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname> allows function
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> allows function
 <!## end>
     <firstterm>overloading</firstterm>; that is, the same name can be
     used for several different functions so long as they have distinct
@@ -758,6 +796,9 @@ COMMIT;
 <!## end>
 <!## XC>
    The <productname>Postgres-XC</productname> version is similar but
+<!## end>
+<!## XL>
+   The <productname>Postgres-XL</productname> version is similar but
 <!## end>
    not fully compatible.  The attributes are not portable, neither are the
    different available languages.

@@ -27,6 +27,11 @@
  * for too long.)
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -205,7 +210,11 @@ GetTransactionSnapshot(void)
 		 * The command id should therefore be updated in the
 		 * current snapshot.
 		 */
+#ifdef XCP
+		if (IsConnFromCoord() || IsConnFromDatanode())
+#else
 		if (IsConnFromCoord())
+#endif
 			SnapshotSetCommandId(GetCurrentCommandId(false));
 #endif
 		return CurrentSnapshot;
@@ -224,9 +233,9 @@ GetTransactionSnapshot(void)
 Snapshot
 GetLatestSnapshot(void)
 {
-	/* Should not be first call in transaction */
+	/* If first call in transaction, go ahead and set the xact snapshot */
 	if (!FirstSnapshotSet)
-		elog(ERROR, "no snapshot has been set");
+		return GetTransactionSnapshot();
 
 	SecondarySnapshot = GetSnapshotData(&SecondarySnapshotData);
 
@@ -1047,7 +1056,7 @@ ImportSnapshot(const char *idstr)
 	if (strspn(idstr, "0123456789ABCDEF-") != strlen(idstr))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("invalid snapshot identifier \"%s\"", idstr)));
+				 errmsg("invalid snapshot identifier: \"%s\"", idstr)));
 
 	/* OK, read the file */
 	snprintf(path, MAXPGPATH, SNAPSHOT_EXPORT_DIR "/%s", idstr);
@@ -1056,7 +1065,7 @@ ImportSnapshot(const char *idstr)
 	if (!f)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("invalid snapshot identifier \"%s\"", idstr)));
+				 errmsg("invalid snapshot identifier: \"%s\"", idstr)));
 
 	/* get the size of the file so that we know how much memory we need */
 	if (fstat(fileno(f), &stat_buf))

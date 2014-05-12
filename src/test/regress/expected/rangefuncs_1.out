@@ -12,12 +12,10 @@ SELECT name, setting FROM pg_settings WHERE name LIKE 'enable%' ORDER BY name;
  enable_nestloop            | on
  enable_remotegroup         | on
  enable_remotejoin          | on
- enable_remotelimit         | on
- enable_remotesort          | on
  enable_seqscan             | on
  enable_sort                | on
  enable_tidscan             | on
-(16 rows)
+(14 rows)
 
 CREATE TABLE foo2(fooid int, f2 int);
 INSERT INTO foo2 VALUES(1, 11);
@@ -583,8 +581,6 @@ DROP FUNCTION foo(int);
 --
 -- some tests on SQL functions with RETURNING
 --
--- Enforce use of COMMIT instead of 2PC for temporary objects
-SET enforce_two_phase_commit TO off;
 create temp table tt(f1 serial, data text);
 NOTICE:  CREATE TABLE will create implicit sequence "tt_f1_seq" for serial column "tt.f1"
 create function insert_tt(text) returns int as
@@ -689,7 +685,7 @@ begin
 end $$ language plpgsql;
 create trigger tnoticetrigger after insert on tt for each row
 execute procedure noticetrigger();
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 select insert_tt2('foolme','barme') limit 1;
  insert_tt2 

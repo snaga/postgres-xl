@@ -159,8 +159,8 @@ pgxc_redist_build_replicate_to_distrib(RedistribState *distribState,
 		return;
 
 	/* Redistribution is done from replication to distributed (with value) */
-	if (!IsRelationReplicated(oldLocInfo) ||
-		!IsRelationDistributedByValue(newLocInfo))
+	if (!IsLocatorReplicated(oldLocInfo->locatorType) ||
+		!IsLocatorDistributedByValue(newLocInfo->locatorType))
 		return;
 
 	/* Get the list of nodes that are added to the relation */
@@ -243,8 +243,8 @@ pgxc_redist_build_replicate(RedistribState *distribState,
 		return;
 
 	/* Case of a replicated table whose set of nodes is changed */
-	if (!IsRelationReplicated(newLocInfo) ||
-		!IsRelationReplicated(oldLocInfo))
+	if (!IsLocatorReplicated(newLocInfo->locatorType) ||
+		!IsLocatorReplicated(oldLocInfo->locatorType))
 		return;
 
 	/* Get the list of nodes that are added to the relation */
@@ -410,6 +410,18 @@ distrib_copy_to(RedistribState *distribState)
 					get_namespace_name(RelationGetNamespace(rel)),
 					RelationGetRelationName(rel))));
 
+#ifdef XCP
+	/* Begin the COPY process */
+	DataNodeCopyBegin(copyState);
+
+	/* Create tuplestore storage */
+	store = tuplestore_begin_message(false, work_mem);
+
+	/* Then get rows and copy them to the tuplestore used for redistribution */
+	DataNodeCopyStore(
+			(PGXCNodeHandle **) getLocatorNodeMap(copyState->locator),
+			getLocatorNodeCount(copyState->locator), store);
+#else
 	/* Begin the COPY process */
 	copyState->connections = DataNodeCopyBegin(copyState->query_buf.data,
 											   copyState->exec_nodes->nodeList,
@@ -425,6 +437,7 @@ distrib_copy_to(RedistribState *distribState)
 					NULL,
 					store,					/* Tuplestore used for redistribution */
 					REMOTE_COPY_TUPLESTORE);
+#endif
 
 	/* Do necessary clean-up */
 	FreeRemoteCopyOptions(options);
@@ -450,8 +463,17 @@ distrib_copy_from(RedistribState *distribState, ExecNodes *exec_nodes)
 	Relation	rel;
 	RemoteCopyOptions *options;
 	RemoteCopyData *copyState;
+#ifndef XCP
 	bool replicated, contains_tuple = true;
+#endif
 	TupleDesc tupdesc;
+#ifdef XCP
+	/* May be needed to decode partitioning value */
+	int 		partIdx;
+	FmgrInfo 	in_function;
+	Oid 		typioparam;
+	int 		typmod;
+#endif
 
 	/* Nothing to do if on remote node */
 	if (IS_PGXC_DATANODE || IsConnFromCoord())
@@ -472,6 +494,14 @@ distrib_copy_from(RedistribState *distribState, ExecNodes *exec_nodes)
 	RemoteCopy_GetRelationLoc(copyState, rel, NIL);
 	RemoteCopy_BuildStatement(copyState, rel, options, NIL, NIL);
 
+#ifdef XCP
+	/* Modify relation location as requested */
+	if (exec_nodes)
+	{
+		if (exec_nodes->nodeList)
+			copyState->rel_loc->nodeList = exec_nodes->nodeList;
+	}
+#else
 	/*
 	 * When building COPY FROM command in redistribution list,
 	 * use the list of nodes that has been calculated there.
@@ -482,8 +512,37 @@ distrib_copy_from(RedistribState *distribState, ExecNodes *exec_nodes)
 		copyState->exec_nodes->nodeList = exec_nodes->nodeList;
 		copyState->rel_loc->nodeList = exec_nodes->nodeList;
 	}
+#endif
 
 	tupdesc = RelationGetDescr(rel);
+#ifdef XCP
+	if (AttributeNumberIsValid(copyState->rel_loc->partAttrNum))
+	{
+		Oid in_func_oid;
+		int dropped = 0;
+		int i;
+
+		partIdx = copyState->rel_loc->partAttrNum - 1;
+
+		/* prepare function to decode partitioning value */
+		getTypeInputInfo(copyState->dist_type,
+						 &in_func_oid, &typioparam);
+		fmgr_info(in_func_oid, &in_function);
+		typmod = tupdesc->attrs[partIdx]->atttypmod;
+
+		/*
+		 * Make partIdx pointing to correct field of the datarow.
+		 * The data row does not contain data of dropped attributes, we should
+		 * decrement partIdx appropriately
+		 */
+		for (i = 0; i < partIdx; i++)
+		{
+			if (tupdesc->attrs[i]->attisdropped)
+				dropped++;
+		}
+		partIdx -= dropped;
+	}
+#endif
 
 	/* Inform client of operation being done */
 	ereport(DEBUG1,
@@ -491,6 +550,55 @@ distrib_copy_from(RedistribState *distribState, ExecNodes *exec_nodes)
 					get_namespace_name(RelationGetNamespace(rel)),
 					RelationGetRelationName(rel))));
 
+#ifdef XCP
+	DataNodeCopyBegin(copyState);
+
+	/* Send each COPY message stored to remote nodes */
+	while (true)
+	{
+		char   *data;
+		int 	len;
+		Datum	value = (Datum) 0;
+		bool	is_null = true;
+
+		/* Get message from the tuplestore */
+		data = tuplestore_getmessage(store, &len);
+		if (!data)
+			break;
+
+		/* Find value of distribution column if necessary */
+		if (AttributeNumberIsValid(copyState->rel_loc->partAttrNum))
+		{
+			char 	  **fields;
+
+			/*
+			 * Split message on an array of fields.
+			 * Last \n is not included in converted message.
+			 */
+			fields = CopyOps_RawDataToArrayField(tupdesc, data, len - 1);
+
+			/* Determine partitioning value */
+			if (fields[partIdx])
+			{
+				value = InputFunctionCall(&in_function, fields[partIdx],
+										  typioparam, typmod);
+				is_null = false;
+			}
+		}
+
+		if (DataNodeCopyIn(data, len,
+						   GET_NODES(copyState->locator, value, is_null, NULL),
+				   (PGXCNodeHandle**) getLocatorResults(copyState->locator)))
+				ereport(ERROR,
+						(errcode(ERRCODE_CONNECTION_EXCEPTION),
+						 errmsg("Copy failed on a data node")));
+
+		/* Clean up */
+		pfree(data);
+	}
+	DataNodeCopyFinish(getLocatorNodeCount(copyState->locator),
+			(PGXCNodeHandle **) getLocatorNodeMap(copyState->locator));
+#else
 	/* Begin redistribution on remote nodes */
 	copyState->connections = DataNodeCopyBegin(copyState->query_buf.data,
 											   copyState->exec_nodes->nodeList,
@@ -561,6 +669,7 @@ distrib_copy_from(RedistribState *distribState, ExecNodes *exec_nodes)
 	DataNodeCopyFinish(copyState->connections,
 					   replicated ? PGXCNodeGetNodeId(primary_data_node, PGXC_NODE_DATANODE) : -1,
 					   replicated ? COMBINE_TYPE_SAME : COMBINE_TYPE_SUM);
+#endif
 
 	/* Lock is maintained until transaction commits */
 	relation_close(rel, NoLock);
@@ -721,8 +830,10 @@ distrib_delete_hash(RedistribState *distribState, ExecNodes *exec_nodes)
 		hashfuncname = get_compute_hash_function(hashtype, locinfo->locatorType);
 
 		/* Get distribution column name */
-		if (IsRelationDistributedByValue(locinfo))
-			colname = GetRelationDistribColumn(locinfo);
+		if (locinfo->locatorType == LOCATOR_TYPE_HASH)
+			colname = GetRelationHashColumn(locinfo);
+		else if (locinfo->locatorType == LOCATOR_TYPE_MODULO)
+			colname = GetRelationModuloColumn(locinfo);
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
@@ -859,7 +970,9 @@ distrib_execute_query(char *sql, bool is_temp, ExecNodes *exec_nodes)
 
 	/* Redistribution operations only concern Datanodes */
 	step->exec_type = EXEC_ON_DATANODES;
+#ifndef XCP
 	step->is_temp = is_temp;
+#endif
 	ExecRemoteUtility(step);
 	pfree(step->sql_statement);
 	pfree(step);

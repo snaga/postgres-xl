@@ -3,6 +3,11 @@
  * date.c
  *	  implements DATE and TIME data types specified in SQL-92 standard
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994-5, Regents of the University of California
  *
@@ -24,6 +29,9 @@
 #include "libpq/pqformat.h"
 #include "miscadmin.h"
 #include "parser/scansup.h"
+#ifdef XCP
+#include "pgxc/pgxc.h"
+#endif
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/date.h"
@@ -191,7 +199,15 @@ date_out(PG_FUNCTION_ARGS)
 	{
 		j2date(date + POSTGRES_EPOCH_JDATE,
 			   &(tm->tm_year), &(tm->tm_mon), &(tm->tm_mday));
+#ifdef XCP
+		/*
+		 * We want other nodes could parse encoded dates correctly.
+		 * ISO date style is best suitable for that
+		 */
+		EncodeDateOnly(tm, IS_PGXC_DATANODE ? USE_ISO_DATES : DateStyle, buf);
+#else
 		EncodeDateOnly(tm, DateStyle, buf);
+#endif
 	}
 
 	result = pstrdup(buf);

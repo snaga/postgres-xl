@@ -208,6 +208,9 @@ UPDATE employees SET salary = salary * v.increase
 <!## XC>
    <literal>column2</>, etc in <productname>Postgres-XC</productname>, but
 <!## end>
+<!## XL>
+   <literal>column2</>, etc in <productname>Postgres-XL</productname>, but
+<!## end>
    these names might be different in other database systems.)
   </para>
 
@@ -245,6 +248,9 @@ WHERE ip_address IN (VALUES('192.168.0.1'::inet), ('192.168.0.10'), ('192.168.1.
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname> extensions; see also
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> extensions; see also
 <!## end>
    under <xref linkend="sql-select">.
   </para>

@@ -563,6 +563,32 @@ ssimkovi@ag.or.at
     </copyright>
    </biblioentry>
 <!## end>
+<!## XL>
+   <biblioentry id="OZS91">
+    <title>Principles of Distributed Database Systems</title>
+    <titleabbrev>Ozsu and Valduriez, 1991</titleabbrev>
+    <edition>Second Edition</edition>
+    <authorgroup>
+     <author>
+      <firstname>M. Tamer</firstname>
+      <surname>Ozsu</surname>
+     </author>
+     <author>
+      <firstname>Patrick</firstname>
+      <surname>Valduriez</surname>
+     </author>
+    </authorgroup>
+    <isbn>0-13-659707-6</isbn>
+    <pubdate>1991</pubdate>
+    <publisher>
+     <publishername>Prentice Hall</publishername>
+    </publisher>
+    <copyright>
+     <year>1991, 1999</year>
+     <holder>Prentice-Hall, Inc.</holder>
+    </copyright>
+   </biblioentry>
+<!## end>
 
   </bibliodiv>
  </bibliography>

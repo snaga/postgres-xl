@@ -2,6 +2,11 @@
  * dbsize.c
  *		Database object size functions, and related inquiries
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Copyright (c) 2002-2012, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
@@ -36,6 +41,14 @@
 #include "utils/relmapper.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
+#ifdef XCP
+#include "catalog/pg_type.h"
+#include "catalog/pgxc_node.h"
+#include "executor/executor.h"
+#include "nodes/makefuncs.h"
+#include "pgxc/execRemote.h"
+#include "utils/snapmgr.h"
+#endif
 
 #ifdef PGXC
 static Datum pgxc_database_size(Oid dbOid);
@@ -314,6 +327,9 @@ pg_tablespace_size_name(PG_FUNCTION_ARGS)
 
 /*
  * calculate size of (one fork of) a relation
+ *
+ * Note: we can safely apply this to temp tables of other sessions, so there
+ * is no check here or at the call sites for that.
  */
 static int64
 calculate_relation_size(RelFileNode *rfn, BackendId backend, ForkNumber forknum)
@@ -376,7 +392,7 @@ pg_relation_size(PG_FUNCTION_ARGS)
 	 * that makes queries like "SELECT pg_relation_size(oid) FROM pg_class"
 	 * less robust, because while we scan pg_class with an MVCC snapshot,
 	 * someone else might drop the table. It's better to return NULL for
-	 * alread-dropped tables than throw an error and abort the whole query.
+	 * already-dropped tables than throw an error and abort the whole query.
 	 */
 	if (rel == NULL)
 		PG_RETURN_NULL();
@@ -885,7 +901,11 @@ pg_relation_filepath(PG_FUNCTION_ARGS)
 			break;
 		case RELPERSISTENCE_TEMP:
 			if (isTempOrToastNamespace(relform->relnamespace))
+#ifdef XCP
+				backend = OidIsValid(MyCoordId) ? InvalidBackendId : MyBackendId;
+#else
 				backend = MyBackendId;
+#endif
 			else
 			{
 				/* Do it the hard way. */
@@ -971,16 +991,72 @@ pgxc_database_size(Oid dbOid)
 Datum
 pgxc_execute_on_nodes(int numnodes, Oid *nodelist, char *query)
 {
+#ifndef XCP
 	StringInfoData  buf;
 	int             ret;
 	TupleDesc       spi_tupdesc;
+#endif
 	int             i;
 	int64           total_size = 0;
 	int64           size = 0;
+#ifndef XCP
 	bool            isnull;
 	char           *nodename;
+#endif
 	Datum           datum;
 
+#ifdef XCP
+	EState		   *estate;
+	MemoryContext	oldcontext;
+	RemoteQuery	   *plan;
+	RemoteQueryState   *pstate;
+	TupleTableSlot	   *result;
+	Var			   *dummy;
+
+	/*
+	 * Make up RemoteQuery plan node
+	 */
+	plan = makeNode(RemoteQuery);
+	plan->combine_type = COMBINE_TYPE_NONE;
+	plan->exec_nodes = makeNode(ExecNodes);
+	for (i = 0; i < numnodes; i++)
+	{
+		char ntype = PGXC_NODE_NONE;
+		plan->exec_nodes->nodeList = lappend_int(plan->exec_nodes->nodeList,
+			PGXCNodeGetNodeId(nodelist[i], &ntype));
+		if (ntype == PGXC_NODE_NONE)
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("Unknown node Oid: %u", nodelist[i])));
+	}
+	plan->sql_statement = query;
+	plan->force_autocommit = false;
+	plan->exec_type = EXEC_ON_DATANODES;
+	/*
+	 * We only need the target entry to determine result data type.
+	 * So create dummy even if real expression is a function.
+	 */
+	dummy = makeVar(1, 1, INT8OID, 0, InvalidOid, 0);
+	plan->scan.plan.targetlist = lappend(plan->scan.plan.targetlist,
+									  makeTargetEntry((Expr *) dummy, 1, NULL, false));
+	/* prepare to execute */
+	estate = CreateExecutorState();
+	oldcontext = MemoryContextSwitchTo(estate->es_query_cxt);
+	estate->es_snapshot = GetActiveSnapshot();
+	pstate = ExecInitRemoteQuery(plan, estate, 0);
+	MemoryContextSwitchTo(oldcontext);
+
+	result = ExecRemoteQuery(pstate);
+	while (!TupIsNull(result))
+	{
+		bool isnull;
+		datum = slot_getattr(result, 1, &isnull);
+		size = DatumGetInt64(datum);
+                total_size += size;
+		result = ExecRemoteQuery(pstate);
+	}
+	ExecEndRemoteQuery(pstate);
+#else
 	/*
 	 * Connect to SPI manager
 	 */
@@ -1022,6 +1098,7 @@ pgxc_execute_on_nodes(int numnodes, Oid *nodelist, char *query)
 	}
 
 	SPI_finish();
+#endif
 
 	if (numnodes == 1)
 		PG_RETURN_DATUM(datum);

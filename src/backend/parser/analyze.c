@@ -14,6 +14,11 @@
  * contain optimizable statements, which we should transform.
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -25,6 +30,11 @@
 #include "postgres.h"
 
 #include "access/sysattr.h"
+#ifdef XCP
+#include "catalog/pg_namespace.h"
+#include "catalog/namespace.h"
+#include "utils/builtins.h"
+#endif
 #ifdef PGXC
 #include "catalog/pg_inherits.h"
 #include "catalog/pg_inherits_fn.h"
@@ -33,6 +43,7 @@
 #include "utils/tqual.h"
 #endif
 #include "catalog/pg_type.h"
+#include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/var.h"
@@ -54,7 +65,7 @@
 #include "pgxc/pgxcnode.h"
 #include "access/gtm.h"
 #include "utils/lsyscache.h"
-#include "optimizer/pgxcplan.h"
+#include "pgxc/planner.h"
 #include "tcop/tcopprot.h"
 #include "nodes/nodes.h"
 #include "pgxc/poolmgr.h"
@@ -90,14 +101,19 @@ static Query *transformCreateTableAsStmt(ParseState *pstate,
 						   CreateTableAsStmt *stmt);
 #ifdef PGXC
 static Query *transformExecDirectStmt(ParseState *pstate, ExecDirectStmt *stmt);
+#ifndef XCP
 static bool IsExecDirectUtilityStmt(Node *node);
 static bool is_relation_child(RangeTblEntry *child_rte, List *rtable);
 static bool is_rel_child_of_rel(RangeTblEntry *child_rte, RangeTblEntry *parent_rte);
+#endif
 #endif
 
 static void transformLockingClause(ParseState *pstate, Query *qry,
 					   LockingClause *lc, bool pushedDown);
 
+#ifdef XCP
+static void ParseAnalyze_rtable_walk(List *rtable);
+#endif
 
 /*
  * parse_analyze
@@ -549,7 +565,9 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 		ParseState *sub_pstate = make_parsestate(pstate);
 		Query	   *selectQuery;
 #ifdef PGXC
+#ifndef XCP
 		RangeTblEntry	*target_rte;
+#endif
 #endif
 
 		/*
@@ -584,6 +602,7 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 											makeAlias("*SELECT*", NIL),
 											false);
 #ifdef PGXC
+#ifndef XCP
 		/*
 		 * For an INSERT SELECT involving INSERT on a child after scanning
 		 * the parent, set flag to send command ID communication to remote
@@ -598,6 +617,7 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 				SetSendCommandId(true);
 			}
 		}
+#endif
 #endif
 		rtr = makeNode(RangeTblRef);
 		/* assume new rte is at end */
@@ -1387,6 +1407,7 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 	Node	   *limitOffset;
 	Node	   *limitCount;
 	List	   *lockingClause;
+	WithClause *withClause;
 	Node	   *node;
 	ListCell   *left_tlist,
 			   *lct,
@@ -1402,14 +1423,6 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 	int			tllen;
 
 	qry->commandType = CMD_SELECT;
-
-	/* process the WITH clause independently of all else */
-	if (stmt->withClause)
-	{
-		qry->hasRecursive = stmt->withClause->recursive;
-		qry->cteList = transformWithClause(pstate, stmt->withClause);
-		qry->hasModifyingCTE = pstate->p_hasModifyingCTE;
-	}
 
 	/*
 	 * Find leftmost leaf SelectStmt.  We currently only need to do this in
@@ -1440,17 +1453,27 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 	limitOffset = stmt->limitOffset;
 	limitCount = stmt->limitCount;
 	lockingClause = stmt->lockingClause;
+	withClause = stmt->withClause;
 
 	stmt->sortClause = NIL;
 	stmt->limitOffset = NULL;
 	stmt->limitCount = NULL;
 	stmt->lockingClause = NIL;
+	stmt->withClause = NULL;
 
 	/* We don't support FOR UPDATE/SHARE with set ops at the moment. */
 	if (lockingClause)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT")));
+
+	/* Process the WITH clause independently of all else */
+	if (withClause)
+	{
+		qry->hasRecursive = withClause->recursive;
+		qry->cteList = transformWithClause(pstate, withClause);
+		qry->hasModifyingCTE = pstate->p_hasModifyingCTE;
+	}
 
 	/*
 	 * Recursively transform the components of the tree.
@@ -1620,6 +1643,9 @@ transformSetOperationTree(ParseState *pstate, SelectStmt *stmt,
 
 	Assert(stmt && IsA(stmt, SelectStmt));
 
+	/* Guard against stack overflow due to overly complex set-expressions */
+	check_stack_depth();
+
 	/*
 	 * Validity-check both leaf and internal SELECTs for disallowed ops.
 	 */
@@ -1637,10 +1663,10 @@ transformSetOperationTree(ParseState *pstate, SelectStmt *stmt,
 				 errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT")));
 
 	/*
-	 * If an internal node of a set-op tree has ORDER BY, LIMIT, or FOR UPDATE
-	 * clauses attached, we need to treat it like a leaf node to generate an
-	 * independent sub-Query tree.	Otherwise, it can be represented by a
-	 * SetOperationStmt node underneath the parent Query.
+	 * If an internal node of a set-op tree has ORDER BY, LIMIT, FOR UPDATE,
+	 * or WITH clauses attached, we need to treat it like a leaf node to
+	 * generate an independent sub-Query tree.  Otherwise, it can be
+	 * represented by a SetOperationStmt node underneath the parent Query.
 	 */
 	if (stmt->op == SETOP_NONE)
 	{
@@ -1651,7 +1677,7 @@ transformSetOperationTree(ParseState *pstate, SelectStmt *stmt,
 	{
 		Assert(stmt->larg != NULL && stmt->rarg != NULL);
 		if (stmt->sortClause || stmt->limitOffset || stmt->limitCount ||
-			stmt->lockingClause)
+			stmt->lockingClause || stmt->withClause)
 			isLeaf = true;
 		else
 			isLeaf = false;
@@ -2350,7 +2376,9 @@ transformExecDirectStmt(ParseState *pstate, ExecDirectStmt *stmt)
 	List		*raw_parsetree_list;
 	ListCell	*raw_parsetree_item;
 	char		*nodename;
+#ifndef XCP
 	Oid			nodeoid;
+#endif
 	int			nodeIndex;
 	char		nodetype;
 
@@ -2370,6 +2398,15 @@ transformExecDirectStmt(ParseState *pstate, ExecDirectStmt *stmt)
 
 	/* There is a single element here */
 	nodename = strVal(linitial(nodelist));
+#ifdef XCP
+	nodetype = PGXC_NODE_NONE;
+	nodeIndex = PGXCNodeGetNodeIdFromName(nodename, &nodetype);
+	if (nodetype == PGXC_NODE_NONE)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("PGXC Node %s: object not defined",
+						nodename)));
+#else
 	nodeoid = get_pgxc_nodeoid(nodename);
 
 	if (!OidIsValid(nodeoid))
@@ -2381,6 +2418,7 @@ transformExecDirectStmt(ParseState *pstate, ExecDirectStmt *stmt)
 	/* Get node type and index */
 	nodetype = get_pgxc_nodetype(nodeoid);
 	nodeIndex = PGXCNodeGetNodeId(nodeoid, get_pgxc_nodetype(nodeoid));
+#endif
 
 	/* Check if node is requested is the self-node or not */
 	if (nodetype == PGXC_NODE_COORDINATOR && nodeIndex == PGXCNodeId - 1)
@@ -2405,13 +2443,16 @@ transformExecDirectStmt(ParseState *pstate, ExecDirectStmt *stmt)
 		result = parse_analyze(parsetree, query, NULL, 0);
 	}
 
+#ifndef XCP
 	/* Needed by planner */
 	result->sql_statement = pstrdup(query);
+#endif
 
 	/* Default list of parameters to set */
 	step->sql_statement = NULL;
 	step->exec_nodes = makeNode(ExecNodes);
 	step->combine_type = COMBINE_TYPE_NONE;
+	step->sort = NULL;
 	step->read_only = true;
 	step->force_autocommit = false;
 	step->cursor = NULL;
@@ -2423,7 +2464,17 @@ transformExecDirectStmt(ParseState *pstate, ExecDirectStmt *stmt)
 	else
 		step->exec_type = EXEC_ON_DATANODES;
 
+	step->reduce_level = 0;
 	step->base_tlist = NIL;
+	step->outer_alias = NULL;
+	step->inner_alias = NULL;
+	step->outer_reduce_level = 0;
+	step->inner_reduce_level = 0;
+	step->outer_relids = NULL;
+	step->inner_relids = NULL;
+	step->inner_statement = NULL;
+	step->outer_statement = NULL;
+	step->join_condition = NULL;
 
 	/* Change the list of nodes that will be executed for the query and others */
 	step->force_autocommit = false;
@@ -2463,14 +2514,15 @@ transformExecDirectStmt(ParseState *pstate, ExecDirectStmt *stmt)
 		}
 	}
 
+#ifndef XCP
 	/*
 	 * Features not yet supported
 	 * DML can be launched without errors but this could compromise data
 	 * consistency, so block it.
 	 */
-	if (!xc_maintenance_mode && (step->exec_direct_type == EXEC_DIRECT_DELETE
-								 || step->exec_direct_type == EXEC_DIRECT_UPDATE
-								 || step->exec_direct_type == EXEC_DIRECT_INSERT))
+	if (step->exec_direct_type == EXEC_DIRECT_DELETE
+		|| step->exec_direct_type == EXEC_DIRECT_UPDATE
+		|| step->exec_direct_type == EXEC_DIRECT_INSERT)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("EXECUTE DIRECT cannot execute DML queries")));
@@ -2488,18 +2540,22 @@ transformExecDirectStmt(ParseState *pstate, ExecDirectStmt *stmt)
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("EXECUTE DIRECT cannot execute locally this utility query")));
 	}
+#endif
 
 	/* Build Execute Node list, there is a unique node for the time being */
 	step->exec_nodes->nodeList = lappend_int(step->exec_nodes->nodeList, nodeIndex);
 
 	/* Associate newly-created RemoteQuery node to the returned Query result */
+#ifndef XCP
 	result->is_local = is_local;
+#endif
 	if (!is_local)
 		result->utilityStmt = (Node *) step;
 
 	return result;
 }
 
+#ifndef XCP
 /*
  * Check if given node is authorized to go through EXECUTE DURECT
  */
@@ -2614,6 +2670,7 @@ is_rel_child_of_rel(RangeTblEntry *child_rte, RangeTblEntry *parent_rte)
 	return res;
 }
 
+#endif
 #endif
 
 /*
@@ -2848,3 +2905,76 @@ applyLockingClause(Query *qry, Index rtindex,
 	rc->pushedDown = pushedDown;
 	qry->rowMarks = lappend(qry->rowMarks, rc);
 }
+
+#ifdef XCP
+/*
+ * Check if the query contains references to any pg_catalog tables that should
+ * be remapped to storm_catalog. The list is obtained from the
+ * storm_catalog_remap_string GUC. Also do this only for normal users
+ */
+void
+ParseAnalyze_callback(ParseState *pstate, Query *query)
+{
+	ParseAnalyze_rtable_walk(query->rtable);
+}
+
+static void
+ParseAnalyze_rtable_walk(List *rtable)
+{
+	ListCell 		*item;
+	StringInfoData 	buf;
+
+	if (!IsUnderPostmaster || superuser())
+		return;
+
+	initStringInfo(&buf);
+	foreach(item, rtable)
+	{
+		RangeTblEntry *rte = (RangeTblEntry *) lfirst(item);
+
+		resetStringInfo(&buf);
+		if (rte->rtekind == RTE_FUNCTION &&
+				 get_func_namespace(((FuncExpr *) rte->funcexpr)->funcid) ==
+				 PG_CATALOG_NAMESPACE)
+		{
+			Oid funcid = InvalidOid;
+
+			FuncExpr *funcexpr = (FuncExpr *) rte->funcexpr;
+			const char *funcname = get_func_name(funcexpr->funcid);
+
+			/* Check if the funcname is in storm_catalog_remap_string */
+			appendStringInfoString(&buf, funcname);
+			appendStringInfoChar(&buf, ',');
+
+			elog(DEBUG2, "the constructed name is %s", buf.data);
+
+			/*
+			 * The unqualified function name should be satisfied from the
+			 * storm_catalog appropriately. Just provide a warning for now if
+			 * it is not..
+			 */
+			if (strstr(storm_catalog_remap_string, buf.data))
+			{
+				Oid *argtypes = NULL;
+				int nargs;
+
+				get_func_signature(funcexpr->funcid, &argtypes, &nargs);
+				funcid = get_funcid(funcname, buildoidvector(argtypes, nargs),
+									STORM_CATALOG_NAMESPACE);
+			}
+			else
+				continue;
+
+			if (get_func_namespace(funcid) != STORM_CATALOG_NAMESPACE)
+				ereport(WARNING,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("Entry (%s) present in storm_catalog_remap_string "
+							"but object not picked from STORM_CATALOG", funcname)));
+			else /* change the funcid to the storm_catalog one */
+				funcexpr->funcid = funcid;
+		}
+		else if (rte->rtekind == RTE_SUBQUERY) /* recurse for subqueries */
+				 ParseAnalyze_rtable_walk(rte->subquery->rtable);
+	}
+}
+#endif

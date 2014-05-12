@@ -35,6 +35,14 @@ DROP SERVER [ IF EXISTS ] <replaceable class="parameter">server_name</replaceabl
    in the future releases.
   </para>
 <!## end>
+<!## XL>
+&xlonly;
+  <para>
+   <command>SERVER</> is not yet supported
+   in <productname>Postgres-XL</>.  This command may be supported
+   in the future releases.
+  </para>
+<!## end>
 <!## PG>
 &pgonly;
 

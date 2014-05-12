@@ -4,6 +4,11 @@
  *	  Post-processing of a completed plan tree: fix references to subplan
  *	  vars, compute regproc values for operators, etc
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -26,8 +31,7 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #ifdef PGXC
-#include "pgxc/pgxc.h"
-#include "optimizer/pgxcplan.h"
+#include "pgxc/planner.h"
 #endif
 
 
@@ -69,6 +73,9 @@ typedef struct
 	indexed_tlist *subplan_itlist;
 	Index		newvarno;
 	int			rtoffset;
+#ifdef XCP
+	bool		agg_master;
+#endif
 } fix_upper_expr_context;
 
 typedef struct
@@ -77,7 +84,6 @@ typedef struct
 	indexed_tlist *base_itlist;
 	int			   rtoffset;
 	Index		   relid;
-	bool		   return_non_base_vars;	/* Should we reject or return vars not found in base_itlist */
 } fix_remote_expr_context;
 
 /*
@@ -127,11 +133,20 @@ static List *fix_join_expr(PlannerInfo *root,
 			  Index acceptable_rel, int rtoffset);
 static Node *fix_join_expr_mutator(Node *node,
 					  fix_join_expr_context *context);
+#ifdef XCP
+static Node *fix_upper_expr(PlannerInfo *root,
+			   Node *node,
+			   indexed_tlist *subplan_itlist,
+			   Index newvarno,
+			   int rtoffset,
+			   bool agg_master);
+#else
 static Node *fix_upper_expr(PlannerInfo *root,
 			   Node *node,
 			   indexed_tlist *subplan_itlist,
 			   Index newvarno,
 			   int rtoffset);
+#endif
 static Node *fix_upper_expr_mutator(Node *node,
 					   fix_upper_expr_context *context);
 static List *set_returning_clause_references(PlannerInfo *root,
@@ -144,18 +159,20 @@ static bool extract_query_dependencies_walker(Node *node,
 								  PlannerInfo *context);
 
 #ifdef PGXC
+#ifndef XCP
 /* References for remote plans */
 static List * fix_remote_expr(PlannerInfo *root,
 			  List *clauses,
 			  indexed_tlist *base_itlist,
 			  Index	newrelid,
-			  int rtoffset,
-			  bool return_non_base_vars);
+			  int rtoffset);
 static Node *fix_remote_expr_mutator(Node *node,
 			  fix_remote_expr_context *context);
 static void set_remote_references(PlannerInfo *root, RemoteQuery *rscan, int rtoffset);
-static void pgxc_set_agg_references(PlannerInfo *root, Agg *aggplan);
-static List *set_remote_returning_refs(PlannerInfo *root, List *rlist, Plan *topplan, Index relid, int rtoffset);
+#endif
+#endif
+#ifdef XCP
+static void set_remotesubplan_references(PlannerInfo *root, Plan *plan, int rtoffset);
 #endif
 
 
@@ -454,6 +471,7 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 			}
 			break;
 #ifdef PGXC
+#ifndef XCP
 		case T_RemoteQuery:
 			{
 				RemoteQuery	   *splan = (RemoteQuery *) plan;
@@ -474,6 +492,7 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 			}
 			break;
 #endif
+#endif
 		case T_ForeignScan:
 			{
 				ForeignScan *splan = (ForeignScan *) plan;
@@ -487,6 +506,11 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 					fix_scan_list(root, splan->fdw_exprs, rtoffset);
 			}
 			break;
+#ifdef XCP
+		case T_RemoteSubplan:
+			set_remotesubplan_references(root, plan, rtoffset);
+			break;
+#endif /* XCP */
 		case T_NestLoop:
 		case T_MergeJoin:
 		case T_HashJoin:
@@ -555,11 +579,6 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 			}
 			break;
 		case T_Agg:
-#ifdef PGXC
-			/* If the lower plan is RemoteQuery plan, adjust the aggregates */
-			pgxc_set_agg_references(root, (Agg *)plan);
-			/* Fall through */
-#endif /* PGXC */
 		case T_Group:
 			set_upper_references(root, plan, rtoffset);
 			break;
@@ -605,12 +624,6 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 		case T_ModifyTable:
 			{
 				ModifyTable *splan = (ModifyTable *) plan;
-#ifdef PGXC
-				int n = 0;
-				List	*firstRetList;	/* First returning list required for
-										 * setting up visible plan target list
-										 */
-#endif
 
 				Assert(splan->plan.targetlist == NIL);
 				Assert(splan->plan.qual == NIL);
@@ -635,48 +648,7 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 						List	   *rlist = (List *) lfirst(lcrl);
 						Index		resultrel = lfirst_int(lcrr);
 						Plan	   *subplan = (Plan *) lfirst(lcp);
-#ifdef PGXC
-						RemoteQuery	*rq = NULL;
 
-						if (n == 0)
-						{
-							/*
-							 * Set up first returning list before we change
-							 * var references to point to RTE_REMOTE_DUMMY
-							 */
-							firstRetList = set_returning_clause_references(root,
-																	rlist,
-																	subplan,
-																	resultrel,
-																	rtoffset);
-							/* Restore the returning list changed by the above call */
-							rlist = (List *) lfirst(lcrl);
-						}
-
-						if (splan->remote_plans)
-							rq = (RemoteQuery *)list_nth(splan->remote_plans, n);
-						n++;
-
-						if(rq != NULL && IS_PGXC_COORDINATOR && !IsConnFromCoord())
-						{
-							/*
-							 * Set references of returning clause by adjusting
-							 * varno/varattno according to target list in
-							 * remote query node
-							 */
-							rlist = set_remote_returning_refs(root,
-											rlist,
-											(Plan *)rq,
-											rq->scan.scanrelid,
-											rtoffset);
-							/*
-							 * The next call to set_returning_clause_references
-							 * should skip the vars already taken care of by
-							 * the above call to set_remote_returning_refs
-							 */
-							resultrel = rq->scan.scanrelid;
-						}
-#endif
 						rlist = set_returning_clause_references(root,
 																rlist,
 																subplan,
@@ -686,16 +658,6 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 					}
 					splan->returningLists = newRL;
 
-#ifdef PGXC
-					/*
-					 * In XC we do not need to set the target list as the
-					 * first RETURNING list from the finalized list because
-					 * it can contain vars referring to RTE_REMOTE_DUMMY.
-					 * We therefore create a list before fixing
-					 * remote returning references and use that here.
-					 */
-					splan->plan.targetlist = copyObject(firstRetList);
-#else
 					/*
 					 * Set up the visible plan targetlist as being the same as
 					 * the first RETURNING list. This is for the use of
@@ -705,7 +667,6 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 					 * twice on identical targetlists.
 					 */
 					splan->plan.targetlist = copyObject(linitial(newRL));
-#endif
 				}
 
 				foreach(l, splan->resultRelations)
@@ -736,34 +697,6 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 				root->glob->resultRelations =
 					list_concat(root->glob->resultRelations,
 								list_copy(splan->resultRelations));
-
-#ifdef PGXC
-				/* Adjust references of remote query nodes in ModifyTable node */
-				if(IS_PGXC_COORDINATOR && !IsConnFromCoord())
-				{
-					ListCell *elt;
-					RemoteQuery *rq;
-
-					foreach(elt, splan->remote_plans)
-					{
-						rq = (RemoteQuery *) lfirst(elt);
-						/*
-						 * If base_tlist is set, it means that we have a reduced remote
-						 * query plan. So need to set the var references accordingly.
-						 */
-						if (rq->base_tlist)
-							set_remote_references(root, rq, rtoffset);
-						rq->scan.plan.targetlist = fix_scan_list(root,
-													rq->scan.plan.targetlist,
-													rtoffset);
-						rq->scan.plan.qual = fix_scan_list(root,
-															rq->scan.plan.qual,
-															rtoffset);
-						rq->base_tlist = fix_scan_list(root, rq->base_tlist, rtoffset);
-						rq->scan.scanrelid += rtoffset;
-					}
-				}
-#endif
 			}
 			break;
 		case T_Append:
@@ -876,6 +809,22 @@ set_indexonlyscan_references(PlannerInfo *root,
 	index_itlist = build_tlist_index(plan->indextlist);
 
 	plan->scan.scanrelid += rtoffset;
+#ifdef XCP
+	plan->scan.plan.targetlist = (List *)
+		fix_upper_expr(root,
+					   (Node *) plan->scan.plan.targetlist,
+					   index_itlist,
+					   INDEX_VAR,
+					   rtoffset,
+					   false);
+	plan->scan.plan.qual = (List *)
+		fix_upper_expr(root,
+					   (Node *) plan->scan.plan.qual,
+					   index_itlist,
+					   INDEX_VAR,
+					   rtoffset,
+					   false);
+#else
 	plan->scan.plan.targetlist = (List *)
 		fix_upper_expr(root,
 					   (Node *) plan->scan.plan.targetlist,
@@ -888,6 +837,7 @@ set_indexonlyscan_references(PlannerInfo *root,
 					   index_itlist,
 					   INDEX_VAR,
 					   rtoffset);
+#endif
 	/* indexqual is already transformed to reference index columns */
 	plan->indexqual = fix_scan_list(root, plan->indexqual, rtoffset);
 	/* indexorderby is already transformed to reference index columns */
@@ -1260,11 +1210,20 @@ set_join_references(PlannerInfo *root, Join *join, int rtoffset)
 		{
 			NestLoopParam *nlp = (NestLoopParam *) lfirst(lc);
 
+#ifdef XCP
+			nlp->paramval = (Var *) fix_upper_expr(root,
+												   (Node *) nlp->paramval,
+												   outer_itlist,
+												   OUTER_VAR,
+												   rtoffset,
+												   false);
+#else
 			nlp->paramval = (Var *) fix_upper_expr(root,
 												   (Node *) nlp->paramval,
 												   outer_itlist,
 												   OUTER_VAR,
 												   rtoffset);
+#endif
 			/* Check we replaced any PlaceHolderVar with simple Var */
 			if (!(IsA(nlp->paramval, Var) &&
 				  nlp->paramval->varno == OUTER_VAR))
@@ -1323,6 +1282,12 @@ set_upper_references(PlannerInfo *root, Plan *plan, int rtoffset)
 	indexed_tlist *subplan_itlist;
 	List	   *output_targetlist;
 	ListCell   *l;
+#ifdef XCP
+	bool 		agg_master;
+
+	agg_master = (IsA(plan, Agg) &&
+					  ((Agg *) plan)->aggdistribution == AGG_MASTER);
+#endif
 
 	subplan_itlist = build_tlist_index(subplan->targetlist);
 
@@ -1341,18 +1306,36 @@ set_upper_references(PlannerInfo *root, Plan *plan, int rtoffset)
 													  subplan_itlist,
 													  OUTER_VAR);
 			if (!newexpr)
+#ifdef XCP
+				newexpr = fix_upper_expr(root,
+										 (Node *) tle->expr,
+										 subplan_itlist,
+										 OUTER_VAR,
+										 rtoffset,
+										 agg_master);
+#else
 				newexpr = fix_upper_expr(root,
 										 (Node *) tle->expr,
 										 subplan_itlist,
 										 OUTER_VAR,
 										 rtoffset);
+#endif
 		}
 		else
+#ifdef XCP
+			newexpr = fix_upper_expr(root,
+									 (Node *) tle->expr,
+									 subplan_itlist,
+									 OUTER_VAR,
+									 rtoffset,
+									 agg_master);
+#else
 			newexpr = fix_upper_expr(root,
 									 (Node *) tle->expr,
 									 subplan_itlist,
 									 OUTER_VAR,
 									 rtoffset);
+#endif
 		tle = flatCopyTargetEntry(tle);
 		tle->expr = (Expr *) newexpr;
 		output_targetlist = lappend(output_targetlist, tle);
@@ -1360,12 +1343,20 @@ set_upper_references(PlannerInfo *root, Plan *plan, int rtoffset)
 	plan->targetlist = output_targetlist;
 
 	plan->qual = (List *)
+#ifdef XCP
+		fix_upper_expr(root,
+					   (Node *) plan->qual,
+					   subplan_itlist,
+					   OUTER_VAR,
+					   rtoffset,
+					   agg_master);
+#else
 		fix_upper_expr(root,
 					   (Node *) plan->qual,
 					   subplan_itlist,
 					   OUTER_VAR,
 					   rtoffset);
-
+#endif
 	pfree(subplan_itlist);
 }
 
@@ -1594,6 +1585,34 @@ search_indexed_tlist_for_non_var(Node *node,
 	return NULL;				/* no match */
 }
 
+#ifdef PGXC
+#ifndef XCP
+/*
+ * search_tlist_for_var --- find a Var in the provided tlist. This does a
+ * basic scan through the list. So not very efficient...
+ *
+ * If no match, return NULL.
+ *
+ */
+Var *
+search_tlist_for_var(Var *var, List *jtlist)
+{
+	Index       varno = var->varno;
+	AttrNumber  varattno = var->varattno;
+	ListCell   *l;
+
+	foreach(l, jtlist)
+	{
+		Var *listvar = (Var *) lfirst(l);
+
+		if (listvar->varno == varno && listvar->varattno == varattno)
+			return var;
+	}
+	return NULL;                /* no match */
+}
+#endif
+#endif
+
 /*
  * search_indexed_tlist_for_sortgroupref --- find a sort/group expression
  *		(which is assumed not to be just a Var)
@@ -1798,12 +1817,22 @@ fix_join_expr_mutator(Node *node, fix_join_expr_context *context)
  * varno = newvarno, varattno = resno of corresponding targetlist element.
  * The original tree is not modified.
  */
+#ifdef XCP
+static Node *
+fix_upper_expr(PlannerInfo *root,
+			   Node *node,
+			   indexed_tlist *subplan_itlist,
+			   Index newvarno,
+			   int rtoffset,
+			   bool agg_master)
+#else
 static Node *
 fix_upper_expr(PlannerInfo *root,
 			   Node *node,
 			   indexed_tlist *subplan_itlist,
 			   Index newvarno,
 			   int rtoffset)
+#endif
 {
 	fix_upper_expr_context context;
 
@@ -1811,6 +1840,9 @@ fix_upper_expr(PlannerInfo *root,
 	context.subplan_itlist = subplan_itlist;
 	context.newvarno = newvarno;
 	context.rtoffset = rtoffset;
+#ifdef XCP
+	context.agg_master = agg_master;
+#endif
 	return fix_upper_expr_mutator(node, &context);
 }
 
@@ -1855,6 +1887,16 @@ fix_upper_expr_mutator(Node *node, fix_upper_expr_context *context)
 		newvar = search_indexed_tlist_for_non_var(node,
 												  context->subplan_itlist,
 												  context->newvarno);
+#ifdef XCP
+		if (newvar && context->agg_master && IsA(node, Aggref))
+		{
+			TargetEntry *newtle;
+			Aggref *newnode = copyObject(node);
+			newtle = makeTargetEntry((Expr *) newvar, 1, NULL, false);
+			newnode->args = list_make1(newtle);
+			return (Node *) newnode;
+		}
+#endif
 		if (newvar)
 			return (Node *) newvar;
 	}
@@ -2076,7 +2118,7 @@ extract_query_dependencies_walker(Node *node, PlannerInfo *context)
 		Query	   *query = (Query *) node;
 		ListCell   *lc;
 
-		while (query->commandType == CMD_UTILITY)
+		if (query->commandType == CMD_UTILITY)
 		{
 			/*
 			 * Ignore utility statements, except those (such as EXPLAIN) that
@@ -2104,6 +2146,10 @@ extract_query_dependencies_walker(Node *node, PlannerInfo *context)
 	return expression_tree_walker(node, extract_query_dependencies_walker,
 								  (void *) context);
 }
+
+
+#ifdef PGXC
+#ifndef XCP
 /*
  * fix_remote_expr
  *	   Create a new set of targetlist entries or qual clauses by
@@ -2115,9 +2161,6 @@ extract_query_dependencies_walker(Node *node, PlannerInfo *context)
  * 'clauses' is the targetlist or list of clauses
  * 'base_itlist' is the indexed target list of the base referenced relations
  *
- * 'return_non_base_vars' lets the caller decide whether to reject
- * or return vars not found in base_itlist
- *
  * Returns the new expression tree.  The original clause structure is
  * not modified.
  */
@@ -2126,8 +2169,7 @@ fix_remote_expr(PlannerInfo *root,
 			  List *clauses,
 			  indexed_tlist *base_itlist,
 			  Index	newrelid,
-			  int rtoffset,
-			  bool return_non_base_vars)
+			  int rtoffset)
 {
 	fix_remote_expr_context context;
 
@@ -2135,7 +2177,6 @@ fix_remote_expr(PlannerInfo *root,
 	context.base_itlist = base_itlist;
 	context.relid		= newrelid;
 	context.rtoffset	= rtoffset;
-	context.return_non_base_vars = return_non_base_vars;
 
 	return (List *) fix_remote_expr_mutator((Node *) clauses, &context);
 }
@@ -2159,10 +2200,6 @@ fix_remote_expr_mutator(Node *node, fix_remote_expr_context *context)
 											  context->rtoffset);
 		if (newvar)
 			return (Node *) newvar;
-
-		/* If it's not found in base_itlist, return it if required */
-		if (context->return_non_base_vars && var->varno != context->relid)
-			return (Node *) var;
 
 		/* No reference found for Var */
 		elog(ERROR, "variable not found in base remote scan target lists");
@@ -2204,172 +2241,93 @@ set_remote_references(PlannerInfo *root, RemoteQuery *rscan, int rtoffset)
 										  rscan->scan.plan.targetlist,
 										  base_itlist,
 										  rscan->scan.scanrelid,
-										  rtoffset,
-										  false);
+										  rtoffset);
 
 	rscan->scan.plan.qual = fix_remote_expr(root      ,
 										  rscan->scan.plan.qual,
 										  base_itlist,
 										  rscan->scan.scanrelid,
-										  rtoffset,
-										  false);
+										  rtoffset);
 
 	pfree(base_itlist);
 }
 
-/*
- * set_remote_returning_refs
- *
- * Fix references of remote returning list to point
- * to reference target list values from the base
- * relation target lists
- */
-
-static List *
-set_remote_returning_refs(PlannerInfo *root,
-				List *rlist,
-				Plan *topplan,
-				Index relid,
-				int rtoffset)
+Node *
+pgxc_fix_scan_expr(PlannerInfo *root, Node *node, int rtoffset)
 {
-	indexed_tlist	*base_itlist;
-
-	base_itlist = build_tlist_index(topplan->targetlist);
-
-	rlist = fix_remote_expr(root,
-				rlist,
-				base_itlist,
-				relid,
-				rtoffset,
-				true);
-
-	pfree(base_itlist);
-
-	return rlist;
+	return fix_scan_expr(root, node, rtoffset);
 }
+#endif /* XCP */
+#endif /* PGXC */
 
-#ifdef PGXC
+
+#ifdef XCP
 /*
- * For Agg plans, if the lower scan plan is a RemoteQuery node, adjust the
- * Aggref nodes to pull the transition results from the datanodes. We do while
- * setting planner references so that the upper nodes will find the nodes that
- * they expect in Agg plans.
+ * set_remotesubplan_references
+ *    Usually RemoteSubplan node does just translates its target list, so it is
+ * enought to invoke fix_scan_list here. One exception is if the
+ * RemoteSubplan is set on top of ModifyTable. In this case target lists of both
+ * these plan nodes are NIL. If the subplan is not returning we want to leave
+ * target list NIL, if yes, we should make up target list as a list of simple
+ * references to entries from the first returning list.
+ * The qual of RemoteSubplan is always NULL.
  */
-void
-pgxc_set_agg_references(PlannerInfo *root, Agg *aggplan)
+static void
+set_remotesubplan_references(PlannerInfo *root, Plan *plan, int rtoffset)
 {
-	RemoteQuery *rqplan = (RemoteQuery *)aggplan->plan.lefttree;
-	Sort		*srtplan;
-	List		*aggs_n_vars;
-	ListCell	*lcell;
-	List		*nodes_to_modify;
-	List		*rq_nodes_to_modify;
-	List		*srt_nodes_to_modify;
-
-	/* Lower plan tree can be Sort->RemoteQuery or RemoteQuery */
-	if (IsA(rqplan, Sort))
+	if (plan->targetlist == NIL)
 	{
-		srtplan = (Sort *)rqplan;
-		rqplan = (RemoteQuery *)srtplan->plan.lefttree;
+		ModifyTable *mt = (ModifyTable *) plan->lefttree;
+		if (IsA(mt, ModifyTable) && mt->returningLists)
+		{
+			List 	   *returningList;
+			List	   *output_targetlist;
+			ListCell   *l;
+
+			returningList = (List *) linitial(mt->returningLists);
+			output_targetlist = NIL;
+			foreach(l, returningList)
+			{
+				TargetEntry *tle = (TargetEntry *) lfirst(l);
+				Var		   *newvar;
+
+				newvar = makeVar(OUTER_VAR,
+								 tle->resno,
+								 exprType((Node *) tle->expr),
+								 exprTypmod((Node *) tle->expr),
+								 exprCollation((Node *) tle->expr),
+								 0);
+				if (IsA(tle->expr, Var))
+				{
+					newvar->varnoold = ((Var *) tle->expr)->varno + rtoffset;
+					newvar->varoattno = ((Var *) tle->expr)->varattno;
+				}
+				else
+				{
+					newvar->varnoold = 0;		/* wasn't ever a plain Var */
+					newvar->varoattno = 0;
+				}
+
+				tle = flatCopyTargetEntry(tle);
+				tle->expr = (Expr *) newvar;
+				output_targetlist = lappend(output_targetlist, tle);
+			}
+			plan->targetlist = output_targetlist;
+		}
 	}
 	else
-		srtplan = NULL;
-
-	if (!IsA(rqplan, RemoteQuery))
-		return;
-
-	Assert(IS_PGXC_COORDINATOR && !IsConnFromCoord());
-	/*
-	 * If there are not transition results expected from lower plans, nothing to
-	 * be done here.
-	 */
-	if (!aggplan->skip_trans)
-		return;
-
-	/* Gather all the aggregates from all the targetlists that need fixing */
-	nodes_to_modify = list_copy(aggplan->plan.targetlist);
-	nodes_to_modify = list_concat(nodes_to_modify, aggplan->plan.qual);
-	aggs_n_vars = pull_var_clause((Node *)nodes_to_modify, PVC_INCLUDE_AGGREGATES,
-									PVC_RECURSE_PLACEHOLDERS);
-	rq_nodes_to_modify = NIL;
-	srt_nodes_to_modify = NIL;
-	/*
-	 * For every aggregate, find corresponding aggregate in the lower plan and
-	 * modify it correctly.
-	 */
-	foreach (lcell, aggs_n_vars)
 	{
-		Aggref 		*aggref = lfirst(lcell);
-		TargetEntry	*tle;
-		Aggref		*rq_aggref;
-		Aggref		*srt_aggref;
-		Aggref		*arg_aggref;	/* Aggref to be set as Argument to the
-									 * aggref in the Agg plan */
-
-		/* Only Aggref expressions need modifications */
-		if (!IsA(aggref, Aggref))
-		{
-			Assert(IsA(aggref, Var));
-			continue;
-		}
-
-		tle = tlist_member((Node *)aggref, rqplan->scan.plan.targetlist);
-		if (!tle)
-			elog(ERROR, "Could not find the Aggref node");
-		rq_aggref = (Aggref *)tle->expr;
-		Assert(equal(rq_aggref, aggref));
 		/*
-		 * Remember the Aggref nodes of which we need to modify. This is done so
-		 * that, if there multiple copies of same aggregate, we will match all
-		 * of them
+		 * The RemoteSubplan may look like a subject for a dummy tlist.
+		 * It works in most cases. However it may be a subplan of a ModifyTable
+		 * running against a relation with dropped columns. Sanity check assumes
+		 * that subplan will return a NULL constant as a value for the dropped
+		 * column, however set_dummy_tlist_references would replace it with a
+		 * Var. We cannot detemine the parent plan here, so just process it as
+		 * a scan. Executor will ignore this anyway.
 		 */
-		rq_nodes_to_modify = list_append_unique(rq_nodes_to_modify, rq_aggref);
-		arg_aggref = rq_aggref;
-
-		/*
-		 * If there is a Sort plan, get corresponding expression from there as
-		 * well and remember it to be modified.
-		 */
-		if (srtplan)
-		{
-			tle = tlist_member((Node *)rq_aggref, srtplan->plan.targetlist);
-			if (!tle)
-				elog(ERROR, "Could not find the Aggref node");
-			srt_aggref = (Aggref *)tle->expr;
-			Assert(equal(srt_aggref, rq_aggref));
-			srt_nodes_to_modify = list_append_unique(srt_nodes_to_modify,
-														srt_aggref);
-			arg_aggref = srt_aggref;
-		}
-
-		/*
-		 * The transition result from the datanodes acts as an input to the
-		 * Aggref node on coordinator.
-		 */
-		aggref->args = list_make1(makeTargetEntry((Expr *)arg_aggref, 1, NULL,
-																false));
+		plan->targetlist = fix_scan_list(root, plan->targetlist, rtoffset);
 	}
-
-	/* Modify the transition types now */
-	foreach (lcell, rq_nodes_to_modify)
-	{
-		Aggref	*rq_aggref = lfirst(lcell);
-		Assert(IsA(rq_aggref, Aggref));
-		rq_aggref->aggtype = rq_aggref->aggtrantype;
-	}
-	foreach (lcell, srt_nodes_to_modify)
-	{
-		Aggref	*srt_aggref = lfirst(lcell);
-		Assert(IsA(srt_aggref, Aggref));
-		srt_aggref->aggtype = srt_aggref->aggtrantype;
-	}
-
-	/*
-	 * We have modified the targetlist of the RemoteQuery plan below the Agg
-	 * plan. Adjust its targetlist as well.
-	 */
-	pgxc_rqplan_adjust_tlist(rqplan);
-
-	return;
+	Assert(plan->qual == NULL);
 }
-#endif /* PGXC */
+#endif

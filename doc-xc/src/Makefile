@@ -1,6 +1,6 @@
 # doc/src/Makefile
 
-subdir = doc-xc/src
+subdir = doc/src
 top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 

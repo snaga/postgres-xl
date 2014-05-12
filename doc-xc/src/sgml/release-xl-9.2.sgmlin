@@ -1,0 +1,527 @@
+<!-- doc/src/sgml/release-xl-9.2.sgml -->
+<!-- See header comment in release.sgml about typical markup -->
+
+ <sect1 id="release-xl-9-2">
+  <title>Release 9.2rc</title>
+
+  <note>
+   <title>Release Date</title>
+   <simpara>2014-05-13</simpara>
+  </note>
+
+  <sect2>
+   <title>Overview</title>
+
+   <para>
+    <productname>Postgres-XL</> 9.2 is a symetric multi-headed, read and write-scalable
+    shared-nothing massively parallel processing cluster based on PostgreSQL. This release version is based on
+    PostgreSQL 9.2.4.
+   </para>
+
+   <para>
+    Currently the only architectures supported are 64 bit Linux operating systems.
+   </para>
+
+   <para>
+    This release of <productname>Postgres-XL</> is the first major release and
+    contains the following features, characteristics and enhancements:
+   </para>
+
+   <itemizedlist>
+    <!-- This list is a summary of each item detailed below, without authors -->
+    <listitem>
+     <para>
+      Support and extensions for existing features of PostgreSQL in a cluster-wide environment.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      SQL extensions and functionalities for management
+      and operations related to a cluster, which add a node-level granularity for
+      cluster operations.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      Creation of Global Transaction Manager (GTM), which is a centralized component
+      providing cluster-wide Multi-version Concurrency Control (MVCC).
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      Creation of mechanisms for <productname>Postgres-XL</> and enhancements of existing
+      internal mechanisms of <productname>PostgreSQL</>, which are related to connection pooling,
+      global transaction management, query planning, rewriting, analyzing and execution.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      Restrictions related to existing features in <productname>PostgreSQL</> and currently not supported by
+      <productname>Postgres-XL</>.
+     </para>
+    </listitem>
+   </itemizedlist>
+
+   <para>
+    The above items are explained in more detail in the sections below.
+   </para>
+
+
+  <para>
+   Postgres-XL builds off another project called Postgres-XC.
+   The original overall architecture and design of <productname>Postgres-XC</> is by Koichi Suzuki, Mason Sharp, 
+   Pavan Deolasee, Andrei Martsinchyk and Michael Paquier. Koichi Suzuki is the original project lead. More recent long time contributors include Ashutosh Bapat, Abbas Butt, and Amit Khandekar.
+  </para>
+  <para>
+   Postgres-XL modifies the architecture to more tightly bond the components together and add massively parallel processing with direct Datanode to Datanode communication for fast performance. In addition, a plan is determined one time, serialized and sent down to the Datanodes instead of sending down SQL statements and reparsing.  Also, there have been some changes made to support multi-tenancy, locking down access to pg_catalog tables and providing better pooler management. The key architects and developers are Andrei Martsinchyk, Mason Sharp, Nikhil Sontakke, and Jim Mlodgenski, with Mason Sharp the project lead.
+  </para>
+
+  </sect2>
+
+  <sect2>
+
+  <title>Details</title>
+
+   <sect3>
+    <title>Existing standard features supported and related extensions</title>
+
+     <para>
+      This is an exhaustive list of all the features included in <productname>PostgreSQL</>
+      and currently supported in <productname>Postgres-XL</>. 
+     </para>
+     <!-- complete list of existing features of Postgres supported -->
+
+     <itemizedlist>
+      <listitem>
+       <para>
+        A list of all the CREATE/ALTER/DROP SQL commands supported appears below. 
+        All of the features listed
+        here work like native PostgreSQL. Extensions may have been added to make them usable
+        in a cluster environment.
+       </para>
+       <para>
+        <link linkend="SQL-CREATEUSER"><command>CREATE USER</></link>,
+        <link linkend="SQL-ALTERUSER"><command>ALTER USER</></link>,
+        <link linkend="SQL-DROPUSER"><command>DROP USER</></link>,
+        <link linkend="SQL-CREATEAGGREGATE"><command>CREATE AGGREGATE</></link>,
+        <link linkend="SQL-ALTERAGGREGATE"><command>ALTER AGGREGATE</></link>,
+        <link linkend="SQL-DROPAGGREGATE"><command>DROP AGGREGATE</></link>,
+        <link linkend="SQL-CREATECOLLATION"><command>CREATE COLLATION</></link>,
+        <link linkend="SQL-ALTERCOLLATION"><command>ALTER COLLATION</></link>,
+        <link linkend="SQL-DROPCOLLATION"><command>DROP COLLATION</></link>,
+        <link linkend="SQL-CREATECONVERSION"><command>CREATE CONVERSION</></link>,
+        <link linkend="SQL-ALTERCONVERSION"><command>ALTER CONVERSION</></link>,
+        <link linkend="SQL-DROPCONVERSION"><command>DROP CONVERSION</></link>,
+        <link linkend="SQL-CREATEDATABASE"><command>CREATE DATABASE</></link>,
+        <link linkend="SQL-ALTERDATABASE"><command>ALTER DATABASE</></link>,
+        <link linkend="SQL-DROPDATABASE"><command>DROP DATABASE</></link>,
+        <link linkend="SQL-ALTERDEFAULTPRIVILEGES"><command>ALTER DEFAULT PRIVILEGES</></link>,
+        <link linkend="SQL-CREATEDOMAIN"><command>CREATE DOMAIN</></link>,
+        <link linkend="SQL-ALTERDOMAIN"><command>ALTER DOMAIN</></link>,
+        <link linkend="SQL-DROPDOMAIN"><command>DROP DOMAIN</></link>,
+        <link linkend="SQL-CREATEFUNCTION"><command>CREATE FUNCTION</></link>,
+        <link linkend="SQL-ALTERFUNCTION"><command>ALTER FUNCTION</></link>,
+        <link linkend="SQL-DROPFUNCTION"><command>DROP FUNCTION</></link>,
+        <link linkend="SQL-CREATEGROUP"><command>CREATE GROUP</></link>,
+        <link linkend="SQL-ALTERGROUP"><command>ALTER GROUP</></link>,
+        <link linkend="SQL-DROPGROUP"><command>DROP GROUP</></link>,
+        <link linkend="SQL-CREATEINDEX"><command>CREATE INDEX</></link>,
+        <link linkend="SQL-ALTERINDEX"><command>ALTER INDEX</></link>,
+        <link linkend="SQL-DROPINDEX"><command>DROP INDEX</></link>,
+        <link linkend="SQL-CREATELANGUAGE"><command>CREATE LANGUAGE</></link>,
+        <link linkend="SQL-ALTERLANGUAGE"><command>ALTER LANGUAGE</></link>,
+        <link linkend="SQL-DROPLANGUAGE"><command>DROP LANGUAGE</></link>,
+        <link linkend="SQL-CREATEOPCLASS"><command>CREATE OPERATOR CLASS</></link>,
+        <link linkend="SQL-ALTEROPCLASS"><command>ALTER OPERATOR CLASS</></link>,
+        <link linkend="SQL-DROPOPCLASS"><command>DROP OPERATOR CLASS</></link>,
+        <link linkend="SQL-CREATEOPFAMILY"><command>CREATE OPERATOR FAMILY</></link>,
+        <link linkend="SQL-ALTEROPFAMILY"><command>ALTER OPERATOR FAMILY</></link>,
+        <link linkend="SQL-DROPOPFAMILY"><command>DROP OPERATOR FAMILY</></link>,
+        <link linkend="SQL-CREATEROLE"><command>CREATE ROLE</></link>,
+        <link linkend="SQL-ALTERROLE"><command>ALTER ROLE</></link>,
+        <link linkend="SQL-DROPROLE"><command>DROP ROLE</></link>,
+        <link linkend="SQL-CREATESCHEMA"><command>CREATE SCHEMA</></link>,
+        <link linkend="SQL-ALTERSCHEMA"><command>ALTER SCHEMA</></link>,
+        <link linkend="SQL-DROPSCHEMA"><command>DROP SCHEMA</></link>,
+        <link linkend="SQL-CREATESEQUENCE"><command>CREATE SEQUENCE</></link>,
+        <link linkend="SQL-ALTERSEQUENCE"><command>ALTER SEQUENCE</></link>,
+        <link linkend="SQL-DROPSEQUENCE"><command>DROP SEQUENCE</></link>,
+        <link linkend="SQL-CREATETABLE"><command>CREATE TABLE</></link>,
+        <link linkend="SQL-ALTERTABLE"><command>ALTER TABLE</></link>,
+        <link linkend="SQL-DROPTABLE"><command>DROP TABLE</></link>,
+        <link linkend="SQL-CREATETABLESPACE"><command>CREATE TABLESPACE</></link>,
+        <link linkend="SQL-ALTERTABLESPACE"><command>ALTER TABLESPACE</></link>,
+        <link linkend="SQL-DROPTABLESPACE"><command>DROP TABLESPACE</></link>,
+        <link linkend="SQL-CREATETSCONFIG"><command>CREATE TEXT SEARCH CONFIGURATION</></link>,
+        <link linkend="SQL-ALTERTSCONFIG"><command>ALTER TEXT SEARCH CONFIGURATION</></link>,
+        <link linkend="SQL-DROPTSCONFIG"><command>DROP TEXT SEARCH CONFIGURATION</></link>,
+        <link linkend="SQL-CREATETSDICTIONARY"><command>CREATE TEXT SEARCH DICTIONARY</></link>,
+        <link linkend="SQL-ALTERTSDICTIONARY"><command>ALTER TEXT SEARCH DICTIONARY</></link>,
+        <link linkend="SQL-DROPTSDICTIONARY"><command>DROP TEXT SEARCH DICTIONARY</></link>,
+        <link linkend="SQL-CREATETSPARSER"><command>CREATE TEXT SEARCH PARSER</></link>,
+        <link linkend="SQL-ALTERTSPARSER"><command>ALTER TEXT SEARCH PARSER</></link>,
+        <link linkend="SQL-DROPTSPARSER"><command>DROP TEXT SEARCH PARSER</></link>,
+        <link linkend="SQL-CREATETSTEMPLATE"><command>CREATE TEXT SEARCH TEMPLATE</></link>,
+        <link linkend="SQL-ALTERTSTEMPLATE"><command>ALTER TEXT SEARCH TEMPLATE</></link>,
+        <link linkend="SQL-DROPTSTEMPLATE"><command>DROP TEXT SEARCH TEMPLATE</></link>,
+        <link linkend="SQL-CREATETYPE"><command>CREATE TYPE</></link>,
+        <link linkend="SQL-ALTERTYPE"><command>ALTER TYPE</></link>,
+        <link linkend="SQL-DROPTYPE"><command>DROP TYPE</></link>, 
+        <link linkend="SQL-CREATEUSER"><command>CREATE USER</></link>,
+        <link linkend="SQL-ALTERUSER"><command>ALTER USER</></link>,
+        <link linkend="SQL-DROPUSER"><command>DROP USER</></link>, 
+        <link linkend="SQL-CREATEVIEW"><command>CREATE VIEW</></link>,
+        <link linkend="SQL-ALTERVIEW"><command>ALTER VIEW</></link>,
+        <link linkend="SQL-DROPVIEW"><command>DROP VIEW</></link>,
+        <link linkend="SQL-CREATECAST"><command>CREATE CAST</></link>,
+        <link linkend="SQL-DROPCAST"><command>DROP CAST</></link>,
+        <link linkend="SQL-CREATERULE"><command>CREATE RULE</></link>,
+        <link linkend="SQL-DROPRULE"><command>DROP RULE</></link>,
+        <link linkend="SQL-CREATETABLEAS"><command>CREATE TABLE AS</></link>,
+       </para>
+      </listitem>
+      <listitem>
+       <para>List of other supported SQL</para>
+       <para>
+        <link linkend="SQL-ANALYZE"><command>ANALYZE</></link>,
+        <link linkend="SQL-BEGIN"><command>BEGIN</></link>,
+        <link linkend="SQL-CHECKPOINT"><command>CHECKPOINT</></link>, 
+        <link linkend="SQL-CLOSE"><command>CLOSE</></link>,
+        <link linkend="SQL-CLUSTER"><command>CLUSTER</></link>,
+        <link linkend="SQL-COMMENT"><command>COMMENT</></link>,
+        <link linkend="SQL-COMMIT"><command>COMMIT</></link>,
+        <link linkend="SQL-COMMIT-PREPARED"><command>COMMIT PREPARED</></link>,
+        <link linkend="SQL-COPY"><command>COPY</></link>,
+        <link linkend="SQL-DEALLOCATE"><command>DEALLOCATE</></link>,
+        <link linkend="SQL-DECLARE"><command>DECLARE</></link>,
+        <link linkend="SQL-DELETE"><command>DELETE</></link>,
+        <link linkend="SQL-DISCARD"><command>DISCARD</></link>,
+        <link linkend="SQL-DO"><command>DO</></link>,
+        <link linkend="SQL-END"><command>END</></link>,
+        <link linkend="SQL-EXECUTE"><command>EXECUTE</></link>,
+        <link linkend="SQL-EXPLAIN"><command>EXPLAIN</></link>,
+        <link linkend="SQL-FETCH"><command>FETCH</></link>,
+        <link linkend="SQL-GRANT"><command>GRANT</></link>,
+        <link linkend="SQL-INSERT"><command>INSERT</></link>,
+        <link linkend="SQL-LOAD"><command>LOAD</></link>,
+        <link linkend="SQL-LOCK"><command>LOCK</></link>,
+        <link linkend="SQL-MOVE"><command>MOVE</></link>,
+        <link linkend="SQL-PREPARE"><command>PREPARE</></link>,
+        <link linkend="SQL-PREPARE-TRANSACTION"><command>PREPARE TRANSACTION</></link>,
+        <link linkend="SQL-REASSIGN-OWNED"><command>REASSIGN OWNED</></link>,
+        <link linkend="SQL-REINDEX"><command>REINDEX</></link>,
+        <link linkend="SQL-RESET"><command>RESET</></link>,
+        <link linkend="SQL-REVOKE"><command>REVOKE</></link>,
+        <link linkend="SQL-ROLLBACK"><command>ROLLBACK</></link>,
+        <link linkend="SQL-ROLLBACK-PREPARED"><command>ROLLBACK PREPARED</></link>,
+        <link linkend="SQL-SELECT"><command>SELECT</></link>,
+        <link linkend="SQL-SELECTINTO"><command>SELECT INTO</></link>,
+        <link linkend="SQL-SET"><command>SET</></link>,
+        <link linkend="SQL-SET-CONSTRAINTS"><command>SET CONSTRAINTS</></link>,
+        <link linkend="SQL-SET-ROLE"><command>SET ROLE</></link>,
+        <link linkend="SQL-SET-SESSION-AUTHORIZATION"><command>SET SESSION AUTHORIZATION</></link>,
+        <link linkend="SQL-SHOW"><command>SHOW</></link>,
+        <link linkend="SQL-START-TRANSACTION"><command>START TRANSACTION</></link>,
+        <link linkend="SQL-TRUNCATE"><command>TRUNCATE</></link>,
+        <link linkend="SQL-UPDATE"><command>UPDATE</></link>,
+        <link linkend="SQL-VACUUM"><command>VACUUM</></link>,
+        <link linkend="SQL-VALUES"><command>VALUES</></link>
+       </para>
+      </listitem>
+
+      <listitem>
+       <para>
+        HOT-Standby and streaming replication work as in native <productname>PostgreSQL</>, 
+        at the Coordinator and Datanode level.
+       </para>
+      </listitem>
+
+      <listitem>
+       <para>
+        New configuration parameters in <filename>postgresql.conf</>
+       </para>
+       <para>
+        <itemizedlist>
+         <listitem>
+          <para><varname>pooler_port</></para>
+          <para>Port opened by pooler to which backends can connect to communicate with</para>
+         </listitem>
+         <listitem>
+          <para><varname>min_pool_size</></para>
+          <para>Minimum number of connections in pool</para>
+         </listitem>
+         <listitem>
+          <para><varname>max_pool_size</></para>
+          <para>Maximum number of connections in pool</para>
+         </listitem>
+         <listitem>
+          <para><varname>pool_maintenance_timeout</></para>
+          <para>When to clean up idle connections</para>
+         </listitem>
+         <listitem>
+          <para><varname>remote_query_cost</></para>
+          <para>Cost overhead for setting up a remote query</para>
+         </listitem>
+         <listitem>
+          <para><varname>network_byte_cost</></para>
+          <para>Data shipping cost for query planning</para>
+         </listitem>
+         <listitem>
+          <para><varname>sequence_range</></para>
+          <para>For frequent requests of sequences, get up to this range</para>
+         </listitem>
+         <listitem>
+          <para><varname>max_pool_size</></para>
+          <para>Maximum number of connections in pool</para>
+         </listitem>
+         <listitem>
+          <para><varname>max_pool_size</></para>
+          <para>Maximum number of connections in pool</para>
+         </listitem>
+         <listitem>
+          <para><varname>max_coordinators</></para>
+          <para>Maximum number of Coordinators that can be defined in local node</para>
+         </listitem>
+         <listitem>
+          <para><varname>max_datanodes</></para>
+          <para>Maximum number of Datanodes that can be defined in local node</para>
+         </listitem>
+         <listitem>
+          <para><varname>gtm_host</></para>
+          <para>Host to connect to GTM</para>
+         </listitem>
+         <listitem>
+          <para><varname>gtm_port</></para>
+          <para>Port to connect to GTM</para>
+         </listitem>
+         <listitem>
+          <para><varname>pgxc_node_name</></para>
+          <para>Name of the local node. This is currently set by initdb.</para>
+         </listitem>
+        </itemizedlist>
+       </para>
+      </listitem>
+     </itemizedlist>
+   </sect3>
+
+   <sect3>
+    <title>SQL extensions for <productname>Postgres-XL</></title>
+
+    <para>
+     This section lists all the new SQL functionalities and system functions that 
+     and can be used to manage a cluster environment.
+    </para>
+
+    <itemizedlist>
+     <listitem>
+      <para>
+       <link linkend="SQL-CREATENODE"><command>CREATE NODE</></link>,
+       <link linkend="SQL-ALTERNODE"><command>ALTER NODE</></link>,
+       <link linkend="SQL-DROPNODE"><command>DROP NODE</></link>
+      </para>
+      <para>
+       These SQL commands are used to manage cluster node information in catalog
+       <link linkend="catalog-pgxc-node"><structname>pgxc_node</structname></link>.
+      </para>
+      <para>
+       These commands run only on the local node where they are run, and running them on Datanodes
+       make no sense as this catalog data is used only by Coordinator to identify remote nodes
+       and by connection pooling to get necessary remote connection information.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       <link linkend="SQL-CREATENODEGROUP"><command>CREATE NODE GROUP</></link>,
+       <link linkend="SQL-DROPNODEGROUP"><command>DROP NODE GROUP</></link>
+      </para>
+      <para>
+       <command>CREATE NODE GROUP</> and <command>DROP NODE GROUP</> manage the node groups that
+       can be used when creating a table with the extension <command>TO GROUP</> of <command>CREATE TABLE</>.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       <link linkend="SQL-CREATEBARRIER"><command>CREATE BARRIER</></link>
+      </para>
+      <para>
+       When specified with an ID, this command allows to register in all of the nodes of the cluster
+       a common and consistent time point to be able to recover all the nodes consistently back to
+       this point. Internally, a barrier is written in the WAL file of all of the nodes.
+      </para>
+      <para>
+       <varname>recovery_target_barrier</varname> in <filename>recovery.conf</> can be used to recover
+        a node to a given barrier ID.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       <link linkend="SQL-CLEANCONNECTION"><command>CLEAN CONNECTION</></link> 
+      </para>
+      <para>
+       <command>CLEAN CONNECTION</command> is a connection pooling utility able to drop connections on chosen node(s)
+       for a given database or/and user.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       <function>pgxc_pool_check()</>, <function>pgxc_pool_reload()</>
+      </para>
+      <para>
+       Those system functions can be used to check or update the data cached in pooler with
+       <link linkend="catalog-pgxc-node"><structname>pgxc_node</structname></link>. <function>pgxc_pool_check()</>
+       checks if the connection information is consistent between pooler cache and catalogs.
+       <function>pgxc_pool_reload()</> updates the connection information cached in pool.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       <link linkend="SQL-EXECUTEDIRECT"><command>EXECUTE DIRECT</></link>
+      </para>
+      <para>
+       <command>EXECUTE DIRECT</> can be used to launch a query directly to a given node. Only a single node
+       can be targetted at the same time.
+      </para>
+      <para>
+       <command>INSERT</command>, <command>UPDATE</command> and <command>DELETE</command> are not authorized.
+      </para>
+      <para>
+       Utilities are basically forbidden but some are authorized for cluster management purposes.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       <link linkend="SQL-PAUSECLUSTER"><command>PAUSE CLUSTER</></link>
+       <link linkend="SQL-UNPAUSECLUSTER"><command>UNPAUSE CLUSTER</></link>
+      </para>
+      <para>
+       <command>PAUSE CLUSTER</> and <command>UNPAUSE CLUSTER</>
+       can be used to halt other cluster activity except for the session
+       that invoked it.  Client sessions are not disconnected, they just
+       are paused until brief maintenance is done, like restarting 
+       or moving a Datanode.
+      </para>
+     </listitem>
+
+    </itemizedlist>
+
+   </sect3>
+
+   <sect3>
+    <title>Restrictions</title>
+
+     <itemizedlist>
+      <listitem>
+       <para>List of all the unsupported SQL commands</para>
+       <para>
+        <link linkend="SQL-CREATEEXTENSION"><command>CREATE EXTENSION</></link>,
+        <link linkend="SQL-ALTEREXTENSION"><command>ALTER EXTENSION</></link>,
+        <link linkend="SQL-DROPEXTENSION"><command>DROP EXTENSION</></link>,
+        <link linkend="SQL-CREATEFOREIGNDATAWRAPPER"><command>CREATE FOREIGN DATA WRAPPER</></link>,
+        <link linkend="SQL-ALTERFOREIGNDATAWRAPPER"><command>ALTER FOREIGN DATA WRAPPER</></link>,
+        <link linkend="SQL-DROPFOREIGNDATAWRAPPER"><command>DROP FOREIGN DATA WRAPPER</></link>,
+        <link linkend="SQL-CREATEFOREIGNTABLE"><command>CREATE FOREIGN TABLE</></link>,
+        <link linkend="SQL-ALTERFOREIGNTABLE"><command>ALTER FOREIGN TABLE</></link>,
+        <link linkend="SQL-DROPFOREIGNTABLE"><command>DROP FOREIGN TABLE</></link>,
+        <link linkend="SQL-ALTERLARGEOBJECT"><command>ALTER LARGE OBJECT</></link>,
+        <link linkend="SQL-CREATESERVER"><command>CREATE SERVER</></link>,
+        <link linkend="SQL-ALTERSERVER"><command>ALTER SERVER</></link>,
+        <link linkend="SQL-DROPSERVER"><command>DROP SERVER</></link>,
+        <link linkend="SQL-CREATETRIGGER"><command>CREATE TRIGGER</></link>,
+        <link linkend="SQL-ALTERTRIGGER"><command>ALTER TRIGGER</></link>,
+        <link linkend="SQL-DROPTRIGGER"><command>DROP TRIGGER</></link>,
+        <link linkend="SQL-CREATEUSERMAPPING"><command>CREATE USER MAPPING</></link>,
+        <link linkend="SQL-ALTERUSERMAPPING"><command>ALTER USER MAPPING</></link>,
+        <link linkend="SQL-DROPUSERMAPPING"><command>DROP USER MAPPING</></link>,
+        <link linkend="SQL-LISTEN"><command>LISTEN</></link>,
+        <link linkend="SQL-NOTIFY"><command>NOTIFY</></link>,
+        <link linkend="SQL-RELEASE-SAVEPOINT"><command>RELEASE SAVEPOINT</></link>,
+        <link linkend="SQL-ROLLBACK-TO"><command>ROLLBACK TO SAVEPOINT</></link>,
+        <link linkend="SQL-SAVEPOINT"><command>SAVEPOINT</></link>,
+        <link linkend="SQL-SECURITY-LABEL"><command>SECURITY LABEL</></link>,
+        <link linkend="SQL-UNLISTEN"><command>UNLISTEN</></link>,
+       </para>
+      </listitem>
+
+      <listitem>
+       <para>
+        Table distribution definition cannot be changed.
+       </para>
+      </listitem>
+
+      <listitem>
+       <para>
+        Distribution key of a table cannot be updated.
+       </para>
+      </listitem>
+
+      <listitem>
+       <para>
+        Triggers are not supported
+       </para>
+      </listitem>
+
+      <listitem>
+       <para>
+        Functions are always pushed down to the data nodes. This can be dangerous if a stored function tries to use data that is really on another node!  Use with caution; it will only use data local to the node, so updates should not be done.  The documentation in this area to make this clearer.
+       </para>
+      </listitem>
+
+      <listitem>
+       <para>
+        The CLUSTER command is currently broken if used without any arguments. CLUSTER does work for one table at a time, however.
+       </para>
+      </listitem>
+
+      <listitem>
+       <para>
+        WITH queries work, however, WITH RECURSIVE is currently blocked.
+       </para>
+      </listitem>
+
+      <listitem>
+       <para>
+        ORDER BY currently cannot be used in subqueries.
+       </para>
+      </listitem>
+
+      <listitem>
+       <para>
+        Sequences currently cannot be used in temp tables.
+       </para>
+      </listitem>
+
+      <listitem>
+       <para>
+        <command>CREATE TABLE AS EXECUTE</command> is not supported.
+       </para>
+      </listitem>
+
+      <listitem>
+       <para>
+        Barriers have no timeout, meaning that if a 2PC transaction is
+        stuck forever, the barrier will be stuck too.
+       </para>
+      </listitem>
+
+      <listitem>
+       <para>
+        The regression test suite needs further refinement. Some of the listed differences are because of an unsupported feature which manipulates the data set and throws off expected results. In addition, the expected plan output for some should be udpated.
+       </para>
+      </listitem>
+
+     </itemizedlist>
+
+   </sect3>
+   </sect2>
+
+ </sect1>

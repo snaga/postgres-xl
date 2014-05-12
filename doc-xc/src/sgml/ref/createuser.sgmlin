@@ -18,6 +18,9 @@ PostgreSQL documentation
 <!## XC>
   <refpurpose>define a new <productname>Postgres-XC</productname> user account</refpurpose>
 <!## end>
+<!## XL>
+  <refpurpose>define a new <productname>Postgres-XL</productname> user account</refpurpose>
+<!## end>
  </refnamediv>
 
  <indexterm zone="app-createuser">
@@ -43,6 +46,9 @@ PostgreSQL documentation
 <!## end>
 <!## XC>
    new <productname>Postgres-XC</productname> user (or more precisely, a role).
+<!## end>
+<!## XL>
+   new <productname>Postgres-XL</productname> user (or more precisely, a role).
 <!## end>
    Only superusers and users with <literal>CREATEROLE</> privilege can create
    new users, so <application>createuser</application> must be
@@ -84,6 +90,9 @@ PostgreSQL documentation
 <!## XC>
         Specifies the name of the <productname>Postgres-XC</productname> user
 <!## end>
+<!## XL>
+        Specifies the name of the <productname>Postgres-XL</productname> user
+<!## end>
         to be created.
         This name must be different from all existing roles in this
 <!## PG>
@@ -91,6 +100,9 @@ PostgreSQL documentation
 <!## end>
 <!## XC>
         <productname>Postgres-XC</productname> installation.
+<!## end>
+<!## XL>
+        <productname>Postgres-XL</productname> installation.
 <!## end>
        </para>
       </listitem>
@@ -393,6 +405,9 @@ PostgreSQL documentation
 <!## end>
 <!## XC>
    This utility, like most other <productname>Postgres-XC</> utilities,
+<!## end>
+<!## XL>
+   This utility, like most other <productname>Postgres-XL</> utilities,
 <!## end>
    also uses the environment variables supported by <application>libpq</>
    (see <xref linkend="libpq-envars">).

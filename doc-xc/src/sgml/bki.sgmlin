@@ -14,6 +14,9 @@
 <!## XC>
   <productname>Postgres-XC</productname> backend when running in the
 <!## end>
+<!## XL>
+  <productname>Postgres-XL</productname> backend when running in the
+<!## end>
   <quote>bootstrap</quote> mode.  The bootstrap mode allows system catalogs
   to be created and filled from scratch, whereas ordinary SQL commands
   require the catalogs to exist already.

@@ -87,6 +87,10 @@ DROP TABLESPACE [ IF EXISTS ] <replaceable class="PARAMETER">tablespace_name</re
     application client is connected.
    </para>
 <!## end>
+<!## XL>
+   <para>
+   </para>
+<!## end>
  </refsect1>
 
 
@@ -110,6 +114,9 @@ DROP TABLESPACE mystuff;
 <!## end>
 <!## XC>
    <command>DROP TABLESPACE</command> is a <productname>Postgres-XC</>
+<!## end>
+<!## XL>
+   <command>DROP TABLESPACE</command> is a <productname>Postgres-XL</>
 <!## end>
    extension.
   </para>

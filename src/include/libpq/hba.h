@@ -93,4 +93,7 @@ extern int check_usermap(const char *usermap_name,
 			  bool case_sensitive);
 extern bool pg_isblank(const char c);
 
+#ifdef XCP
+extern List* get_parsed_hba(void);
+#endif
 #endif   /* HBA_H */

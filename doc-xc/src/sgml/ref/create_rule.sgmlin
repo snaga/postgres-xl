@@ -47,6 +47,9 @@ CREATE [ OR REPLACE ] RULE <replaceable class="parameter">name</replaceable> AS 
 <!## XC>
    <productname>Postgres-XC</> inherits the rule system from <productname>PostgreSQL</productname> which allows one to
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</> inherits the rule system from <productname>PostgreSQL</productname> which allows one to
+<!## end>
    define an alternative action to be performed on insertions, updates,
    or deletions in database tables.  Roughly speaking, a rule causes
    additional commands to be executed when a given command on a given
@@ -239,12 +242,18 @@ CREATE [ OR REPLACE ] RULE <replaceable class="parameter">name</replaceable> AS 
 <!## XC>
    accepted by <productname>Postgres-XC</productname>, the
 <!## end>
+<!## XL>
+   accepted by <productname>Postgres-XL</productname>, the
+<!## end>
    <command>SELECT</command> command would cause
 <!## PG>
    <productname>PostgreSQL</productname> to report an error because
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname> to report an error because
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> to report an error because
 <!## end>
    of recursive expansion of a rule:
 
@@ -291,6 +300,9 @@ UPDATE mytable SET name = 'foo' WHERE id = 42;
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname> language extension, as is the
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> language extension, as is the
 <!## end>
    entire query rewrite system.
   </para>

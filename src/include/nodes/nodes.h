@@ -4,6 +4,11 @@
  *	  Definitions for tagged nodes.
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
@@ -82,9 +87,15 @@ typedef enum NodeTag
 	 * TAGS FOR PGXC NODES
 	 * (planner.h, locator.h, nodemgr.h, groupmgr.h)
 	 */
+#ifdef XCP
+	T_Distribution,
+#endif
 	T_ExecNodes,
 	T_SimpleSort,
 	T_RemoteQuery,
+#ifdef XCP
+	T_RemoteSubplan,
+#endif
 	T_PGXCNodeHandle,
 	T_AlterNodeStmt,
 	T_CreateNodeStmt,
@@ -139,6 +150,9 @@ typedef enum NodeTag
 	T_LimitState,
 #ifdef PGXC
 	T_RemoteQueryState,
+#ifdef XCP
+	T_RemoteSubplanState,
+#endif
 #endif
 
 	/*
@@ -227,6 +241,7 @@ typedef enum NodeTag
 	T_NullTestState,
 	T_CoerceToDomainState,
 	T_DomainConstraintState,
+	T_WholeRowVarExprState,		/* will be in a more natural position in 9.3 */
 
 	/*
 	 * TAGS FOR PLANNER NODES (relation.h)
@@ -261,10 +276,9 @@ typedef enum NodeTag
 	T_PlaceHolderInfo,
 	T_MinMaxAggInfo,
 	T_PlannerParamItem,
-#ifdef PGXC
-	T_RemoteQueryPath,
-#endif /* PGXC */
-
+#ifdef XCP
+	T_RemoteSubPath,
+#endif
 	/*
 	 * TAGS FOR MEMORY NODES (memnodes.h)
 	 */
@@ -347,6 +361,7 @@ typedef enum NodeTag
 	T_CheckPointStmt,
 #ifdef PGXC
 	T_BarrierStmt,
+	T_PauseClusterStmt,
 #endif
 	T_CreateSchemaStmt,
 	T_AlterDatabaseStmt,
@@ -382,6 +397,9 @@ typedef enum NodeTag
 	T_DropUserMappingStmt,
 	T_ExecDirectStmt,
 	T_CleanConnStmt,
+#ifdef XCP
+	T_RemoteStmt,
+#endif
 	T_AlterTableSpaceOptionsStmt,
 	T_SecLabelStmt,
 	T_CreateForeignTableStmt,
@@ -518,11 +536,17 @@ extern PGDLLIMPORT Node *newNodeMacroHolder;
 /*
  * nodes/{outfuncs.c,print.c}
  */
+#ifdef XCP
+extern void set_portable_output(bool value);
+#endif
 extern char *nodeToString(const void *obj);
 
 /*
  * nodes/{readfuncs.c,read.c}
  */
+#ifdef XCP
+extern void set_portable_input(bool value);
+#endif
 extern void *stringToNode(char *str);
 
 /*

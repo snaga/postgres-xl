@@ -28,6 +28,16 @@
     operating system documentation or your system administrator about
     how to access <productname>Postgres-XC</productname>.
     <!## end>
+    <!## XL>
+    Before you can use <productname>Postgres-XL</productname> you need
+    to install it, of course.  It is possible that
+    <productname>Postgres-XL</productname> is already installed at your
+    site, either because it was included in your operating system
+    distribution or because the system administrator already installed
+    it.  If that is the case, you should obtain information from the
+    operating system documentation or your system administrator about
+    how to access <productname>Postgres-XL</productname>.
+    <!## end>
    </para>
 
    <para>
@@ -49,6 +59,15 @@
     unprivileged user; no superuser (<systemitem>root</systemitem>)
     access is required.
     <!## end>
+    <!## XL>
+    If you are not sure whether <productname>Postgres-XL</productname>
+    is already available or whether you can use it for your
+    experimentation then you can install it yourself.  Doing so is not
+    hard and it can be a good exercise.
+    <productname>Postgres-XL</productname> can be installed by any
+    unprivileged user; no superuser (<systemitem>root</systemitem>)
+    access is required.
+    <!## end>
    </para>
 
    <para>
@@ -62,6 +81,14 @@
     <!## end>
     <!## XC>
     If you are installing <productname>Postgres-XC</productname>
+    yourself, then refer to <xref linkend="installation">
+    for instructions on installation, and return to
+    this guide when the installation is complete.  Be sure to follow
+    closely the section about setting up the appropriate environment
+    variables.
+    <!## end>
+    <!## XL>
+    If you are installing <productname>Postgres-XL</productname>
     yourself, then refer to <xref linkend="installation">
     for instructions on installation, and return to
     this guide when the installation is complete.  Be sure to follow
@@ -92,6 +119,9 @@
 <!## XC>
 &xconly;
 <!## end>
+<!## XL>
+&xlonly;
+<!## end>
 
    <para>
 <!## PG>
@@ -106,6 +136,13 @@
     <productname>Postgres-XC</productname> system architecture.
     Understanding how the parts of
     <productname>Postgres-XC</productname> interact will make this
+    chapter somewhat clearer.
+<!## end>
+<!## XL>
+    Before we proceed, you should understand the basic
+    <productname>Postgres-XL</productname> system architecture.
+    Understanding how the parts of
+    <productname>Postgres-XL</productname> interact will make this
     chapter somewhat clearer.
 <!## end>
    </para>
@@ -124,51 +161,117 @@
     Datanode.  GTM is responsible to provide ACID property of
     transactions. Datanode stores table data and handle SQL statements
     locally.  Coordinator handles each SQL statements from
-    applications, determines which Datanode to go, and decomposes it
-    into local SQL statements for each Datanode.
+    applications, determines which datanode to go, and decomposes it
+    into local SQL statements for each datanode.
    </para>
 
    <para>
     You should run GTM in a separate server because GTM has to take
-    care of transaction requirements from all the Coordinators and
-    Datanodes.  To group multiple requirements and responses from
-    Coordinator and Datanode running on the same server, you can
+    care of transaction requirements from all the coordinators and
+    datanodes.  To group multiple requirements and responses from
+    coordinator and datanode running on the same server, you can
     configure GTM-Proxy.  GTM-Proxy reduces the number of interaction
     and the amount of data to GTM.  GTM-Proxy also helps to take care
     of GTM failure.
    </para>
 
    <para>
-    It is a good convention to run both Coordinator and Datanode in a
+    It is a good convention to run both coordinator and datanode in a
     same server because we don't have to worry about workload balance
     between the two.  You can have any number of servers where these
-    two components are running.  Because both Coordinator and Datanode
+    two components are running.  Because both coordinator and datanode
     are essentially PostgreSQL database, you should configure them to
     avoid resource conflict.  It is very important to assign them
     different working directory and port number.
    </para>
 
    <para>
-    Postgres-XC allow multiple Coordinators which accept statments
+    Postgres-XC allow multiple coordinators which accept statments
     from applications independently but in an integrated way.  Any
-    writes from any Coordinator is available from any other
-    Coordinators.  They acts as if they are single database.
-    Coordinator's role is to accept statments, find what Datanodes are
-    involved, Ode-compose incoming statements for each Datanode if
-    needed, proxy statements to target Datanode, collect the results
+    writes from any coordinator is available from any other
+    coordinators.  They acts as if they are single database.
+    Coordinator's role is to accept statments, find what datanodes are
+    involved, Ode-compose incoming statements for each datanode if
+    needed, proxy statements to target datanode, collect the results
     and write them back to applications.
    </para>
 
    <para>
     Coordinator does not store any user data.  It stores only catalog
     data to determine how to decompose the statement, where the target
+    datanodes are, among others.  Therefore, you don't have to worry
+    about coordinator failure much.  When the coordinator fails, you
+    can just switch to the other one.
+   </para>
+
+   <para>
+    GTM could be single point of failure (SPOF).  To prevent this, you
+    can run another GTM as GTM-Standby to backup GTM's status.  When
+    GTM fails, GTM-Proxy can switch to the standby on the fly.  This
+    will be described in detail in high-availability sections.
+   </para>
+<!## end>
+<!## XL>
+   <para>
+    <productname>Postgres-XL</>, in short, is a collection
+    of <productname>PostgreSQL</> database clusters which act as if the whole
+    collection is a single database cluster.  Based on your database design,
+    each table is replicated or distributed among member databases.
+   </para>
+
+  <para>
+    To provide this capability, <productname>Postgres-XL</> is
+    composed of three major components called the GTM, Coordinator and
+    Datanode.  The GTM is responsible to provide ACID property of
+    transactions. The Datanode stores table data and handle SQL statements
+    locally.  The Coordinator handles each SQL statements from
+    applications, determines which Datanode to go, and sends plans on
+    to the appropriate Datanodes.
+   </para>
+
+   <para>
+    You usually should run GTM on a separate server because GTM has to take
+    care of transaction requirements from all the Coordinators and
+    Datanodes.  To group multiple requests and responses from
+    Coordinator and Datanode processes running on the same server, you can
+    configure GTM-Proxy.  GTM-Proxy reduces the number of interactions
+    and the amount of data to GTM.  GTM-Proxy also helps handle
+    GTM failures.
+   </para>
+
+   <para>
+    It is often good practice to run both Coordinator and Datanode on the
+    same server because we don't have to worry about workload balance
+    between the two, and you can often get at data from replicated tables locally
+    without sending an additional request out on the network.
+    You can have any number of servers where these
+    two components are running.  Because both Coordinator and Datanode
+    are essentially PostgreSQL instances, you should configure them to
+    avoid resource conflict.  It is very important to assign them
+    different working directories and port numbers.
+   </para>
+
+   <para>
+    Postgres-XL allows multiple Coordinators to accept statements
+    from applications independently but in an integrated way.  Any
+    writes from any Coordinator is available from any other
+    Coordinators.  They acts as if they are single database.
+    The Coordinator's role is to accept statements, find what Datanodes are
+    involved, send query plans on to the appropriate Datanodes if
+    needed, collect the results
+    and write them back to applications.
+   </para>
+
+   <para>
+    The Coordinator does not store any user data.  It stores only catalog
+    data to determine how to process statements, where the target
     Datanodes are, among others.  Therefore, you don't have to worry
     about Coordinator failure much.  When the Coordinator fails, you
     can just switch to the other one.
    </para>
 
    <para>
-    GTM could be single point of failure (SPOF).  To prevent this, you
+    The GTM could be single point of failure (SPOF).  To prevent this, you
     can run another GTM as GTM-Standby to backup GTM's status.  When
     GTM fails, GTM-Proxy can switch to the standby on the fly.  This
     will be described in detail in high-availability sections.
@@ -182,8 +285,16 @@
     (programs):
 <!## end>
 <!## XC>
-    As described above, Coordinator and Datanode
+    As described above, coordinator and datanode
     of <productname>Postgres-XC</> are
+    essentially <productname>PostgreSQL</> database servers. In database
+    jargon, <productname>PostgreSQL</productname> uses a client/server
+    model.  A <productname>PostgreSQL</productname> session consists
+    of the following cooperating processes (programs):
+<!## end>
+<!## XL>
+    As described above, the Coordinators and Datanodes
+    of <productname>Postgres-XL</> are
     essentially <productname>PostgreSQL</> database servers. In database
     jargon, <productname>PostgreSQL</productname> uses a client/server
     model.  A <productname>PostgreSQL</productname> session consists
@@ -217,6 +328,9 @@
 <!## end>
 <!## XC>
        <productname>Postgres-XC</productname> distribution; most are
+<!## end>
+<!## XL>
+       <productname>Postgres-XL</productname> distribution; most are
 <!## end>
        developed by users.
       </para>
@@ -259,6 +373,18 @@
     come and go.  (All of this is of course invisible to the user.  We
     only mention it here for completeness.)
 <!## end>
+<!## XL>
+    The <productname>Postgres-XL</> can handle
+    multiple concurrent connections from clients.  To achieve this it
+    starts (<quote>forks</quote>) a new process for each connection.
+    From that point on, the client and the new server process
+    communicate without intervention by the original
+    <filename>postgres</filename> process.  Thus, the
+    master server process is always running, waiting for
+    client connections, whereas client and associated server processes
+    come and go.  (All of this is of course invisible to the user.  We
+    only mention it here for completeness.)
+<!## end>
    </para>
   </sect1>
 
@@ -287,7 +413,14 @@
 <!## XC>
     The first test to see whether you can access the database server
     is to try to create a database.  Running
-    <productname>Postgres-XC</productname> servers (Coordinators and Datanodes)  can manage many
+    <productname>Postgres-XC</productname> servers (coordinators and datanodes)  can manage many
+    databases.  Typically, a separate database is used for each
+    project or for each user.
+<!## end>
+<!## XL>
+    The first test to see whether you can access the database server
+    is to try to create a database.  Running
+    <productname>Postgres-XL</productname> servers (coordinators and datanodes)  can manage many
     databases.  Typically, a separate database is used for each
     project or for each user.
 <!## end>
@@ -321,6 +454,9 @@ createdb: command not found
 <!## end>
 <!## XC>
     then <productname>Postgres-XC</> was not installed properly.  Either it was not
+<!## end>
+<!## XL>
+    then <productname>Postgres-XL</> was not installed properly.  Either it was not
 <!## end>
     installed at all or your shell's search path was not set to include it.
     Try calling the command with an absolute path instead:
@@ -378,10 +514,27 @@ createdb: could not connect to database postgres: FATAL:  role "joe" does not ex
     switch or set the <envar>PGUSER</> environment variable to specify your
     <productname>Postgres-XC</> user name.
 <!## end>
+<!## XL>
+    where your own login name is mentioned.  This will happen if the
+    administrator has not created a <productname>Postgres-XL</> user account
+    for you.  (<productname>Postgres-XL</> user accounts are distinct from
+    operating system user accounts.)  If you are the administrator, see
+    <xref linkend="user-manag"> for help creating accounts.  You will need to
+    become the operating system user under which <productname>Postgres-XL</>
+    was installed (usually <literal>postgres</>) to create the first user
+    account.  It could also be that you were assigned a
+    <productname>Postgres-XL</> user name that is different from your
+    operating system user name; in that case you need to use the <option>-U</>
+    switch or set the <envar>PGUSER</> environment variable to specify your
+    <productname>Postgres-XL</> user name.
+<!## end>
    </para>
 
 <!## XC>
 &xconly;
+<!## end>
+<!## XL>
+&xlonly;
 <!## end>
    <para>
     If you have a user account but it does not have the privileges required to
@@ -407,6 +560,15 @@ createdb: database creation failed: ERROR:  permission denied to create database
     yourself then you should log in for the purposes of this tutorial
     under the user account that you started the server as.
 <!## end>
+<!## XL>
+    Not every user has authorization to create new databases.  If
+    <productname>Postgres-XL</productname> refuses to create databases
+    for you then the site administrator needs to grant you permission
+    to create databases.  Consult your site administrator if this
+    occurs.  If you installed <productname>Postgres-XL</productname>
+    yourself then you should log in for the purposes of this tutorial
+    under the user account that you started the server as.
+<!## end>
 
 <!## XC>
     Or you may have error message like:
@@ -414,7 +576,23 @@ createdb: database creation failed: ERROR:  permission denied to create database
 createdb: database creation failed: ERROR:  source database "template1" is being accessed by other users
 DETAIL:  There are 1 other session(s) using the database.
 </screen>
-    This means that at least one of the Coordinator pooler still holds a connection to template1 database to one of the Datanodes.  To release them, you should do the following as the database superuser.
+    This means that at least one of the Coordinator poolers still holds a connection to template1 database to one of the datanodes.  To release them, you should do the following as the database superuser.
+<screen>
+<prompt>$</prompt> <userinput>psql</userinput>
+...
+<prompt>koichi=#</prompt> <userinput>CLEAN CONNECTION TO ALL FOR template1;</userinput>
+CLEAN CONNECTION
+<prompt>koichi=#</prompt>
+</screen>
+   </para>
+<!## end>
+<!## XL>
+    Or you may have error message like:
+<screen>
+createdb: database creation failed: ERROR:  source database "template1" is being accessed by other users
+DETAIL:  There are 1 other session(s) using the database.
+</screen>
+    This means that at least one of the Coordinator poolers still holds a connection to template1 database to one of the datanodes.  To release them, you should do the following as the database superuser.
 <screen>
 <prompt>$</prompt> <userinput>psql</userinput>
 ...
@@ -459,6 +637,21 @@ CLEAN CONNECTION
       also specify the <option>-U</option> option everywhere to select
       a <productname>Postgres-XC</productname> user name to connect as.
 <!## end>
+<!## XL>
+      As an explanation for why this works:
+      <productname>Postgres-XL</productname> user names are separate
+      from operating system user accounts.  When you connect to a
+      database, you can choose what
+      <productname>Postgres-XL</productname> user name to connect as;
+      if you don't, it will default to the same name as your current
+      operating system account.  As it happens, there will always be a
+      <productname>Postgres-XL</productname> user account that has the
+      same name as the operating system user that started the server,
+      and it also happens that that user always has permission to
+      create databases.  Instead of logging in as that user you can
+      also specify the <option>-U</option> option everywhere to select
+      a <productname>Postgres-XL</productname> user name to connect as.
+<!## end>
      </para>
     </footnote>
    </para>
@@ -478,6 +671,16 @@ CLEAN CONNECTION
 <!## XC>
     You can also create databases with other names.
     <productname>Postgres-XC</productname> allows you to create any
+    number of databases at a given site.  Database names must have an
+    alphabetic first character and are limited to 63 characters in
+    length.  A convenient choice is to create a database with the same
+    name as your current user name.  Many tools assume that database
+    name as the default, so it can save you some typing.  To create
+    that database, simply type:
+<!## end>
+<!## XL>
+    You can also create databases with other names.
+    <productname>Postgres-XL</productname> allows you to create any
     number of databases at a given site.  Database names must have an
     alphabetic first character and are limited to 63 characters in
     length.  A convenient choice is to create a database with the same
@@ -534,6 +737,12 @@ CLEAN CONNECTION
 <!## end>
 <!## XC>
        Running the <productname>Postgres-XC</productname> interactive
+       terminal program, called <application><firstterm>psql</></application>, which allows you
+       to interactively enter, edit, and execute
+       <acronym>SQL</acronym> commands.
+<!## end>
+<!## XL>
+       Running the <productname>Postgres-XL</productname> interactive
        terminal program, called <application><firstterm>psql</></application>, which allows you
        to interactively enter, edit, and execute
        <acronym>SQL</acronym> commands.
@@ -599,6 +808,13 @@ mydb=#
     access controls.  For the purposes of this tutorial that is not
     important.
 <!## end>
+<!## XL>
+    That would mean you are a database superuser, which is most likely
+    the case if you installed <productname>Postgres-XL</productname>
+    yourself.  Being a superuser means that you are not subject to
+    access controls.  For the purposes of this tutorial that is not
+    important.
+<!## end>
    </para>
 
    <para>
@@ -647,6 +863,9 @@ mydb=#
     <productname>PostgreSQL</productname> <acronym>SQL</acronym>
 <!## end>
 <!## XC>
+    <acronym>SQL</acronym>
+<!## end>
+<!## XL>
     <acronym>SQL</acronym>
 <!## end>
     commands by typing:

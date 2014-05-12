@@ -65,6 +65,9 @@ START TRANSACTION [ <replaceable class="parameter">transaction_mode</replaceable
 <!## XC>
    <productname>Postgres-XC</productname>'s behavior can be seen as implicitly
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname>'s behavior can be seen as implicitly
+<!## end>
    issuing a <command>COMMIT</command> after each command that does not
    follow <command>START TRANSACTION</> (or <command>BEGIN</command>),
    and it is therefore often called <quote>autocommit</>.
@@ -86,6 +89,9 @@ START TRANSACTION [ <replaceable class="parameter">transaction_mode</replaceable
 <!## end>
 <!## XC>
    reasons <productname>Postgres-XC</productname> allows the commas to be
+<!## end>
+<!## XL>
+   reasons <productname>Postgres-XL</productname> allows the commas to be
 <!## end>
    omitted.
   </para>

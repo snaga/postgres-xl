@@ -10,6 +10,11 @@
  * the location.
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
@@ -156,12 +161,16 @@ typedef struct Query
 	List	   *constraintDeps; /* a list of pg_constraint OIDs that the query
 								 * depends on to be semantically valid */
 #ifdef PGXC
+#ifndef XCP
 	/* need this info for PGXC Planner, may be temporary */
 	char		*sql_statement;		/* original query */
+	bool		qry_finalise_aggs;	/* used for queries intended for Datanodes,
+						 * should Datanode finalise the aggregates? */
 	bool		is_local;		/* enforce query execution on local node
 						 * this is used by EXECUTE DIRECT especially. */
 	bool		is_ins_child_sel_parent;/* true if the query is such an INSERT SELECT that
 						 * inserts into a child by selecting from its parent */
+#endif
 #endif
 } Query;
 
@@ -713,7 +722,9 @@ typedef struct RangeTblEntry
 	 */
 
 #ifdef PGXC
+#ifndef XCP
 	char		*relname;
+#endif
 #endif
 
 	/*
@@ -1253,7 +1264,9 @@ typedef enum AlterTableType
 	AT_AddNodeList,				/* ADD NODE nodelist */
 	AT_DeleteNodeList,			/* DELETE NODE nodelist */
 #endif
-	AT_GenericOptions			/* OPTIONS (...) */
+	AT_GenericOptions,			/* OPTIONS (...) */
+	/* this will be in a more natural position in 9.3: */
+	AT_ReAddConstraint			/* internal to commands/tablecmds.c */
 } AlterTableType;
 
 typedef struct AlterTableCmd	/* one subcommand of an ALTER TABLE */
@@ -2054,10 +2067,11 @@ typedef struct FetchStmt
  *		Create Index Statement
  *
  * This represents creation of an index and/or an associated constraint.
- * If indexOid isn't InvalidOid, we are not creating an index, just a
- * UNIQUE/PKEY constraint using an existing index.	isconstraint must always
- * be true in this case, and the fields describing the index properties are
- * empty.
+ * If isconstraint is true, we should create a pg_constraint entry along
+ * with the index.  But if indexOid isn't InvalidOid, we are not creating an
+ * index, just a UNIQUE/PKEY constraint using an existing index.  isconstraint
+ * must always be true in this case, and the fields describing the index
+ * properties are empty.
  * ----------------------
  */
 typedef struct IndexStmt
@@ -2067,15 +2081,16 @@ typedef struct IndexStmt
 	RangeVar   *relation;		/* relation to build index on */
 	char	   *accessMethod;	/* name of access method (eg. btree) */
 	char	   *tableSpace;		/* tablespace, or NULL for default */
-	List	   *indexParams;	/* a list of IndexElem */
-	List	   *options;		/* options from WITH clause */
+	List	   *indexParams;	/* columns to index: a list of IndexElem */
+	List	   *options;		/* WITH clause options: a list of DefElem */
 	Node	   *whereClause;	/* qualification (partial-index predicate) */
 	List	   *excludeOpNames; /* exclusion operator names, or NIL if none */
+	char	   *idxcomment;		/* comment to apply to index, or NULL */
 	Oid			indexOid;		/* OID of an existing index, if any */
-	Oid			oldNode;		/* relfilenode of my former self */
+	Oid			oldNode;		/* relfilenode of existing storage, if any */
 	bool		unique;			/* is index unique? */
-	bool		primary;		/* is index on primary key? */
-	bool		isconstraint;	/* is it from a CONSTRAINT clause? */
+	bool		primary;		/* is index a primary key? */
+	bool		isconstraint;	/* is it for a pkey/unique constraint? */
 	bool		deferrable;		/* is the constraint DEFERRABLE? */
 	bool		initdeferred;	/* is the constraint INITIALLY DEFERRED? */
 	bool		concurrent;		/* should this be a concurrent index build? */
@@ -2420,6 +2435,16 @@ typedef struct VacuumStmt
 
 #ifdef PGXC
 /*
+ * ---------------------------
+ *  	Pause Cluster Statement
+ */
+typedef struct PauseClusterStmt
+{
+	NodeTag		type;
+	bool		pause;			/* will be false to unpause */
+} PauseClusterStmt;
+
+/*
  * ----------------------
  *      Barrier Statement
  */
@@ -2448,6 +2473,7 @@ typedef struct AlterNodeStmt
 {
 	NodeTag		type;
 	char		*node_name;
+	bool		cluster;
 	List		*options;
 } AlterNodeStmt;
 

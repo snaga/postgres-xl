@@ -54,6 +54,32 @@
    state (either collection or transition) value.
   </para>
 <!## end>
+<!## XL>
+&xlonly;
+  <para>
+   Aggregate functions  in <productname>Postgres-XL</productname>
+   are expressed in terms of <firstterm>state values</firstterm>
+   and <firstterm>state functions namely transition function and collection
+   function</firstterm>.
+   That is, an aggregate operates using 1. a transition state value that is updated
+   as each successive input row, in a given set of rows, is processed, and
+   2. (optionally) collection state value that is updated as each successive
+   transition state value is processed.
+   To define a new aggregate
+   function, one selects a data type for the state value,
+   an initial value for the transition state, and a state transition
+   function.  The state transition function is just an
+   ordinary function that could also be used outside the
+   context of the aggregate.  A collection function and an initial value for
+   the collection state can also be specified, if one wants to take advantage of
+   distributed aggregation.  Similar to transition function, a collection
+   function can be an ordinary function that could also be used outside the
+   context of the aggregate.  A <firstterm>final function</firstterm>
+   can also be specified, in case the desired result of the aggregate
+   is different from the data that needs to be kept in the running
+   state (either collection or transition) value.
+  </para>
+<!## end>
 
 &common;
   <para>
@@ -95,6 +121,9 @@ SELECT sum(a) FROM test_complex;
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname> can figure out which kind
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> can figure out which kind
 <!## end>
    of sum applies to a column of type <type>complex</type>.)
   </para>
@@ -170,13 +199,67 @@ SELECT sum(a) FROM test_complex;
    for null inputs).
   </para>
 <!## end>
+<!## XL>
+&xlonly;
+  <para>
+  In <productname>Postgres-XL</productname>, a user can provide collection
+  function if distributed aggregation is expected for improving performance. The
+  collection function essentially combines the state transition results produced
+  at different Datanodes. Without a final function the result produced by the
+  collection function is the result of aggregate. Above the definition of aggregate
+  <function>sum</> for complex numeric data types can be modified to have a
+  collection function as follows
 
-&xconly;
+<screen>
+CREATE AGGREGATE sum (complex)
+(
+    sfunc = complex_add,
+    stype = complex,
+cfunc = complex_add,
+    initcond = '(0,0)'
+initcollect = '(0.0)'
+);
+
+SELECT sum(a) FROM test_complex;
+
+   sum
+-----------
+ (34,53.9)
+</screen>
+
+  Notice that both the CREATE AGGREGATE commands work in
+  <productname>Postgres-XL</productname>. An aggregate created by either command
+  produces the same results.
+  </para>
+
+&xlonly;
+  <para>
+   The above definitions of <function>sum</function> will return zero (the initial
+   state condition) if there are no nonnull input values.
+   Perhaps we want to return null in that case instead &mdash; the SQL standard
+   expects <function>sum</function> to behave that way.  We can do this simply by
+   omitting the <literal>initcond</literal> phrase, so that the initial state
+   condition is null.  Ordinarily this would mean that the <literal>sfunc</literal>
+   would need to check for a null state-condition input, but for
+   <function>sum</function> and some other simple aggregates like
+   <function>max</> and <function>min</>,
+   it is sufficient to insert the first nonnull input value into
+   the state variable and then start applying the transition function
+   at the second nonnull input value.  <productname>Postgres-XL</productname>
+   will do that automatically if the initial condition is null and
+   the transition function is marked <quote>strict</> (i.e., not to be called
+   for null inputs).
+  </para>
+<!## end>
+
   <para>
 <!## PG>
    Another bit of default behavior for a <quote>strict</> transition function
 <!## end>
 <!## XC>
+   Another bit of default behavior for a <quote>strict</> transition/collection function
+<!## end>
+<!## XL>
    Another bit of default behavior for a <quote>strict</> transition/collection function
 <!## end>
    is that the previous state value is retained unchanged whenever a
@@ -188,10 +271,12 @@ SELECT sum(a) FROM test_complex;
 <!## XC>
    transition/collection function as strict; instead code it to test for null inputs and
 <!## end>
+<!## XL>
+   transition/collection function as strict; instead code it to test for null inputs and
+<!## end>
    do whatever is needed.
   </para>
 
-&xconly;
   <para>
    <function>avg</> (average) is a more complex example of an aggregate.
    It requires
@@ -226,6 +311,19 @@ CREATE AGGREGATE avg (float8)
 );
 </programlisting>
 <!## end>
+<!## XL>
+<programlisting>
+CREATE AGGREGATE avg (float8)
+(
+    sfunc = float8_accum,
+    stype = float8[],
+    cfunc = float8_collect,
+    finalfunc = float8_avg,
+    initcond = '{0,0}'
+    initcollect = '{0,0,0}'
+);
+</programlisting>
+<!## end>
 
 <!## PG>
    (<function>float8_accum</> requires a three-element array, not just
@@ -234,18 +332,24 @@ CREATE AGGREGATE avg (float8)
    (<function>float8_accum</> and <function>float8_collect</>
    require a three-element array, not just
 <!## end>
+<!## XL>
+   (<function>float8_accum</> and <function>float8_collect</>
+   require a three-element array, not just
+<!## end>
     two elements, because it accumulates the sum of squares as well as
     the sum and count of the inputs.  This is so that it can be used for
     some other aggregates besides <function>avg</>.)
   </para>
 
-&xconly;
   <para>
    Aggregate functions can use polymorphic
 <!## PG>
    state transition functions or final functions, so that the same functions
 <!## end>
 <!## XC>
+   state transition/collection functions or final functions, so that the same functions
+<!## end>
+<!## XL>
    state transition/collection functions or final functions, so that the same functions
 <!## end>
    can be used to implement multiple aggregates.
@@ -299,7 +403,6 @@ SELECT attrelid::regclass, array_accum(atttypid::regtype)
 </programlisting>
   </para>
 
-&xconly;
   <para>
    A function written in C can detect that it is being called as an
    aggregate transition or final function by calling
@@ -313,6 +416,10 @@ if (AggCheckCallContext(fcinfo, NULL))
    must be a temporary transition value and can therefore safely be modified
 <!## end>
 <!## XC>
+   function, the first input to transition or collection function
+   must be a temporary transition/collection value and can therefore safely be modified
+<!## end>
+<!## XL>
    function, the first input to transition or collection function
    must be a temporary transition/collection value and can therefore safely be modified
 <!## end>

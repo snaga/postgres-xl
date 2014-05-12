@@ -18,6 +18,9 @@ PostgreSQL documentation
 <!## XC>
   <refpurpose><productname>Postgres-XC</productname> database server for Coordinator or Datanode</refpurpose>
 <!## end>
+<!## XL>
+  <refpurpose><productname>Postgres-XL</productname> database server for Coordinator or Datanode</refpurpose>
+<!## end>
  </refnamediv>
 
  <indexterm zone="app-postmaster">

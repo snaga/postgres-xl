@@ -11,7 +11,7 @@
  <sect2>
   <title>Overview</title>
 
-&xconly;
+&xlonly;
     <para>
       pgxc_monitor has the following synopsis.
 <programlisting>
@@ -20,7 +20,7 @@ pgxc_monitor <optional> <replaceable>option</> </optional>
     </para>
 
     <para>
-     <application>pgxc_monitor</application> is a <productname>Postgres-XC</> utility to test if
+     <application>pgxc_monitor</application> is a <productname>Postgres-XL</> utility to test if
      the target node is running.
     </para>
 

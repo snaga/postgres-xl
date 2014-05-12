@@ -22,6 +22,12 @@ PostgreSQL documentation
   <refpurpose><productname>Postgres-XC</productname> database server</refpurpose>
  </refnamediv>
 <!## end>
+<!## XL>
+ <refnamediv>
+  <refname>postgres</refname>
+  <refpurpose><productname>Postgres-XL</productname> database server</refpurpose>
+ </refnamediv>
+<!## end>
 
  <indexterm zone="app-postgres">
   <primary>postgres</primary>
@@ -46,6 +52,9 @@ PostgreSQL documentation
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname> database server.  In order
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> database server.  In order
 <!## end>
    for a client application to access a database it connects (over a
    network or locally) to a running <command>postgres</command> instance.
@@ -129,6 +138,9 @@ PostgreSQL documentation
 <!## XC>
         assertions were enabled when <productname>Postgres-XC</> was
 <!## end>
+<!## XL>
+        assertions were enabled when <productname>Postgres-XL</> was
+<!## end>
         compiled. If so, the default is on.
        </para>
       </listitem>
@@ -158,6 +170,17 @@ PostgreSQL documentation
       </listitem>
      </varlistentry>
 <!## end>
+<!## XL>
+     <varlistentry>
+      <term><option>--coordinator</option></term>
+      <listitem>
+&xlonly;
+       <para>
+        Specifies postgres server should run as a Coordinator.
+       </para>
+      </listitem>
+     </varlistentry>
+<!## end>
 
      <varlistentry>
       <term><option>-c <replaceable>name</replaceable>=<replaceable>value</replaceable></option></term>
@@ -169,6 +192,9 @@ PostgreSQL documentation
 <!## end>
 <!## XC>
         supported by <productname>Postgres-XC</productname> are
+<!## end>
+<!## XL>
+        supported by <productname>Postgres-XL</productname> are
 <!## end>
         described in <xref linkend="runtime-config">. Most of the
         other command line options are in fact short forms of such a
@@ -288,6 +314,9 @@ PostgreSQL documentation
 <!## XC>
         <productname>Postgres-XC</productname> must have been compiled with
 <!## end>
+<!## XL>
+        <productname>Postgres-XL</productname> must have been compiled with
+<!## end>
         support for <acronym>SSL</acronym> for this option to be
         available. For more information on using <acronym>SSL</acronym>,
         refer to <xref linkend="ssl-tcp">.
@@ -378,6 +407,17 @@ PostgreSQL documentation
       </listitem>
      </varlistentry>
 <!## end>
+<!## XL>
+     <varlistentry>
+      <term><option>--datanode</option></term>
+      <listitem>
+&xlonly;
+       <para>
+        Specifies postgres server should run as a Datanode.
+       </para>
+      </listitem>
+     </varlistentry>
+<!## end>
 
      <varlistentry>
       <term><option>--<replaceable>name</replaceable>=<replaceable>value</replaceable></option></term>
@@ -415,6 +455,9 @@ PostgreSQL documentation
 <!## end>
 <!## XC>
      here only for use by <productname>Postgres-XC</productname>
+<!## end>
+<!## XL>
+     here only for use by <productname>Postgres-XL</productname>
 <!## end>
      system developers.  Furthermore, these options might
      change or be removed in a future release without notice.
@@ -541,6 +584,20 @@ PostgreSQL documentation
        <para>
         Use local transaction IDs rather than GXID. This option applies
         only to <productname>Postgres-XC</productname>. It is only
+        used by initdb. Explicit use of this option may cause
+        database inconsistency.
+       </para>
+      </listitem>
+     </varlistentry>
+<!## end>
+<!## XL>
+     <varlistentry>
+      <term><option>--localxid</option></term>
+      <listitem>
+       &xlonly;
+       <para>
+        Use local transaction IDs rather than GXID. This option applies
+        only to <productname>Postgres-XL</productname>. It is only
         used by initdb. Explicit use of this option may cause
         database inconsistency.
        </para>
@@ -688,6 +745,9 @@ PostgreSQL documentation
 <!## XC>
     consumption of <productname>Postgres-XC</>, and/or by reducing
 <!## end>
+<!## XL>
+    consumption of <productname>Postgres-XL</>, and/or by reducing
+<!## end>
     <xref linkend="guc-max-connections"> to reduce the semaphore
     consumption.
    </para>
@@ -715,6 +775,9 @@ PostgreSQL documentation
 <!## end>
 <!## XC>
     non-<productname>Postgres-XC</productname> process.  You might also
+<!## end>
+<!## XL>
+    non-<productname>Postgres-XL</productname> process.  You might also
 <!## end>
     get this error if you terminate <command>postgres</command>
     and immediately restart it using the same port; in this case, you
@@ -842,12 +905,16 @@ PostgreSQL documentation
  <refsect1 id="app-postgres-examples">
   <title>Examples</title>
 
-&xconly;
   <para>
 <!## PG>
    To start <command>postgres</command> in the background
 <!## end>
 <!## XC>
+&xconly;
+   To start <command>postgres</command> as a Datanode in the background
+<!## end>
+<!## XL>
+&xlonly;
    To start <command>postgres</command> as a Datanode in the background
 <!## end>
    using default values, type:
@@ -862,6 +929,11 @@ PostgreSQL documentation
 <prompt>$</prompt> <userinput>nohup postgres --datanode &gt;logfile 2&gt;&amp;1 &lt;/dev/null &amp;</userinput>
 </screen>
 <!## end>
+<!## XL>
+<screen>
+<prompt>$</prompt> <userinput>nohup postgres --datanode &gt;logfile 2&gt;&amp;1 &lt;/dev/null &amp;</userinput>
+</screen>
+<!## end>
   </para>
 
   <para>
@@ -871,6 +943,9 @@ PostgreSQL documentation
 <!## XC>
    To start <command>postgres</command> as a Coordinator with a specific
 <!## end>
+<!## XL>
+   To start <command>postgres</command> as a Coordinator with a specific
+<!## end>
    port, e.g. 1234:
 <!## PG>
 <screen>
@@ -878,6 +953,11 @@ PostgreSQL documentation
 </screen>
 <!## end>
 <!## XC>
+<screen>
+<prompt>$</prompt> <userinput>postgres --coordinator -p 1234</userinput>
+</screen>
+<!## end>
+<!## XL>
 <screen>
 <prompt>$</prompt> <userinput>postgres --coordinator -p 1234</userinput>
 </screen>
@@ -902,6 +982,12 @@ PostgreSQL documentation
 </screen>
 <!## end>
 <!## XC>
+<screen>
+<prompt>$</prompt> <userinput>postgres --coordinator -c work_mem=1234</userinput>
+<prompt>$</prompt> <userinput>postgres --coordinator --work-mem=1234</userinput>
+</screen>
+<!## end>
+<!## XL>
 <screen>
 <prompt>$</prompt> <userinput>postgres --coordinator -c work_mem=1234</userinput>
 <prompt>$</prompt> <userinput>postgres --coordinator --work-mem=1234</userinput>

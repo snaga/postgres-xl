@@ -38,6 +38,26 @@
    consistent way as if they are running in single database.
   </para>
 <!## end>
+<!## XL>
+&xlonly;
+  <para>
+   This chapter describes the behavior of the
+   <productname>Postgres-XL</productname> database system when two or
+   more sessions try to access the same data at the same time.  The
+   goals in that situation are to allow efficient access for all
+   sessions while maintaining strict data integrity.  Every developer
+   of database applications should be familiar with the topics covered
+   in this chapter.
+  </para>
+  <para>
+   <productname>Postgres-XL</> inherited concurrency control
+   from <productname>PostgreSQL</> and extended it globally to all of the
+   Coordinators and Datanodes involved.  Regardless of what
+   Coordinator is connected to, all of the transactions
+   in the <productname>Postgres-XL</> database cluster behaves in
+   a consistent way as if they are running in single database.
+  </para>
+<!## end>
 
   <sect1 id="mvcc-intro">
    <title>Introduction</title>
@@ -96,6 +116,25 @@
     performance in multiuser environments.
    </para>
 <!## end>
+<!## XL>
+   <para>
+    <productname>Postgres-XL</productname> inherits a rich set of tools 
+    for developers to manage concurrent access to data from <productname>PostgreSQL</>.  Internally,
+    data consistency is maintained by using a multiversion 
+    model (Multiversion Concurrency Control, <acronym>MVCC</acronym>). 
+    This means that while querying a database each transaction sees
+    a snapshot of data (a <firstterm>database version</firstterm>)
+    as it was some
+    time ago, regardless of the current state of the underlying data.
+    This protects the transaction from viewing inconsistent data that
+    could be caused by (other) concurrent transaction updates on the same
+    data rows, providing <firstterm>transaction isolation</firstterm>
+    for each database session.  <acronym>MVCC</acronym>, by eschewing
+    explicit locking methodologies of traditional database systems,
+    minimizes lock contention in order to allow for reasonable 
+    performance in multiuser environments.
+   </para>
+<!## end>
 
    <para>
     The main advantage of using the <acronym>MVCC</acronym> model of
@@ -123,6 +162,15 @@
 <!## XC>
     As in <productname>PostgreSQL</>, table- and row-level locking facilities are also available in
     <productname>Postgres-XC</productname> for applications that cannot
+    adapt easily to <acronym>MVCC</acronym> behavior.  However, proper
+    use of <acronym>MVCC</acronym> will generally provide better
+    performance than locks.  In addition, application-defined advisory
+    locks provide a mechanism for acquiring locks that are not tied
+    to a single transaction.
+<!## end>
+<!## XL>
+    As in <productname>PostgreSQL</>, table- and row-level locking facilities are also available in
+    <productname>Postgres-XL</productname> for applications that cannot
     adapt easily to <acronym>MVCC</acronym> behavior.  However, proper
     use of <acronym>MVCC</acronym> will generally provide better
     performance than locks.  In addition, application-defined advisory
@@ -299,6 +347,9 @@
 <!## XC>
     In <productname>Postgres-XC</productname>, you can request any of the
 <!## end>
+<!## XL>
+    In <productname>Postgres-XL</productname>, you can request any of the
+<!## end>
     four standard transaction isolation levels.  But internally, there are
     only three distinct isolation levels, which correspond to the levels Read
     Committed, Repeatable Read, and Serializable.  When you select the level Read
@@ -313,6 +364,9 @@
 <!## end>
 <!## XC>
     phenomena must happen.  The reason that <productname>Postgres-XC</>
+<!## end>
+<!## XL>
+    phenomena must happen.  The reason that <productname>Postgres-XL</>
 <!## end>
     only provides three isolation levels is that this is the only
     sensible way to map the standard isolation levels to the multiversion
@@ -1268,6 +1322,17 @@ UPDATE accounts SET balance = balance - 100.00 WHERE acctnum = 22222;
      to timeout.
     </para>
 <!## end>
+<!## XL>
+&xlonly;
+    <para>
+     Please note that <productname>Postgres-XL</> does not detect
+     deadlocks which are spread  among multiple Coordinators and/or
+     Datanodes, known as global deadlocks. 
+     Until this is implemented in
+     <productname>Postgres-XL</>, global deadlocks can be 
+     detected based on statement_timeout.
+    </para>
+<!## end>
 
    </sect2>
 
@@ -1334,6 +1399,28 @@ UPDATE accounts SET balance = balance - 100.00 WHERE acctnum = 22222;
      <link linkend="view-pg-locks"><structname>pg_locks</structname></link>
      system view.
 <!## end>
+<!## XL>
+     As in <productname>PostgreSQL</productname>, <productname>Postgres-XL</>  provides a means for
+     creating locks that have application-defined meanings.  These are
+     called <firstterm>advisory locks</>, because the system does not
+     enforce their use &mdash; it is up to the application to use them
+     correctly.  Advisory locks can be useful for locking strategies
+     that are an awkward fit for the MVCC model.  Once acquired, an
+     advisory lock is held until explicitly released or the session ends.
+     Unlike standard locks, advisory locks do not
+     honor transaction semantics: a lock acquired during a
+     transaction that is later rolled back will still be held following the
+     rollback, and likewise an unlock is effective even if the calling
+     transaction fails later.  The same lock can be acquired multiple times by
+     its owning process: for each lock request there must be a corresponding
+     unlock request before the lock is actually released.  (If a session
+     already holds a given lock, additional requests will always succeed, even
+     if other sessions are awaiting the lock.)  Like all locks in
+     <productname>PostgreSQL</productname>, a complete list of advisory
+     locks currently held by any session can be found in the
+     <link linkend="view-pg-locks"><structname>pg_locks</structname></link>
+     system view.
+<!## end>
     </para>
 
     <para>
@@ -1353,6 +1440,15 @@ UPDATE accounts SET balance = balance - 100.00 WHERE acctnum = 22222;
     <para>
      Please note that <productname>Postgres-XC</>'s advisory lock is
      local to Coordinator or Datanode.  If you wish to acquire
+     advisory locks on different Coordinator, you should do it manually
+     using <type>EXECUTE DIRECT</> statement.
+    </para>
+<!## end>
+<!## XL>
+&xlonly;
+    <para>
+     Please note that <productname>Postgres-XL</>'s advisory lock is
+     local to each Coordinator or Datanode.  If you wish to acquire
      advisory locks on different Coordinator, you should do it manually
      using <type>EXECUTE DIRECT</> statement.
     </para>
@@ -1694,6 +1790,81 @@ SELECT pg_advisory_lock(q.id) FROM
    <para>
     More detailed internals
     about <productname>Postgres-XC</productname>'s transaction
+    management will be found in <xref linkend="overview">.
+   </para>
+  </sect1>
+<!## end>
+<!## XL>
+  <sect1 id="global-transaction-management">
+   <title><productname>Postgres-XL</productname>'s Global Transaction Management</title>
+
+   <indexterm>
+    <primary>Global Transaction Management</primary>
+   </indexterm>
+
+&xlonly;
+
+   <para>
+    The above sections
+    described <productname>Postgres-XL</productname>'s concurrency
+    control and MVCC common to <productname>PostgreSQL</productname>.
+    This section describes how <productname>Postgres-XL</productname>
+    implements global concurrency control and MVCC among multiple
+    Coordinators and Datanodes.
+   </para>
+
+   <para>
+    In conventional replication clusters, you can run read
+    transactions concurrently in multiple standby, or slave
+    servers. Replication servers provide read scalability. However,
+    you cannot issue write transactions to standby servers because
+    they don't have means to propagate changes safely. They cannot
+    maintain consistent view of database to applications for write
+    operations, unless you issue write transactions to single master
+    server.
+   </para>
+
+   <para>
+    Postgres-XL is different.
+   </para>
+
+   <para>
+    As described
+    in <xref linkend="intro-whatis">, <productname>Postgres-XL</productname>
+    is composed of a GTM (Global Transaction Manager), Coordinators and
+    Datanodes.
+   </para>
+
+   <para>
+    In <productname>Postgres-XL</productname>, any Coordinator can
+    accept any transaction, regardless whether it is read only or
+    read/write.  Transaction integrity is enforced by GTM (Global
+    Transaction Manager).  Because we have multiple Coordinators, each
+    of them can handle incoming transactions and statements in
+    parallel.
+   </para>
+
+   <para>
+    Analyzed statements are converted into internal plans, which
+    include SQL statements targeted to Datanodes.  Plans are sent on to
+    each target Datanode, handled, and the result is sent back to
+    the originating Coordinator where all the results from target
+    Datanodes will be combined into the result to be sent back to the
+    application.
+   </para>
+
+   <para>
+    Each table can be distributed or replicated as described
+    in <xref linkend="intro-whatis">.  If you design each table's
+    distribution carefully, most of the statements may end up targeting
+    just one Datanode, which is most effecient.  In this way, Coordinators and Datanodes
+    runs transactions in parallel which scales out both read and write
+    operations.
+   </para>
+
+   <para>
+    More detailed internals
+    about <productname>Postgres-XL</productname>'s transaction
     management will be found in <xref linkend="overview">.
    </para>
   </sect1>

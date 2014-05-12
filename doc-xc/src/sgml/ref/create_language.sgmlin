@@ -40,6 +40,9 @@ CREATE [ OR REPLACE ] [ TRUSTED ] [ PROCEDURAL ] LANGUAGE <replaceable class="pa
 <!## XC>
    procedural language with a <productname>Postgres-XC</productname>
 <!## end>
+<!## XL>
+   procedural language with a <productname>Postgres-XL</productname>
+<!## end>
    database.  Subsequently, functions and trigger procedures can be
    defined in this new language.
   </para>
@@ -75,6 +78,9 @@ CREATE [ OR REPLACE ] [ TRUSTED ] [ PROCEDURAL ] LANGUAGE <replaceable class="pa
 <!## XC>
    language, and the <productname>Postgres-XC</productname> servers consult
 <!## end>
+<!## XL>
+   language, and the <productname>Postgres-XL</productname> servers consult
+<!## end>
    the <link linkend="catalog-pg-pltemplate"><structname>pg_pltemplate</structname></link>
    system catalog to determine the correct parameters.  In the second form,
    the user supplies the language parameters along with the language name.
@@ -97,6 +103,9 @@ CREATE [ OR REPLACE ] [ TRUSTED ] [ PROCEDURAL ] LANGUAGE <replaceable class="pa
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname> superuser privilege to
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> superuser privilege to
 <!## end>
    register a new language.  However, the owner of a database can register
    a new language within that database if the language is listed in
@@ -146,6 +155,9 @@ CREATE [ OR REPLACE ] [ TRUSTED ] [ PROCEDURAL ] LANGUAGE <replaceable class="pa
 <!## XC>
        <productname>Postgres-XC</productname> superuser privilege can
 <!## end>
+<!## XL>
+       <productname>Postgres-XL</productname> superuser privilege can
+<!## end>
        use this language to create new functions.
       </para>
      </listitem>
@@ -193,6 +205,9 @@ CREATE [ OR REPLACE ] [ TRUSTED ] [ PROCEDURAL ] LANGUAGE <replaceable class="pa
 <!## end>
 <!## XC>
        registered with <productname>Postgres-XC</productname> as a
+<!## end>
+<!## XL>
+       registered with <productname>Postgres-XL</productname> as a
 <!## end>
        function taking no arguments and returning the
        <type>language_handler</type> type, a placeholder type that is
@@ -350,6 +365,9 @@ CREATE LANGUAGE plsample
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname> extension.
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> extension.
 <!## end>
   </para>
  </refsect1>

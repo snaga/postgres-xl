@@ -3,6 +3,11 @@
  * gtm_msg.h
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
@@ -27,6 +32,9 @@ typedef enum GTM_MessageType
 	MSG_BKUP_NODE_REGISTER,		/* Backup of MSG_NODE_REGISTER */
 	MSG_NODE_UNREGISTER,		/* Unregister a PGXC Node with GTM */
 	MSG_BKUP_NODE_UNREGISTER,	/* Backup of MSG_NODE_UNREGISTER */
+#ifdef XCP
+	MSG_REGISTER_SESSION,		/* Register distributed session with GTM */
+#endif
 	MSG_NODE_LIST,				/* Get node list */
 	MSG_NODE_BEGIN_REPLICATION_INIT,
 	MSG_NODE_END_REPLICATION_INIT,
@@ -62,6 +70,7 @@ typedef enum GTM_MessageType
 	MSG_SNAPSHOT_GXID_GET,	/* Get GXID and snapshot together */
 	MSG_SEQUENCE_INIT,		/* Initialize a new global sequence */
 	MSG_BKUP_SEQUENCE_INIT,	/* Backup of MSG_SEQUENCE_INIT */
+	MSG_SEQUENCE_GET_CURRENT,/* Get the current value of sequence */
 	MSG_SEQUENCE_GET_NEXT,		/* Get the next sequence value of sequence */
 	MSG_BKUP_SEQUENCE_GET_NEXT,	/* Backup of MSG_SEQUENCE_GET_NEXT */
 	MSG_SEQUENCE_GET_LAST,	/* Get the last sequence value of sequence */
@@ -99,6 +108,9 @@ typedef enum GTM_ResultType
 	SYNC_STANDBY_RESULT,
 	NODE_REGISTER_RESULT,
 	NODE_UNREGISTER_RESULT,
+#ifdef XCP
+	REGISTER_SESSION_RESULT,
+#endif
 	NODE_LIST_RESULT,
 	NODE_BEGIN_REPLICATION_INIT_RESULT,
 	NODE_END_REPLICATION_INIT_RESULT,
@@ -122,6 +134,7 @@ typedef enum GTM_ResultType
 	SNAPSHOT_GET_MULTI_RESULT,
 	SNAPSHOT_GXID_GET_RESULT,
 	SEQUENCE_INIT_RESULT,
+	SEQUENCE_GET_CURRENT_RESULT,
 	SEQUENCE_GET_NEXT_RESULT,
 	SEQUENCE_GET_LAST_RESULT,
 	SEQUENCE_SET_VAL_RESULT,

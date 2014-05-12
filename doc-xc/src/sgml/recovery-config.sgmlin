@@ -63,10 +63,26 @@
 <!## XC>
 .
 <!## end>
+<!## XL>
+.
+<!## end>
 <!## XC>
         <footnote>
          <para>
          Although <productname>Postgres-XC</productname> does not
+          prohibit to use warm-standby, in either Coordinators or
+          Datanodes (see <xref linkend="xc-overview">), there's no
+          guarantee that warm-standbys are synchronized.  If you use
+          warm standby for high availability feature, there's a risk
+          that data in Coordinators and Datanodes are inconsistent.
+          It is highly recommended to use <command>BARRIER</command>.
+         </para>
+        </footnote>
+<!## end>
+<!## XL>
+        <footnote>
+         <para>
+         Although <productname>Postgres-XL</productname> does not
           prohibit to use warm-standby, in either Coordinators or
           Datanodes (see <xref linkend="xc-overview">), there's no
           guarantee that warm-standbys are synchronized.  If you use
@@ -123,6 +139,9 @@ restore_command = 'copy "C:\\server\\archivedir\\%f" "%p"'  # Windows
         warm-standby configuration (see <xref linkend="warm-standby">).
 <!## end>
 <!## XC>
+        warm-standby configuration.
+<!## end>
+<!## XL>
         warm-standby configuration.
 <!## end>
         Write <literal>%%</> to embed an actual <literal>%</> character in the
@@ -196,7 +215,6 @@ restore_command = 'copy "C:\\server\\archivedir\\%f" "%p"'  # Windows
       </indexterm>
       <listitem>
        <para>
-&xconly;
         This parameter specifies the time stamp up to which recovery
         will proceed.
 <!## PG>
@@ -205,6 +223,14 @@ restore_command = 'copy "C:\\server\\archivedir\\%f" "%p"'  # Windows
         <xref linkend="recovery-target-xid"> can be specified.
 <!## end>
 <!## XC>
+&xconly;
+        At most one of <varname>recovery_target_time</>,
+        <xref linkend="recovery-target-name">,
+        <xref linkend="recovery-target-xid"> or
+        <xref linkend="recovery-target-barrier"> can be specified.
+<!## end>
+<!## XL>
+&xlonly;
         At most one of <varname>recovery_target_time</>,
         <xref linkend="recovery-target-name">,
         <xref linkend="recovery-target-xid"> or
@@ -223,7 +249,6 @@ restore_command = 'copy "C:\\server\\archivedir\\%f" "%p"'  # Windows
         <primary><varname>recovery_target_xid</> recovery parameter</primary>
       </indexterm>
       <listitem>
-&xconly;
        <para>
         This parameter specifies the transaction ID up to which recovery
         will proceed. Keep in mind
@@ -256,6 +281,34 @@ restore_command = 'copy "C:\\server\\archivedir\\%f" "%p"'  # Windows
       </indexterm>
       <listitem>
 &xconly;
+       <para>
+        This parameter specifies the barrier ID up to which recovery
+        will proceed. A global consistency is guaranteed when recovery is
+        stopped at a previously successfully completed barrier. At most
+        one of <varname>recovery_target_xid</>,
+        <xref linkend="recovery-target-time"> and 
+        <varname>recovery_target_barrier</> can be specified.
+<!## end>
+<!## XL>
+        At most one of <varname>recovery_target_xid</>,
+        <xref linkend="recovery-target-name">,
+        <xref linkend="recovery-target-time"> or
+        <xref linkend="recovery-target-barrier"> can be specified.
+
+        The default is to recover to the end of the WAL log.
+        The precise stopping point is also influenced by
+        <xref linkend="recovery-target-inclusive">.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="recovery-target-barrier" xreflabel="recovery_target_barrier">
+      <term><varname>recovery_target_barrier</varname> (<type>string</type>)</term>
+      <indexterm>
+        <primary><varname>recovery_target_barrier</> recovery parameter</primary>
+      </indexterm>
+      <listitem>
+&xlonly;
        <para>
         This parameter specifies the barrier ID up to which recovery
         will proceed. A global consistency is guaranteed when recovery is

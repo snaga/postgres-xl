@@ -4,6 +4,11 @@
  *	  definitions for executor state nodes
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -22,6 +27,9 @@
 #include "utils/reltrigger.h"
 #include "utils/sortsupport.h"
 #include "utils/tuplestore.h"
+#ifdef XCP
+#include "pgxc/squeue.h"
+#endif
 
 
 /* ----------------
@@ -348,9 +356,11 @@ typedef struct EState
 	ResultRelInfo *es_result_relations; /* array of ResultRelInfos */
 	int			es_num_result_relations;		/* length of array */
 	ResultRelInfo *es_result_relation_info;		/* currently active array elt */
-#ifdef PGXC	
+#ifdef PGXC
+#ifndef PGXC
 	struct PlanState	*es_result_remoterel;			/* currently active remote rel */
-#endif	
+#endif
+#endif
 
 	/* Stuff used for firing triggers: */
 	List	   *es_trig_target_relations;		/* trigger-only ResultRelInfos */
@@ -564,6 +574,17 @@ typedef struct GenericExprState
 } GenericExprState;
 
 /* ----------------
+ *		WholeRowVarExprState node
+ * ----------------
+ */
+typedef struct WholeRowVarExprState
+{
+	ExprState	xprstate;
+	struct PlanState *parent;	/* parent PlanState, or NULL if none */
+	JunkFilter *wrv_junkFilter; /* JunkFilter to remove resjunk cols */
+} WholeRowVarExprState;
+
+/* ----------------
  *		AggrefExprState node
  * ----------------
  */
@@ -711,6 +732,7 @@ typedef struct SubPlanState
 	ExprState  *testexpr;		/* state of combining expression */
 	List	   *args;			/* states of argument expression(s) */
 	HeapTuple	curTuple;		/* copy of most recent tuple from subplan */
+	Datum		curArray;		/* most recent array from ARRAY() subplan */
 	/* these are used when hashing the subselect's output: */
 	ProjectionInfo *projLeft;	/* for projecting lefthand exprs */
 	ProjectionInfo *projRight;	/* for projecting subselect output */
@@ -1061,9 +1083,9 @@ typedef struct ModifyTableState
 	bool		canSetTag;		/* do we set the command tag/es_processed? */
 	bool		mt_done;		/* are we done? */
 	PlanState **mt_plans;		/* subplans (one per target rel) */
-#ifdef PGXC	
+#ifdef PGXC
 	PlanState **mt_remoterels;	/* per-target remote query node */
-#endif	
+#endif
 	int			mt_nplans;		/* number of plans in the array */
 	int			mt_whichplan;	/* which one is being executed (0..n-1) */
 	ResultRelInfo *resultRelInfo;		/* per-subplan target relations */
@@ -1694,7 +1716,9 @@ typedef struct AggState
 	bool		table_filled;	/* hash table filled yet? */
 	TupleHashIterator hashiter; /* for iterating through hash table */
 #ifdef PGXC
+#ifndef XCP
 	bool		skip_trans;		/* skip the transition step for aggregates */
+#endif /* XCP */
 #endif /* PGXC */
 } AggState;
 

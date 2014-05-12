@@ -6,9 +6,6 @@
 
 create type complex as (r float8, i float8);
 
--- Enforce use of COMMIT instead of 2PC for temporary objects
-SET enforce_two_phase_commit TO off;
-
 create temp table fullname (first text, last text);
 
 -- Nested composite
@@ -164,7 +161,7 @@ UPDATE price
     FROM unnest(ARRAY[(10, 123.00), (11, 99.99)]::price_input[]) input_prices
     WHERE price_key_from_table(price.*) = price_key_from_input(input_prices.*);
 
-select * from price order by id;
+select * from price;
 
 rollback;
 

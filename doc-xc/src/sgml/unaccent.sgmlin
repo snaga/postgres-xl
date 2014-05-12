@@ -42,6 +42,9 @@
 <!## XC>
      the <productname>Postgres-XC</> installation's shared-data directory).
 <!## end>
+<!## XL>
+     the <productname>Postgres-XL</> installation's shared-data directory).
+<!## end>
      Its name must end in <literal>.rules</> (which is not to be included in
      the <literal>RULES</> parameter).
     </para>

@@ -7,6 +7,11 @@
  *	 ExecProcNode, or ExecEndNode on its subnodes and do the appropriate
  *	 processing.
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -322,6 +327,12 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 													    estate, eflags);
 			break;
 #endif
+#ifdef XCP
+		case T_RemoteSubplan:
+			result = (PlanState *) ExecInitRemoteSubplan((RemoteSubplan *) node,
+													     estate, eflags);
+			break;
+#endif /* XCP */
 
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
@@ -334,6 +345,15 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 	 * a separate list for us.
 	 */
 	subps = NIL;
+#ifdef XCP
+	/*
+	 * If plan being initialized during we should skip doing initPlan here.
+	 * In case the plan is actually referenced on this step of the distributed
+	 * plan it will be done in ExecFinishInitProcNode
+	 */
+	if (!(eflags & EXEC_FLAG_SUBPLAN))
+	{
+#endif
 	foreach(l, node->initPlan)
 	{
 		SubPlan    *subplan = (SubPlan *) lfirst(l);
@@ -343,6 +363,9 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 		sstate = ExecInitSubPlan(subplan, result);
 		subps = lappend(subps, sstate);
 	}
+#ifdef XCP
+	}
+#endif
 	result->initPlan = subps;
 
 	/* Set up instrumentation for this node if requested */
@@ -351,6 +374,67 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 
 	return result;
 }
+
+
+#ifdef XCP
+/*
+ * The subplan is referenced on local node, finish initialization
+ */
+void
+ExecFinishInitProcNode(PlanState *node)
+{
+	List	   *subps;
+	ListCell   *l;
+
+	/* Exit if we reached leaf of the tree */
+	if (node == NULL)
+		return;
+
+	/* Special cases */
+	switch (nodeTag(node))
+	{
+		case T_RemoteSubplanState:
+			ExecFinishInitRemoteSubplan((RemoteSubplanState *) node);
+			break;
+
+		case T_AppendState:
+		{
+			AppendState    *append = (RemoteSubplanState *) node;
+			int 			i;
+
+			for (i = 0; i < append->as_nplans; i++)
+				ExecFinishInitProcNode(append->appendplans[i]);
+
+			break;
+		}
+
+		case T_SubqueryScanState:
+			ExecFinishInitProcNode(((SubqueryScanState *) node)->subplan);
+			break;
+
+		default:
+			break;
+	}
+
+	/*
+	 * Common case, recurse the tree
+	 */
+	ExecFinishInitProcNode(node->lefttree);
+	ExecFinishInitProcNode(node->righttree);
+
+	subps = NIL;
+	foreach(l, node->plan->initPlan)
+	{
+		SubPlan    *subplan = (SubPlan *) lfirst(l);
+		SubPlanState *sstate;
+
+		Assert(IsA(subplan, SubPlan));
+		sstate = ExecInitSubPlan(subplan, node);
+		subps = lappend(subps, sstate);
+	}
+	node->initPlan = subps;
+}
+#endif
 
 
 /* ----------------------------------------------------------------
@@ -513,6 +597,11 @@ ExecProcNode(PlanState *node)
 			result = ExecRemoteQuery((RemoteQueryState *) node);
 			break;
 #endif
+#ifdef XCP
+		case T_RemoteSubplanState:
+			result = ExecRemoteSubplan((RemoteSubplanState *) node);
+			break;
+#endif /* XCP */
 
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
@@ -755,6 +844,11 @@ ExecEndNode(PlanState *node)
 			ExecEndRemoteQuery((RemoteQueryState *) node);
 			break;
 #endif
+#ifdef XCP
+		case T_RemoteSubplanState:
+			ExecEndRemoteSubplan((RemoteSubplanState *) node);
+			break;
+#endif /* XCP */
 
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));

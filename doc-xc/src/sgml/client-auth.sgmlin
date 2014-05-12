@@ -16,6 +16,9 @@
 <!## XC>
   specifies which <productname>Postgres-XC</productname> database user name it
 <!## end>
+<!## XL>
+  specifies which <productname>Postgres-XL</productname> database user name it
+<!## end>
   wants to connect as, much the same way one logs into a Unix computer
   as a particular user. Within the SQL environment the active database
   user name determines access privileges to database objects &mdash; see
@@ -31,6 +34,9 @@
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname> actually does privilege
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> actually does privilege
 <!## end>
    management in terms of <quote>roles</>.  In this chapter, we
    consistently use <firstterm>database user</> to mean <quote>role with the
@@ -53,6 +59,9 @@
 <!## XC>
   <productname>Postgres-XC</productname> offers a number of different
 <!## end>
+<!## XL>
+  <productname>Postgres-XL</productname> offers a number of different
+<!## end>
   client authentication methods. The method used to authenticate a
   particular client connection can be selected on the basis of
   (client) host address, database, and user.
@@ -64,6 +73,9 @@
 <!## end>
 <!## XC>
   <productname>Postgres-XC</productname> database user names are logically
+<!## end>
+<!## XL>
+  <productname>Postgres-XL</productname> database user names are logically
 <!## end>
   separate from user names of the operating system in which the server
   runs. If all the users of a particular server also have accounts on
@@ -218,6 +230,9 @@ hostnossl  <replaceable>database</replaceable>  <replaceable>user</replaceable> 
 <!## XC>
        a specific <productname>Postgres-XC</productname> database.
 <!## end>
+<!## XL>
+       a specific <productname>Postgres-XL</productname> database.
+<!## end>
        Multiple database names can be supplied by separating them with
        commas.  A separate file containing database names can be specified by
        preceding the file name with <literal>@</>.
@@ -239,6 +254,9 @@ hostnossl  <replaceable>database</replaceable>  <replaceable>user</replaceable> 
 <!## end>
 <!## XC>
        in <productname>Postgres-XC</>; a <literal>+</> mark really means
+<!## end>
+<!## XL>
+       in <productname>Postgres-XL</>; a <literal>+</> mark really means
 <!## end>
        <quote>match any of the roles that are directly or indirectly members
        of this role</>, while a name without a <literal>+</> mark matches
@@ -415,6 +433,10 @@ hostnossl  <replaceable>database</replaceable>  <replaceable>user</replaceable> 
 <!## XC>
           <productname>Postgres-XC</productname> database server to login as
           any <productname>Postgres-XC</productname> user they wish,
+<!## end>
+<!## XL>
+          <productname>Postgres-XL</productname> database server to login as
+          any <productname>Postgres-XL</productname> user they wish,
 <!## end>
           without the need for a password or any other authentication.  See <xref
           linkend="auth-trust"> for details.
@@ -781,6 +803,9 @@ local   db1,db2,@demodbs  all                                   md5
 <!## XC>
    <productname>Postgres-XC</>'s regular expression syntax.)  The regular
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</>'s regular expression syntax.)  The regular
+<!## end>
    expression can include a single capture, or parenthesized subexpression,
    which can then be referenced in the <replaceable>database-username</>
    field as <literal>\1</> (backslash-one).  This allows the mapping of
@@ -829,6 +854,9 @@ mymap   /^(.*)@otherdomain\.com$   guest
 <!## XC>
    connect as <productname>Postgres-XC</> user <literal>bob</>, not
 <!## end>
+<!## XL>
+   connect as <productname>Postgres-XL</> user <literal>bob</>, not
+<!## end>
    as <literal>robert</> or anyone else. <literal>ann</> would
    only be allowed to connect as <literal>ann</>. User
    <literal>bryanh</> would be allowed to connect as either
@@ -867,6 +895,9 @@ omicron         bryanh                  guest1
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname> assumes that anyone who can
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> assumes that anyone who can
 <!## end>
     connect to the server is authorized to access the database with
     whatever database user name they specify (even superuser names).
@@ -947,6 +978,9 @@ omicron         bryanh                  guest1
 <!## XC>
     <productname>Postgres-XC</productname> database passwords are
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> database passwords are
+<!## end>
     separate from operating system user passwords. The password for
     each database user is stored in the <literal>pg_authid</> system
     catalog. Passwords can be managed with the SQL commands
@@ -976,6 +1010,9 @@ omicron         bryanh                  guest1
 <!## XC>
     <productname>Postgres-XC</productname> supports
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> supports
+<!## end>
     <productname>GSSAPI</productname> with <productname>Kerberos</productname>
     authentication according to RFC 1964. <productname>GSSAPI</productname>
     provides automatic authentication (single sign-on) for systems
@@ -998,6 +1035,9 @@ omicron         bryanh                  guest1
 <!## end>
 <!## XC>
     GSSAPI support has to be enabled when <productname>Postgres-XC</> is built;
+<!## end>
+<!## XL>
+    GSSAPI support has to be enabled when <productname>Postgres-XL</> is built;
 <!## end>
     see <xref linkend="installation"> for more information.
    </para>
@@ -1063,6 +1103,9 @@ omicron         bryanh                  guest1
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname> will use SSPI in
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> will use SSPI in
 <!## end>
     <literal>negotiate</literal> mode, which will use
     <productname>Kerberos</productname> when possible and automatically
@@ -1161,6 +1204,10 @@ omicron         bryanh                  guest1
     <productname>Postgres-XC</> supports Kerberos version 5.  Kerberos
     support has to be enabled when <productname>Postgres-XC</> is built;
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</> supports Kerberos version 5.  Kerberos
+    support has to be enabled when <productname>Postgres-XL</> is built;
+<!## end>
     see <xref linkend="installation"> for more information.
    </para>
 
@@ -1170,6 +1217,9 @@ omicron         bryanh                  guest1
 <!## end>
 <!## XC>
     <productname>Postgres-XC</> operates like a normal Kerberos service.
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</> operates like a normal Kerberos service.
 <!## end>
     The name of the service principal is
     <literal><replaceable>servicename</>/<replaceable>hostname</>@<replaceable>realm</></literal>.
@@ -1190,6 +1240,9 @@ omicron         bryanh                  guest1
 <!## XC>
     when supporting multiple <productname>Postgres-XC</> installations
 <!## end>
+<!## XL>
+    when supporting multiple <productname>Postgres-XL</> installations
+<!## end>
     on the same host.
     Some Kerberos implementations might also require a different service name,
     such as Microsoft Active Directory which requires the service name
@@ -1209,6 +1262,9 @@ omicron         bryanh                  guest1
 <!## XC>
     Client principals must have their <productname>Postgres-XC</> database user
 <!## end>
+<!## XL>
+    Client principals must have their <productname>Postgres-XL</> database user
+<!## end>
     name as their first component, for example
     <literal>pgusername@realm</>.  Alternatively, you can use a user name
     mapping to map from the first component of the principal name to the
@@ -1218,6 +1274,9 @@ omicron         bryanh                  guest1
 <!## end>
 <!## XC>
     not checked by <productname>Postgres-XC</>. If you have cross-realm
+<!## end>
+<!## XL>
+    not checked by <productname>Postgres-XL</>. If you have cross-realm
 <!## end>
     authentication enabled and need to verify the realm, use the
     <literal>krb_realm</> parameter, or enable <literal>include_realm</>
@@ -1231,6 +1290,9 @@ omicron         bryanh                  guest1
 <!## end>
 <!## XC>
     only readable) by the <productname>Postgres-XC</productname> server
+<!## end>
+<!## XL>
+    only readable) by the <productname>Postgres-XL</productname> server
 <!## end>
     account.  (See also <xref linkend="postgres-user">.) The location
     of the key file is specified by the <xref
@@ -1375,6 +1437,9 @@ omicron         bryanh                  guest1
 <!## XC>
     Since <productname>Postgres-XC</> knows both <replaceable>X</> and
 <!## end>
+<!## XL>
+    Since <productname>Postgres-XL</> knows both <replaceable>X</> and
+<!## end>
     <replaceable>Y</> when a physical connection is established, it
     can interrogate the ident server on the host of the connecting
     client and can theoretically determine the operating system user
@@ -1411,6 +1476,10 @@ omicron         bryanh                  guest1
 <!## XC>
     used when using the ident server with <productname>Postgres-XC</>,
     since <productname>Postgres-XC</> does not have any way to decrypt the
+<!## end>
+<!## XL>
+    used when using the ident server with <productname>Postgres-XL</>,
+    since <productname>Postgres-XL</> does not have any way to decrypt the
 <!## end>
     returned string to determine the actual user name.
    </para>
@@ -1531,6 +1600,9 @@ omicron         bryanh                  guest1
 <!## end>
 <!## XC>
         Set to <literal>1</> to make the connection between Postgres-XC and the
+<!## end>
+<!## XL>
+        Set to <literal>1</> to make the connection between Postgres-XL and the
 <!## end>
         LDAP server use TLS encryption. Note that this only encrypts
         the traffic to the LDAP server &mdash; the connection to the client
@@ -1660,6 +1732,9 @@ ldapserver=ldap.example.net ldapprefix="cn=" ldapsuffix=", dc=example, dc=net"
 <!## XC>
          server. This must have exactly the same value on the Postgres-XC
 <!## end>
+<!## XL>
+         server. This must have exactly the same value on the Postgres-XL
+<!## end>
          and RADIUS servers. It is recommended that this be a string of
          at least 16 characters. This parameter is required.
          <note>
@@ -1670,6 +1745,9 @@ ldapserver=ldap.example.net ldapprefix="cn=" ldapsuffix=", dc=example, dc=net"
 <!## end>
 <!## XC>
           strong if <productname>Postgres-XC</> is built with support for
+<!## end>
+<!## XL>
+          strong if <productname>Postgres-XL</> is built with support for
 <!## end>
           <productname>OpenSSL</>. In other cases, the transmission to the
           RADIUS server should only be considered obfuscated, not secured, and
@@ -1789,6 +1867,9 @@ ldapserver=ldap.example.net ldapprefix="cn=" ldapsuffix=", dc=example, dc=net"
 <!## end>
 <!## XC>
      will fail because the Postgres-XC server is started by a non-root
+<!## end>
+<!## XL>
+     will fail because the Postgres-XL server is started by a non-root
 <!## end>
      user.  However, this is not an issue when PAM is configured to use
      LDAP or other authentication methods.

@@ -2,7 +2,7 @@
 -- XC_NODE
 --
 
--- Tests involving node DDLs related to Postgres-XC settings
+-- Tests involving node DDLs related to Postgres-XL settings
 
 -- Default values
 CREATE NODE dummy_node_coordinator WITH (TYPE = 'coordinator');

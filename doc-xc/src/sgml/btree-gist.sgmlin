@@ -47,6 +47,12 @@
   also provides index support for <literal>&lt;&gt;</literal> (<quote>not
   equals</quote>). 
 <!## end>
+<!## XL>
+  <!-- XL does not support "exclude" constraint now -->
+  In addition to the typical B-tree search operators, <filename>btree_gist</>
+  also provides index support for <literal>&lt;&gt;</literal> (<quote>not
+  equals</quote>). 
+<!## end>
  </para>
 
  <para>

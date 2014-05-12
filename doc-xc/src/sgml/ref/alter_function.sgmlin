@@ -313,6 +313,9 @@ ALTER FUNCTION check_password(text) RESET search_path;
 <!## XC>
    <productname>Postgres-XC</>.
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</>.
+<!## end>
   </para>
  </refsect1>
 

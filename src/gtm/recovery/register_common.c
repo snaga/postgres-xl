@@ -3,6 +3,11 @@
  * register.c
  *  PGXC Node Register on GTM and GTM Proxy, node registering functions
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
@@ -31,6 +36,7 @@
 #include "gtm/register.h"
 
 #include "gtm/gtm_ip.h"
+#include "storage/backendid.h"
 
 #define GTM_NODE_FILE			"register.node"
 #define NODE_HASH_TABLE_SIZE	16
@@ -120,7 +126,7 @@ pgxcnode_find_by_type(GTM_PGXCNodeType type, GTM_PGXCNodeInfo **data, size_t max
 			if (cur != NULL && cur->type == type)
 			{
 				data[node] = cur;
-				elog(LOG, "pgxcnode_find_by_type: cur=%p, ipaddress=%s", cur, cur->ipaddress);
+				elog(DEBUG1, "pgxcnode_find_by_type: cur=%p, ipaddress=%s", cur, cur->ipaddress);
 				node++;
 			}
 
@@ -349,8 +355,18 @@ Recovery_PGXCNodeUnregister(GTM_PGXCNodeType type, char *node_name, bool in_reco
 			Recovery_RecordRegisterInfo(nodeinfo, false);
 
 		pfree(nodeinfo->nodename);
+#ifdef XCP
+		if (nodeinfo->ipaddress)
+#endif
 		pfree(nodeinfo->ipaddress);
+#ifdef XCP
+		if (nodeinfo->datafolder)
+#endif
 		pfree(nodeinfo->datafolder);
+#ifdef XCP
+		if (nodeinfo->sessions)
+			pfree(nodeinfo->sessions);
+#endif
 		pfree(nodeinfo);
 	}
 	else
@@ -373,7 +389,11 @@ Recovery_PGXCNodeRegister(GTM_PGXCNodeType	type,
 	GTM_PGXCNodeInfo *nodeinfo = NULL;
 	int errcode = 0;
 
+#ifdef XCP
+	nodeinfo = (GTM_PGXCNodeInfo *) palloc0(sizeof(GTM_PGXCNodeInfo));
+#else
 	nodeinfo = (GTM_PGXCNodeInfo *) palloc(sizeof (GTM_PGXCNodeInfo));
+#endif
 
 	if (nodeinfo == NULL)
 		ereport(ERROR, (ENOMEM, errmsg("Out of memory")));
@@ -394,10 +414,10 @@ Recovery_PGXCNodeRegister(GTM_PGXCNodeType	type,
 	nodeinfo->status = status;
 	nodeinfo->socket = socket;
 
-	elog(LOG, "Recovery_PGXCNodeRegister Request info: type=%d, nodename=%s, port=%d," \
+	elog(DEBUG1, "Recovery_PGXCNodeRegister Request info: type=%d, nodename=%s, port=%d," \
 			  "datafolder=%s, ipaddress=%s, status=%d",
 			  type, nodename, port, datafolder, ipaddress, status);
-	elog(LOG, "Recovery_PGXCNodeRegister Node info: type=%d, nodename=%s, port=%d, "\
+	elog(DEBUG1, "Recovery_PGXCNodeRegister Node info: type=%d, nodename=%s, port=%d, "\
 			  "datafolder=%s, ipaddress=%s, status=%d",
 			  nodeinfo->type, nodeinfo->nodename, nodeinfo->port,
 			  nodeinfo->datafolder, nodeinfo->ipaddress, nodeinfo->status);
@@ -633,6 +653,7 @@ Recovery_RecordRegisterInfo(GTM_PGXCNodeInfo *nodeinfo, bool is_register)
 void
 Recovery_RestoreRegisterInfo(void)
 {
+#ifndef XCP
 	int magic;
 	int ctlfd;
 
@@ -701,6 +722,7 @@ Recovery_RestoreRegisterInfo(void)
 	}
 
 	close(ctlfd);
+#endif
 }
 
 void
@@ -785,6 +807,94 @@ Recovery_PGXCNodeBackendDisconnect(GTM_PGXCNodeType type, char *nodename, int so
 	return errcode;
 }
 
+
+#ifdef XCP
+/*
+ * Register active distributed session. If another session with specified
+ * BackendId already exists return the PID of the session, so caller could clean
+ * it up. Otherwise return 0.
+ */
+int
+Recovery_PGXCNodeRegisterCoordProcess(char *coord_node, int coord_procid,
+								      int coord_backendid)
+{
+	GTM_PGXCNodeInfo   *nodeinfo;
+	GTM_PGXCSession    *session;
+	int					i;
+
+	/*
+	 * Get the registration record for the coordinator node. If not specified,
+	 * register it now.
+	 */
+	nodeinfo = pgxcnode_find_info(GTM_NODE_COORDINATOR, coord_node);
+
+	if (nodeinfo == NULL)
+	{
+		if (Recovery_PGXCNodeRegister(GTM_NODE_COORDINATOR, coord_node, 0, NULL,
+									  NODE_CONNECTED, NULL, NULL, false, 0))
+				return 0;
+
+		nodeinfo = pgxcnode_find_info(GTM_NODE_COORDINATOR, coord_node);
+	}
+
+	/* Iterate over the existing sessions */
+	GTM_RWLockAcquire(&nodeinfo->node_lock, GTM_LOCKMODE_WRITE);
+	for (i = 0; i < nodeinfo->num_sessions; i++)
+	{
+		if (nodeinfo->sessions[i].gps_coord_proc_id == coord_procid)
+		{
+			/*
+			 * Already registered, nothing todo.
+			 * May be session lost the GTM connection and now is reconnecting.
+			 */
+			GTM_RWLockRelease(&nodeinfo->node_lock);
+			return 0;
+		}
+		if (nodeinfo->sessions[i].gps_coord_backend_id == coord_backendid)
+		{
+			/*
+			 * Reuse the entry and return PID of the previous session.
+			 */
+			int result = nodeinfo->sessions[i].gps_coord_proc_id;
+			elog(DEBUG1, "New session %s:%d with existing BackendId %d",
+				 coord_node, coord_procid, coord_backendid);
+			nodeinfo->sessions[i].gps_coord_proc_id = coord_procid;
+			GTM_RWLockRelease(&nodeinfo->node_lock);
+			return result;
+		}
+	}
+	/* Session not found, populate new entry */
+	elog(DEBUG1, "New session %s:%d with BackendId %d",
+		 coord_node, coord_procid, coord_backendid);
+	if (nodeinfo->num_sessions == nodeinfo->max_sessions)
+	{
+		/* need to extend array */
+#define INIT_SESSIONS 256
+		if (nodeinfo->max_sessions == 0)
+		{
+			nodeinfo->sessions = (GTM_PGXCSession *)
+					palloc(INIT_SESSIONS * sizeof(GTM_PGXCSession));
+			nodeinfo->max_sessions = INIT_SESSIONS;
+		}
+		else
+		{
+			int newsize = nodeinfo->max_sessions * 2;
+			nodeinfo->sessions = (GTM_PGXCSession *)
+					repalloc(nodeinfo->sessions,
+							 newsize * sizeof(GTM_PGXCSession));
+			nodeinfo->max_sessions = newsize;
+		}
+	}
+	nodeinfo->sessions[nodeinfo->num_sessions].gps_coord_proc_id = coord_procid;
+	nodeinfo->sessions[nodeinfo->num_sessions].gps_coord_backend_id = coord_backendid;
+	nodeinfo->num_sessions++;
+	GTM_RWLockRelease(&nodeinfo->node_lock);
+
+	return 0;
+}
+#endif
+
+
 /*
  * Process MSG_BACKEND_DISCONNECT
  *
@@ -847,7 +957,7 @@ ProcessPGXCNodeBackendDisconnect(Port *myport, StringInfo message)
 		GTM_Conn *oldconn = GetMyThreadInfo->thr_conn->standby;
 		int count = 0;
 
-		elog(LOG, "forwarding MSG_BACKEND_DISCONNECT to standby GTM %p.",
+		elog(DEBUG1, "forwarding MSG_BACKEND_DISCONNECT to standby GTM %p.",
 				  GetMyThreadInfo->thr_conn->standby);
 
 retry:
@@ -859,6 +969,6 @@ retry:
 		if (gtm_standby_check_communication_error(&count, oldconn))
 			goto retry;
 
-		elog(LOG, "MSG_BACKEND_DISCONNECT rc=%d done.", _rc);
+		elog(DEBUG1, "MSG_BACKEND_DISCONNECT rc=%d done.", _rc);
 	}
 }

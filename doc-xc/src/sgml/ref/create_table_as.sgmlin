@@ -44,6 +44,19 @@ CREATE [ [ GLOBAL | LOCAL ] { TEMPORARY | TEMP } | UNLOGGED ] TABLE <replaceable
     [ WITH [ NO ] DATA ]
 </synopsis>
 <!## end>
+<!## XL>
+<synopsis>
+CREATE [ [ GLOBAL | LOCAL ] { TEMPORARY | TEMP } | UNLOGGED ] TABLE <replaceable>table_name</replaceable>
+    [ (<replaceable>column_name</replaceable> [, ...] ) ]
+    [ WITH ( <replaceable class="PARAMETER">storage_parameter</replaceable> [= <replaceable class="PARAMETER">value</replaceable>] [, ... ] ) | WITH OIDS | WITHOUT OIDS ]
+    [ ON COMMIT { PRESERVE ROWS | DELETE ROWS | DROP } ]
+    [ TABLESPACE <replaceable class="PARAMETER">tablespace</replaceable> ]
+    [ DISTRIBUTE BY { REPLICATION | ROUNDROBIN | { [HASH | MODULO ] ( <replaceable class="PARAMETER">column_name</replaceable> ) } } ]
+    [ TO { GROUP <replaceable class="PARAMETER">groupname</replaceable> | NODE ( <replaceable class="PARAMETER">nodename</replaceable> [, ... ] ) } ]
+    AS <replaceable>query</replaceable>
+    [ WITH [ NO ] DATA ]
+</synopsis>
+<!## end>
  </refsynopsisdiv>
 
  <refsect1>
@@ -324,6 +337,118 @@ CREATE [ [ GLOBAL | LOCAL ] { TEMPORARY | TEMP } | UNLOGGED ] TABLE <replaceable
        <para>
         Associated with <literal>TO GROUP</literal>, it defines a <productname>
         Postgres-XC</productname> node group in catalog pgxc_group.
+       </para>
+      </listitem>
+   </varlistentry>
+<!## end>
+<!## XL>
+   <varlistentry>
+    <term><literal>DISTRIBUTE BY</literal></term>
+    <listitem>
+&xlonly;
+     <para>
+      This clause specifies how the table is distributed or replicated among Datanodes.
+     </para>
+
+      <variablelist>
+
+       <varlistentry>
+        <term><literal>REPLICATION</literal></term>
+        <listitem>
+         <para>
+          Each row of the table will be replicated into all the
+          Datanode of the <productname>Postgres-XL</> database
+          cluster.
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry>
+        <term><literal>ROUNDROBIN</literal></term>
+        <listitem>
+         <para>
+          Each row of the table will be placed in one of the Datanodes
+          by round-robin manner.  The value of the row will not be
+          needed to determine what Datanode to go.
+         </para>
+        </listitem>
+       </varlistentry>
+
+      <varlistentry>
+       <term><literal>HASH ( <replaceable class="PARAMETER">column_name</> )</literal></term>
+       <listitem>
+        <para>
+         Each row of the table will be placed based on the hash value
+         of the specified column.  Following type is allowed as
+         distribution column: INT8, INT2, OID, INT4, BOOL, INT2VECTOR,
+         OIDVECTOR, CHAR, NAME, TEXT, BPCHAR, BYTEA, VARCHAR, FLOAT4,
+         FLOAT8, NUMERIC, CASH, ABSTIME, RELTIME, DATE, TIME,
+         TIMESTAMP, TIMESTAMPTZ, INTERVAL, and TIMETZ.
+        </para>
+        <para>
+         Please note that floating point is not allowed as a basis of
+         the distribution column.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry>
+       <term><literal>MODULO ( <replaceable class="PARAMETER">column_name</> )</literal></term>
+       <listitem>
+        <para>
+         Each row of the table will be placed based on the modulo
+         of the specified column.  Following type is allowed as
+         distribution column: INT8, INT2, OID, INT4, BOOL, INT2VECTOR,
+         OIDVECTOR, CHAR, NAME, TEXT, BPCHAR, BYTEA, VARCHAR, FLOAT4,
+         FLOAT8, NUMERIC, CASH, ABSTIME, RELTIME, DATE, TIME,
+         TIMESTAMP, TIMESTAMPTZ, INTERVAL, and TIMETZ.
+        </para>
+        <para>
+         Please note that floating point is not allowed as a basis of
+         the distribution column.
+        </para>
+       </listitem>
+      </varlistentry>
+
+     </variablelist>
+    <para>
+     If <literal>DISTRIBUTE BY</> is not specified, columns with
+     UNIQUE constraint will be chosen as the distribution key.  If no
+     such column is specified, distribution column is the first
+     eligible column in the definition.  If no such column is found,
+     then the table will be distributed by <literal>ROUNDROBIN</>.
+    </para>
+
+   </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>TO GROUP</literal></term>
+    <term><literal>TO NODE</literal></term>
+      <listitem>
+       <para>
+        This defines on the list of nodes on which table data exists.
+        If this is not specified table data is present on all Datanodes.
+       </para>
+      </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="PARAMETER">nodename</replaceable></term>
+      <listitem>
+       <para>
+        Associated with <literal>TO NODE</literal>, it defines a <productname>
+        Postgres-XL</productname> node of catalog pgxc_node.
+       </para>
+      </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="PARAMETER">groupname</replaceable></term>
+      <listitem>
+       <para>
+        Associated with <literal>TO GROUP</literal>, it defines a <productname>
+        Postgres-XL</productname> node group in catalog pgxc_group.
        </para>
       </listitem>
    </varlistentry>

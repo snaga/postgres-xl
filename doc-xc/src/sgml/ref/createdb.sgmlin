@@ -18,6 +18,9 @@ PostgreSQL documentation
 <!## XC>
   <refpurpose>create a new <productname>Postgres-XC</productname> database</refpurpose>
 <!## end>
+<!## XL>
+  <refpurpose>create a new <productname>Postgres-XL</productname> database</refpurpose>
+<!## end>
  </refnamediv>
 
  <indexterm zone="app-createdb">
@@ -48,6 +51,9 @@ PostgreSQL documentation
 <!## end>
 <!## XC>
    <application>createdb</application> creates a new <productname>Postgres-XC</productname>
+<!## end>
+<!## XL>
+   <application>createdb</application> creates a new <productname>Postgres-XL</productname>
 <!## end>
    database.
   </para>
@@ -86,6 +92,9 @@ PostgreSQL documentation
 <!## end>
 <!## XC>
         unique among all <productname>Postgres-XC</productname> databases in this cluster.
+<!## end>
+<!## XL>
+        unique among all <productname>Postgres-XL</productname> databases in this cluster.
 <!## end>
         The default is to create a database with the same name as the
         current system user.
@@ -136,6 +145,9 @@ PostgreSQL documentation
 <!## end>
 <!## XC>
         <productname>Postgres-XC</productname> servers are described in
+<!## end>
+<!## XL>
+        <productname>Postgres-XL</productname> servers are described in
 <!## end>
         <xref linkend="multibyte-charset-supported">.
        </para>
@@ -337,6 +349,9 @@ PostgreSQL documentation
 <!## end>
 <!## XC>
    This utility, like most other <productname>Postgres-XC</> utilities,
+<!## end>
+<!## XL>
+   This utility, like most other <productname>Postgres-XL</> utilities,
 <!## end>
    also uses the environment variables supported by <application>libpq</>
    (see <xref linkend="libpq-envars">).

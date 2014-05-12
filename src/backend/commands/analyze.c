@@ -3,6 +3,11 @@
  * analyze.c
  *	  the Postgres statistics generator
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -53,6 +58,14 @@
 #include "utils/timestamp.h"
 #include "utils/tqual.h"
 
+#ifdef XCP
+#include "catalog/pg_operator.h"
+#include "nodes/makefuncs.h"
+#include "pgxc/execRemote.h"
+#include "pgxc/pgxc.h"
+#include "pgxc/planner.h"
+#include "utils/snapmgr.h"
+#endif
 
 /* Data structure for Algorithm S from Knuth 3.4.2 */
 typedef struct
@@ -108,6 +121,10 @@ static void update_attstats(Oid relid, bool inh,
 static Datum std_fetch_func(VacAttrStatsP stats, int rownum, bool *isNull);
 static Datum ind_fetch_func(VacAttrStatsP stats, int rownum, bool *isNull);
 
+#ifdef XCP
+static void analyze_rel_coordinator(Relation onerel, bool inh, int attr_cnt,
+						VacAttrStats **vacattrstats);
+#endif
 
 /*
  *	analyze_rel() -- analyze one relation
@@ -404,6 +421,31 @@ do_analyze_rel(Relation onerel, VacuumStmt *vacstmt,
 		attr_cnt = tcnt;
 	}
 
+#ifdef XCP
+	if (IS_PGXC_COORDINATOR && onerel->rd_locator_info)
+	{
+		/*
+		 * Fetch attribute statistics from remote nodes.
+		 */
+		analyze_rel_coordinator(onerel, inh, attr_cnt, vacattrstats);
+		/*
+		 * If it is a VACUUM or doing inherited relation precise values for
+		 * relpages and reltuples are set in other place. Otherwise request
+		 * doing it now.
+		 */
+		if (!inh && !(vacstmt->options & VACOPT_VACUUM))
+			vacuum_rel_coordinator(onerel);
+		/*
+		 * Skip acquiring local stats. Coordinator does not store data of
+		 * distributed tables.
+		 */
+		nindexes = 0;
+		hasindex = false;
+		Irel = NULL;
+		goto cleanup;
+	}
+#endif
+
 	/*
 	 * Open all indexes of the relation, and see if there are any analyzable
 	 * columns in the indexes.	We do not analyze index columns if there was
@@ -604,6 +646,12 @@ do_analyze_rel(Relation onerel, VacuumStmt *vacstmt,
 		}
 	}
 
+#ifdef XCP
+	/*
+	 * Coordinator skips getting local stats of distributed table up to here
+	 */
+cleanup:
+#endif
 	/*
 	 * Report ANALYZE to the stats collector, too.	However, if doing
 	 * inherited stats we shouldn't report, because the stats collector only
@@ -2790,3 +2838,423 @@ compare_mcvs(const void *a, const void *b)
 
 	return da - db;
 }
+
+
+#ifdef XCP
+static void
+analyze_rel_coordinator(Relation onerel, bool inh, int attr_cnt,
+						VacAttrStats **vacattrstats)
+{
+	char 		   *nspname;
+	char 		   *relname;
+	/* Fields to run query to read statistics from data nodes */
+	StringInfoData  query;
+	EState 		   *estate;
+	MemoryContext 	oldcontext;
+	RemoteQuery	    *step;
+	RemoteQueryState *node;
+	TupleTableSlot *result;
+	int 			i;
+	/* Number of data nodes from which attribute statistics are received. */
+	int			   *numnodes;
+
+	/* Get the relation identifier */
+	relname = RelationGetRelationName(onerel);
+	nspname = get_namespace_name(RelationGetNamespace(onerel));
+
+	elog(LOG, "Getting detailed statistics for %s.%s", nspname, relname);
+
+	/* Make up query string */
+	initStringInfo(&query);
+	/* Generic statistic fields */
+	appendStringInfoString(&query, "SELECT s.staattnum, "
+// assume the number of tuples approximately the same on all nodes
+// to build more precise statistics get this number
+//										  "c.reltuples, "
+										  "s.stanullfrac, "
+										  "s.stawidth, "
+										  "s.stadistinct");
+	/* Detailed statistic slots */
+	for (i = 1; i <= STATISTIC_NUM_SLOTS; i++)
+		appendStringInfo(&query, ", s.stakind%d"
+								 ", o%d.oprname"
+								 ", no%d.nspname"
+								 ", t%dl.typname"
+								 ", nt%dl.nspname"
+								 ", t%dr.typname"
+								 ", nt%dr.nspname"
+								 ", s.stanumbers%d"
+								 ", s.stavalues%d",
+						 i, i, i, i, i, i, i, i, i);
+
+	/* Common part of FROM clause */
+	appendStringInfoString(&query, " FROM pg_statistic s JOIN pg_class c "
+									"    ON s.starelid = c.oid "
+									"JOIN pg_namespace nc "
+									"    ON c.relnamespace = nc.oid ");
+	/* Info about involved operations */
+	for (i = 1; i <= STATISTIC_NUM_SLOTS; i++)
+		appendStringInfo(&query, "LEFT JOIN (pg_operator o%d "
+								 "           JOIN pg_namespace no%d "
+								 "               ON o%d.oprnamespace = no%d.oid "
+								 "           JOIN pg_type t%dl "
+								 "               ON o%d.oprleft = t%dl.oid "
+								 "           JOIN pg_namespace nt%dl "
+								 "               ON t%dl.typnamespace = nt%dl.oid "
+								 "           JOIN pg_type t%dr "
+								 "               ON o%d.oprright = t%dr.oid "
+								 "           JOIN pg_namespace nt%dr "
+								 "               ON t%dr.typnamespace = nt%dr.oid) "
+								 "    ON s.staop%d = o%d.oid ",
+						 i, i, i, i, i, i, i, i, i,
+						 i, i, i, i, i, i, i, i, i);
+	appendStringInfo(&query, "WHERE nc.nspname = '%s' "
+							  "AND c.relname = '%s'",
+					 nspname, relname);
+
+	/* Build up RemoteQuery */
+	step = makeNode(RemoteQuery);
+	step->combine_type = COMBINE_TYPE_NONE;
+	step->exec_nodes = NULL;
+	step->sql_statement = query.data;
+	step->force_autocommit = true;
+	step->exec_type = EXEC_ON_DATANODES;
+
+	/* Add targetlist entries */
+	step->scan.plan.targetlist = lappend(step->scan.plan.targetlist,
+										 make_relation_tle(StatisticRelationId,
+														   "pg_statistic",
+														   "staattnum"));
+//	step->scan.plan.targetlist = lappend(step->scan.plan.targetlist,
+//										 make_relation_tle(RelationRelationId,
+//														   "pg_class",
+//														   "reltuples"));
+	step->scan.plan.targetlist = lappend(step->scan.plan.targetlist,
+										 make_relation_tle(StatisticRelationId,
+														   "pg_statistic",
+														   "stanullfrac"));
+	step->scan.plan.targetlist = lappend(step->scan.plan.targetlist,
+										 make_relation_tle(StatisticRelationId,
+														   "pg_statistic",
+														   "stawidth"));
+	step->scan.plan.targetlist = lappend(step->scan.plan.targetlist,
+										 make_relation_tle(StatisticRelationId,
+														   "pg_statistic",
+														   "stadistinct"));
+	for (i = 1; i <= STATISTIC_NUM_SLOTS; i++)
+	{
+		/* 16 characters would be enough */
+		char 	colname[16];
+
+		sprintf(colname, "stakind%d", i);
+		step->scan.plan.targetlist = lappend(step->scan.plan.targetlist,
+											 make_relation_tle(StatisticRelationId,
+															   "pg_statistic",
+															   colname));
+
+		step->scan.plan.targetlist = lappend(step->scan.plan.targetlist,
+											 make_relation_tle(OperatorRelationId,
+															   "pg_operator",
+															   "oprname"));
+		step->scan.plan.targetlist = lappend(step->scan.plan.targetlist,
+											 make_relation_tle(NamespaceRelationId,
+															   "pg_namespace",
+															   "nspname"));
+		step->scan.plan.targetlist = lappend(step->scan.plan.targetlist,
+											 make_relation_tle(TypeRelationId,
+															   "pg_type",
+															   "typname"));
+		step->scan.plan.targetlist = lappend(step->scan.plan.targetlist,
+											 make_relation_tle(NamespaceRelationId,
+															   "pg_namespace",
+															   "nspname"));
+		step->scan.plan.targetlist = lappend(step->scan.plan.targetlist,
+											 make_relation_tle(TypeRelationId,
+															   "pg_type",
+															   "typname"));
+		step->scan.plan.targetlist = lappend(step->scan.plan.targetlist,
+											 make_relation_tle(NamespaceRelationId,
+															   "pg_namespace",
+															   "nspname"));
+
+		sprintf(colname, "stanumbers%d", i);
+		step->scan.plan.targetlist = lappend(step->scan.plan.targetlist,
+											 make_relation_tle(StatisticRelationId,
+															   "pg_statistic",
+															   colname));
+
+		sprintf(colname, "stavalues%d", i);
+		step->scan.plan.targetlist = lappend(step->scan.plan.targetlist,
+											 make_relation_tle(StatisticRelationId,
+															   "pg_statistic",
+															   colname));
+	}
+	/* Execute query on the data nodes */
+	estate = CreateExecutorState();
+
+	oldcontext = MemoryContextSwitchTo(estate->es_query_cxt);
+
+	estate->es_snapshot = GetActiveSnapshot();
+
+	node = ExecInitRemoteQuery(step, estate, 0);
+	MemoryContextSwitchTo(oldcontext);
+
+	/* get ready to combine results */
+	numnodes = (int *) palloc(attr_cnt * sizeof(int));
+	for (i = 0; i < attr_cnt; i++)
+		numnodes[i] = 0;
+
+	result = ExecRemoteQuery(node);
+	while (result != NULL && !TupIsNull(result))
+	{
+		Datum 			value;
+		bool			isnull;
+		int 			colnum = 1;
+		int2			attnum;
+//		float4			reltuples;
+		float4			nullfrac;
+		int4 			width;
+		float4			distinct;
+		VacAttrStats   *stats = NULL;
+
+
+		/* Process statistics from the data node */
+		value = slot_getattr(result, colnum++, &isnull); /* staattnum */
+		attnum = DatumGetInt16(value);
+		for (i = 0; i < attr_cnt; i++)
+			if (vacattrstats[i]->attr->attnum == attnum)
+			{
+				stats = vacattrstats[i];
+				stats->stats_valid = true;
+				numnodes[i]++;
+				break;
+			}
+
+//		value = slot_getattr(result, colnum++, &isnull); /* reltuples */
+//		reltuples = DatumGetFloat4(value);
+
+		if (stats)
+		{
+			value = slot_getattr(result, colnum++, &isnull); /* stanullfrac */
+			nullfrac = DatumGetFloat4(value);
+			stats->stanullfrac += nullfrac;
+
+			value = slot_getattr(result, colnum++, &isnull); /* stawidth */
+			width = DatumGetInt32(value);
+			stats->stawidth += width;
+
+			value = slot_getattr(result, colnum++, &isnull); /* stadistinct */
+			distinct = DatumGetFloat4(value);
+			stats->stadistinct += distinct;
+
+			/* Detailed statistics */
+			for (i = 1; i <= STATISTIC_NUM_SLOTS; i++)
+			{
+				int2 		kind;
+				float4	   *numbers;
+				Datum	   *values;
+				int			nnumbers, nvalues;
+				int 		k;
+
+				value = slot_getattr(result, colnum++, &isnull); /* kind */
+				kind = DatumGetInt16(value);
+
+				if (kind == 0)
+				{
+					/*
+					 * Empty slot - skip next 8 fields: 6 fields of the
+					 * operation identifier and two data fields (numbers and
+					 * values)
+					 */
+					colnum += 8;
+					continue;
+				}
+				else
+				{
+					Oid			oprid;
+
+					/* Get operator */
+					value = slot_getattr(result, colnum++, &isnull); /* oprname */
+					if (isnull)
+					{
+						/*
+						 * Operator is not specified for that kind, skip remaining
+						 * fields to lookup the operator
+						 */
+						oprid = InvalidOid;
+						colnum += 5; /* skip operation nsp and types */
+					}
+					else
+					{
+						char	   *oprname;
+						char	   *oprnspname;
+						Oid			ltypid, rtypid;
+						char	   *ltypname,
+								   *rtypname;
+						char	   *ltypnspname,
+								   *rtypnspname;
+						oprname = DatumGetCString(value);
+						value = slot_getattr(result, colnum++, &isnull); /* oprnspname */
+						oprnspname = DatumGetCString(value);
+						/* Get left operand data type */
+						value = slot_getattr(result, colnum++, &isnull); /* typname */
+						ltypname = DatumGetCString(value);
+						value = slot_getattr(result, colnum++, &isnull); /* typnspname */
+						ltypnspname = DatumGetCString(value);
+						ltypid = get_typname_typid(ltypname,
+											   get_namespaceid(ltypnspname));
+						/* Get right operand data type */
+						value = slot_getattr(result, colnum++, &isnull); /* typname */
+						rtypname = DatumGetCString(value);
+						value = slot_getattr(result, colnum++, &isnull); /* typnspname */
+						rtypnspname = DatumGetCString(value);
+						rtypid = get_typname_typid(rtypname,
+											   get_namespaceid(rtypnspname));
+						/* lookup operator */
+						oprid = get_operid(oprname, ltypid, rtypid,
+										   get_namespaceid(oprnspname));
+					}
+					/*
+					 * Look up a statistics slot. If there is an entry of the
+					 * same kind already, leave it, assuming the statistics
+					 * is approximately the same on all nodes, so values from
+					 * one node are representing entire relation well.
+					 * If empty slot is found store values here. If no more
+					 * slots skip remaining values.
+					 */
+					for (k = 0; k < STATISTIC_NUM_SLOTS; k++)
+					{
+						if (stats->stakind[k] == 0 ||
+								(stats->stakind[k] == kind && stats->staop[k] == oprid))
+							break;
+					}
+
+					if (k >= STATISTIC_NUM_SLOTS)
+					{
+						/* No empty slots */
+						break;
+					}
+
+					/*
+					 * If it is an existing slot which has numbers or values
+					 * continue to the next set. If slot exists but without
+					 * numbers and values, try to acquire them now
+					 */
+					if (stats->stakind[k] != 0 && (stats->numnumbers[k] > 0 ||
+							stats->numvalues[k] > 0))
+					{
+						colnum += 2; /* skip numbers and values */
+						continue;
+					}
+
+					/*
+					 * Initialize slot
+					 */
+					stats->stakind[k] = kind;
+					stats->staop[k] = oprid;
+					stats->numnumbers[k] = 0;
+					stats->stanumbers[k] = NULL;
+					stats->numvalues[k] = 0;
+					stats->stavalues[k] = NULL;
+					stats->statypid[k] = InvalidOid;
+					stats->statyplen[k] = -1;
+					stats->statypalign[k] = 'i';
+					stats->statypbyval[k] = true;
+				}
+
+
+				/* get numbers */
+				value = slot_getattr(result, colnum++, &isnull); /* numbers */
+				if (!isnull)
+				{
+					ArrayType  *arry = DatumGetArrayTypeP(value);
+
+					/*
+					 * We expect the array to be a 1-D float4 array; verify that. We don't
+					 * need to use deconstruct_array() since the array data is just going
+					 * to look like a C array of float4 values.
+					 */
+					nnumbers = ARR_DIMS(arry)[0];
+					if (ARR_NDIM(arry) != 1 || nnumbers <= 0 ||
+						ARR_HASNULL(arry) ||
+						ARR_ELEMTYPE(arry) != FLOAT4OID)
+						elog(ERROR, "stanumbers is not a 1-D float4 array");
+					numbers = (float4 *) palloc(nnumbers * sizeof(float4));
+					memcpy(numbers, ARR_DATA_PTR(arry),
+						   nnumbers * sizeof(float4));
+
+					/*
+					 * Free arry if it's a detoasted copy.
+					 */
+					if ((Pointer) arry != DatumGetPointer(value))
+						pfree(arry);
+
+					stats->numnumbers[k] = nnumbers;
+					stats->stanumbers[k] = numbers;
+				}
+				/* get values */
+				value = slot_getattr(result, colnum++, &isnull); /* values */
+				if (!isnull)
+				{
+					int 		j;
+					ArrayType  *arry;
+					int16		elmlen;
+					bool		elmbyval;
+					char		elmalign;
+					arry = DatumGetArrayTypeP(value);
+					/* We could cache this data, but not clear it's worth it */
+					get_typlenbyvalalign(ARR_ELEMTYPE(arry),
+										 &elmlen, &elmbyval, &elmalign);
+					/* Deconstruct array into Datum elements; NULLs not expected */
+					deconstruct_array(arry,
+									  ARR_ELEMTYPE(arry),
+									  elmlen, elmbyval, elmalign,
+									  &values, NULL, &nvalues);
+
+					/*
+					 * If the element type is pass-by-reference, we now have a bunch of
+					 * Datums that are pointers into the syscache value.  Copy them to
+					 * avoid problems if syscache decides to drop the entry.
+					 */
+					if (!elmbyval)
+					{
+						for (j = 0; j < nvalues; j++)
+							values[j] = datumCopy(values[j], elmbyval, elmlen);
+					}
+
+					/*
+					 * Free statarray if it's a detoasted copy.
+					 */
+					if ((Pointer) arry != DatumGetPointer(value))
+						pfree(arry);
+
+					stats->numvalues[k] = nvalues;
+					stats->stavalues[k] = values;
+					/* store details about values data type */
+					stats->statypid[k] = ARR_ELEMTYPE(arry);
+					stats->statyplen[k] = elmlen;
+					stats->statypalign[k] = elmalign;
+					stats->statypbyval[k] = elmbyval;
+				}
+			}
+		}
+
+		/* fetch next */
+		result = ExecRemoteQuery(node);
+	}
+	ExecEndRemoteQuery(node);
+
+	for (i = 0; i < attr_cnt; i++)
+	{
+		VacAttrStats *stats = vacattrstats[i];
+
+		if (numnodes[i] > 0)
+		{
+			stats->stanullfrac /= numnodes[i];
+			stats->stawidth /= numnodes[i];
+			stats->stadistinct /= numnodes[i];
+		}
+	}
+	update_attstats(RelationGetRelid(onerel), inh, attr_cnt, vacattrstats);
+}
+#endif

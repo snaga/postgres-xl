@@ -4,6 +4,11 @@
  *	  Definitions for planner's internal data structures.
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -18,6 +23,25 @@
 #include "nodes/params.h"
 #include "nodes/parsenodes.h"
 #include "storage/block.h"
+
+
+#ifdef XCP
+/*
+ * Distribution
+ *
+ * Distribution is an attribute of distributed plan node. It describes on which
+ * node execution results can be found.
+ */
+typedef struct Distribution
+{
+	NodeTag		type;
+
+	char		distributionType;
+	Node	   *distributionExpr;
+	Bitmapset  *nodes;
+	Bitmapset  *restrictNodes;
+} Distribution;
+#endif
 
 
 /*
@@ -75,7 +99,7 @@ typedef struct PlannerGlobal
 
 	ParamListInfo boundParams;	/* Param values provided to planner() */
 
-	List	   *paramlist;		/* to keep track of cross-level Params */
+	List	   *paramlist;		/* unused, will be removed in 9.3 */
 
 	List	   *subplans;		/* Plans for SubPlan nodes */
 
@@ -98,6 +122,9 @@ typedef struct PlannerGlobal
 	Index		lastRowMarkId;	/* highest PlanRowMark ID assigned */
 
 	bool		transientPlan;	/* redo plan when TransactionXmin changes? */
+
+	/* Added post-release, will be in a saner place in 9.3: */
+	int			nParamExec;		/* number of PARAM_EXEC Params used */
 } PlannerGlobal;
 
 /* macro for fetching the Plan associated with a SubPlan node */
@@ -229,6 +256,7 @@ typedef struct PlannerInfo
 	bool		hasRecursion;	/* true if planning a recursive WITH item */
 
 #ifdef PGXC
+#ifndef XCP
 	/* This field is used only when RemoteScan nodes are involved */
 	int         rs_alias_index; /* used to build the alias reference */
 
@@ -242,6 +270,7 @@ typedef struct PlannerInfo
 	 */
 	List	   *xc_rowMarks;		/* list of PlanRowMarks of type ROW_MARK_EXCLUSIVE & ROW_MARK_SHARE */
 #endif
+#endif
 
 	/* These fields are used only when hasRecursion is true: */
 	int			wt_param_id;	/* PARAM_EXEC ID for the work table */
@@ -250,9 +279,23 @@ typedef struct PlannerInfo
 	/* These fields are workspace for createplan.c */
 	Relids		curOuterRels;	/* outer rels above current node */
 	List	   *curOuterParams; /* not-yet-assigned NestLoopParams */
+#ifdef XCP
+	Bitmapset  *curOuterRestrict; 	/* Datanodes where outer plan is executed */
+#endif
 
 	/* optional private data for join_search_hook, e.g., GEQO */
 	void	   *join_search_private;
+#ifdef XCP
+	/*
+	 * This is NULL for a SELECT query (NULL distribution means "Coordinator"
+	 * everywhere in the planner. For INSERT, UPDATE or DELETE it should match
+	 * to the target table distribution.
+	 */
+	Distribution *distribution; /* Query result distribution */
+#endif
+
+	/* Added post-release, will be in a saner place in 9.3: */
+	List	   *plan_params;	/* list of PlannerParamItems, see below */
 } PlannerInfo;
 
 
@@ -613,6 +656,7 @@ typedef struct EquivalenceMember
 
 	Expr	   *em_expr;		/* the expression represented */
 	Relids		em_relids;		/* all relids appearing in em_expr */
+	Relids		em_nullable_relids;		/* nullable by lower outer joins */
 	bool		em_is_const;	/* expression is pseudoconstant? */
 	bool		em_is_child;	/* derived version for a child relation? */
 	Oid			em_datatype;	/* the "nominal type" used by the opfamily */
@@ -710,6 +754,9 @@ typedef struct Path
 
 	List	   *pathkeys;		/* sort ordering of path's output */
 	/* pathkeys is a List of PathKey nodes; see above */
+#ifdef XCP
+	Distribution *distribution;
+#endif
 } Path;
 
 /* Macro for extracting a path's parameterization relids; beware double eval */
@@ -947,6 +994,14 @@ typedef struct UniquePath
 	List	   *uniq_exprs;		/* expressions to be made unique */
 } UniquePath;
 
+#ifdef XCP
+typedef struct RemoteSubPath
+{
+	Path		path;
+	Path	   *subpath;
+} RemoteSubPath;
+#endif
+
 /*
  * All join-type paths share these fields.
  */
@@ -1027,45 +1082,6 @@ typedef struct HashPath
 	List	   *path_hashclauses;		/* join clauses used for hashing */
 	int			num_batches;	/* number of batches expected */
 } HashPath;
-
-#ifdef PGXC
-/*
- * A remotequery path represents the queries to be sent to the datanode/s
- *
- * When RemoteQuery plan is created from RemoteQueryPath, we build the query to
- * be executed at the datanode. For building such a query, it's important to get
- * the RHS relation and LHS relation of the JOIN clause. So, instead of storing
- * the outer and inner paths, we find out the RHS and LHS paths and store those
- * here.
- */
-
-typedef struct RemoteQueryPath
-{
-	Path			path;
-	ExecNodes		*rqpath_en;		/* List of datanodes to execute the query on */
-	/*
-	 * If the path represents a JOIN rel, leftpath and rightpath represent the
-	 * RemoteQuery paths for left (outer) and right (inner) side of the JOIN
-	 * resp. jointype and join_restrictlist pertains to such JOINs. 
-	 */
-	struct RemoteQueryPath	*leftpath;
-	struct RemoteQueryPath	*rightpath;
-	JoinType				jointype;
-	List					*join_restrictlist;	/* restrict list corresponding to JOINs,
-												 * only considered if rest of
-												 * the JOIN information is
-												 * available
-												 */
-	bool					rqhas_unshippable_qual; /* TRUE if there is at least
-													 * one qual which can not be
-													 * shipped to the datanodes
-													 */
-	bool					rqhas_temp_rel;			/* TRUE if one of the base relations
-													 * involved in this path is a temporary
-													 * table.
-													 */
-} RemoteQueryPath;
-#endif /* PGXC */
 
 /*
  * Restriction clause info.
@@ -1518,23 +1534,26 @@ typedef struct MinMaxAggInfo
 } MinMaxAggInfo;
 
 /*
- * glob->paramlist keeps track of the PARAM_EXEC slots that we have decided
- * we need for the query.  At runtime these slots are used to pass values
- * around from one plan node to another.  They can be used to pass values
- * down into subqueries (for outer references in subqueries), or up out of
- * subqueries (for the results of a subplan), or from a NestLoop plan node
- * into its inner relation (when the inner scan is parameterized with values
- * from the outer relation).  The n'th entry in the list (n counts from 0)
- * corresponds to Param->paramid = n.
+ * At runtime, PARAM_EXEC slots are used to pass values around from one plan
+ * node to another.  They can be used to pass values down into subqueries (for
+ * outer references in subqueries), or up out of subqueries (for the results
+ * of a subplan), or from a NestLoop plan node into its inner relation (when
+ * the inner scan is parameterized with values from the outer relation).
+ * The planner is responsible for assigning nonconflicting PARAM_EXEC IDs to
+ * the PARAM_EXEC Params it generates.
  *
- * Each paramlist item shows the absolute query level it is associated with,
- * where the outermost query is level 1 and nested subqueries have higher
- * numbers.  The item the parameter slot represents can be one of four kinds:
+ * Outer references are managed via root->plan_params, which is a list of
+ * PlannerParamItems.  While planning a subquery, each parent query level's
+ * plan_params contains the values required from it by the current subquery.
+ * During create_plan(), we use plan_params to track values that must be
+ * passed from outer to inner sides of NestLoop plan nodes.
  *
- * A Var: the slot represents a variable of that level that must be passed
+ * The item a PlannerParamItem represents can be one of three kinds:
+ *
+ * A Var: the slot represents a variable of this level that must be passed
  * down because subqueries have outer references to it, or must be passed
- * from a NestLoop node of that level to its inner scan.  The varlevelsup
- * value in the Var will always be zero.
+ * from a NestLoop node to its inner scan.  The varlevelsup value in the Var
+ * will always be zero.
  *
  * A PlaceHolderVar: this works much like the Var case, except that the
  * entry is a PlaceHolderVar node with a contained expression.	The PHV
@@ -1546,25 +1565,27 @@ typedef struct MinMaxAggInfo
  * subquery.  The Aggref itself has agglevelsup = 0, and its argument tree
  * is adjusted to match in level.
  *
- * A Param: the slot holds the result of a subplan (it is a setParam item
- * for that subplan).  The absolute level shown for such items corresponds
- * to the parent query of the subplan.
- *
  * Note: we detect duplicate Var and PlaceHolderVar parameters and coalesce
- * them into one slot, but we do not bother to do this for Aggrefs, and it
- * would be incorrect to do so for Param slots.  Duplicate detection is
- * actually *necessary* for NestLoop parameters since it serves to match up
- * the usage of a Param (in the inner scan) with the assignment of the value
- * (in the NestLoop node). This might result in the same PARAM_EXEC slot being
- * used by multiple NestLoop nodes or SubPlan nodes, but no harm is done since
- * the same value would be assigned anyway.
+ * them into one slot, but we do not bother to do that for Aggrefs.
+ * The scope of duplicate-elimination only extends across the set of
+ * parameters passed from one query level into a single subquery, or for
+ * nestloop parameters across the set of nestloop parameters used in a single
+ * query level.  So there is no possibility of a PARAM_EXEC slot being used
+ * for conflicting purposes.
+ *
+ * In addition, PARAM_EXEC slots are assigned for Params representing outputs
+ * from subplans (values that are setParam items for those subplans).  These
+ * IDs need not be tracked via PlannerParamItems, since we do not need any
+ * duplicate-elimination nor later processing of the represented expressions.
+ * Instead, we just record the assignment of the slot number by incrementing
+ * root->glob->nParamExec.
  */
 typedef struct PlannerParamItem
 {
 	NodeTag		type;
 
-	Node	   *item;			/* the Var, PlaceHolderVar, Aggref, or Param */
-	Index		abslevel;		/* its absolute query level */
+	Node	   *item;			/* the Var, PlaceHolderVar, or Aggref */
+	int			paramId;		/* its assigned PARAM_EXEC slot number */
 } PlannerParamItem;
 
 /*

@@ -13,6 +13,11 @@
  *	plan --- consider improving this someday.
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  *
  * src/backend/utils/adt/ri_triggers.c
@@ -267,7 +272,7 @@ RI_FKey_check(PG_FUNCTION_ARGS)
 	int			i;
 
 #ifdef PGXC
-	/* 
+	/*
 	 * Referential integrity is not supported on Coordinator as it has no data, so
 	 * we just come out of the function without actually performing any integrity checks.
 	 */
@@ -2646,7 +2651,9 @@ RI_Initial_Check(Trigger *trigger, Relation fk_rel, Relation pk_rel)
 	const char *sep;
 	int			i;
 	int			save_nestlevel;
+#ifndef XCP
 	char		workmembuf[32];
+#endif
 	int			spi_result;
 	SPIPlanPtr	qplan;
 
@@ -2790,10 +2797,17 @@ RI_Initial_Check(Trigger *trigger, Relation fk_rel, Relation pk_rel)
 	 */
 	save_nestlevel = NewGUCNestLevel();
 
+#ifndef XCP
+	/*
+	 * In multitenant extension we restrict permission on work_mem.
+	 * This code may be executed by ordinary user, so skip this optimization.
+	 * XXX look for workaround
+	 */
 	snprintf(workmembuf, sizeof(workmembuf), "%d", maintenance_work_mem);
 	(void) set_config_option("work_mem", workmembuf,
 							 PGC_USERSET, PGC_S_SESSION,
 							 GUC_ACTION_SAVE, true, 0);
+#endif
 
 	if (SPI_connect() != SPI_OK_CONNECT)
 		elog(ERROR, "SPI_connect failed");

@@ -323,6 +323,9 @@ AS t(article_id integer, author text, page_count integer, title text);
 <!## XC>
    take the string representation of the XPath result and use Postgres-XC input
 <!## end>
+<!## XL>
+   take the string representation of the XPath result and use Postgres-XL input
+<!## end>
    functions to transform it into an integer (or whatever type the <type>AS</>
    clause requests). An error will result if it can't do this &mdash; for
    example if the result is empty &mdash; so you may wish to just stick to
@@ -478,6 +481,9 @@ xslt_process(text document, text stylesheet, text paramlist) returns text
 <!## end>
 <!## XC>
    It has the same BSD licence as Postgres-XC.
+<!## end>
+<!## XL>
+   It has the same BSD licence as PostgreSQL.
 <!## end>
   </para>
  </sect2>

@@ -3,6 +3,11 @@
  * lsyscache.c
  *	  Convenience routines for common queries in the system catalog cache.
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -1004,6 +1009,78 @@ get_collation_name(Oid colloid)
 	else
 		return NULL;
 }
+
+
+#ifdef XCP
+/*
+ * get_collation_namespace
+ *		Returns the namespace id of a given pg_collation entry.
+ *
+ * Returns an Oid of the collation's namespace.
+ */
+Oid
+get_collation_namespace(Oid colloid)
+{
+	HeapTuple	tp;
+
+	tp = SearchSysCache1(COLLOID, ObjectIdGetDatum(colloid));
+	if (HeapTupleIsValid(tp))
+	{
+		Form_pg_collation colltup = (Form_pg_collation) GETSTRUCT(tp);
+		Oid 		result;
+
+		result = colltup->collnamespace;
+		ReleaseSysCache(tp);
+		return result;
+	}
+	else
+		return InvalidOid;
+}
+
+
+/*
+ * get_collation_encoding
+ *		Returns the encoding of a given pg_collation entry.
+ *
+ * Returns the collation's encoding, or -1 if entry does not exist.
+ */
+int32
+get_collation_encoding(Oid colloid)
+{
+	HeapTuple	tp;
+
+	tp = SearchSysCache1(COLLOID, ObjectIdGetDatum(colloid));
+	if (HeapTupleIsValid(tp))
+	{
+		Form_pg_collation colltup = (Form_pg_collation) GETSTRUCT(tp);
+		int32 		result;
+
+		result = colltup->collencoding;
+		ReleaseSysCache(tp);
+		return result;
+	}
+	else
+		return -1;
+}
+
+
+/*
+ * get_collid
+ *	  Given a collation name, encoding and namespace OID, look up
+ * the collation OID.
+ *
+ * Returns InvalidOid if there is no such collation
+ */
+Oid
+get_collid(const char *collname, int32 collencoding, Oid collnsp)
+{
+	return GetSysCacheOid(COLLNAMEENCNSP,
+						  CStringGetDatum(collname),
+						  Int32GetDatum(collencoding),
+						  ObjectIdGetDatum(collnsp),
+						  0);
+}
+#endif
 
 /*				---------- CONSTRAINT CACHE ----------					 */
 
@@ -3171,6 +3248,159 @@ get_namespace_name(Oid nspid)
 	else
 		return NULL;
 }
+
+
+#ifdef XCP
+/*
+ * Routines to get info to encode/decode oids when sending between nodes
+ */
+
+/*
+ * get_namespaceid
+ *	  Given a namespace name, look up the namespace OID.
+ *
+ * Returns InvalidOid if there is no such namespace
+ */
+Oid
+get_namespaceid(const char *nspname)
+{
+	return GetSysCacheOid(NAMESPACENAME,
+						  CStringGetDatum(nspname),
+						  0, 0, 0);
+}
+
+/*
+ * get_typ_name
+ *
+ *		Given the type OID, find the type name
+ *		It returns palloc'd copy of the name or NULL if the cache lookup fails...
+ */
+char *
+get_typ_name(Oid typid)
+{
+	HeapTuple	tp;
+
+	tp = SearchSysCache(TYPEOID,
+						ObjectIdGetDatum(typid),
+						0, 0, 0);
+	if (HeapTupleIsValid(tp))
+	{
+		Form_pg_type typtup = (Form_pg_type) GETSTRUCT(tp);
+		char	   *result;
+
+		result = pstrdup(NameStr(typtup->typname));
+		ReleaseSysCache(tp);
+		return result;
+	}
+	else
+		return NULL;
+}
+
+/*
+ * get_typ_namespace
+ *
+ *		Given the type OID, find the namespace
+ *		It returns InvalidOid if the cache lookup fails...
+ */
+Oid
+get_typ_namespace(Oid typid)
+{
+	HeapTuple	tp;
+
+	tp = SearchSysCache(TYPEOID,
+						ObjectIdGetDatum(typid),
+						0, 0, 0);
+	if (HeapTupleIsValid(tp))
+	{
+		Form_pg_type typtup = (Form_pg_type) GETSTRUCT(tp);
+		Oid			result;
+
+		result = typtup->typnamespace;
+		ReleaseSysCache(tp);
+		return result;
+	}
+	else
+		return InvalidOid;
+}
+
+/*
+ * get_typname_typid
+ *	  Given a type name and namespace OID, look up the type OID.
+ *
+ * Returns InvalidOid if there is no such type
+ */
+Oid
+get_typname_typid(const char *typname, Oid typnamespace)
+{
+	return GetSysCacheOid(TYPENAMENSP,
+						  CStringGetDatum(typname),
+						  ObjectIdGetDatum(typnamespace),
+						  0, 0);
+}
+
+/*
+ * get_funcid
+ *	  Given a function name, argument types and namespace OID, look up
+ * the function OID.
+ *
+ * Returns InvalidOid if there is no such function
+ */
+Oid
+get_funcid(const char *funcname, oidvector *argtypes, Oid funcnsp)
+{
+	return GetSysCacheOid(PROCNAMEARGSNSP,
+						  CStringGetDatum(funcname),
+						  PointerGetDatum(argtypes),
+						  ObjectIdGetDatum(funcnsp),
+						  0);
+}
+
+/*
+ * get_opnamespace
+ *	  Given an opno, find the namespace
+ *
+ * Returns InvalidOid if there is no such operator
+ */
+Oid
+get_opnamespace(Oid opno)
+{
+	HeapTuple	tp;
+
+	tp = SearchSysCache(OPEROID,
+						ObjectIdGetDatum(opno),
+						0, 0, 0);
+	if (HeapTupleIsValid(tp))
+	{
+		Form_pg_operator optup = (Form_pg_operator) GETSTRUCT(tp);
+		Oid				result;
+
+		result = optup->oprnamespace;
+		ReleaseSysCache(tp);
+		return result;
+	}
+	else
+		return InvalidOid;
+}
+
+/*
+ * get_operid
+ *	  Given an operator name, argument types and namespace OID, look up
+ * the operator OID.
+ *
+ * Returns InvalidOid if there is no such operator
+ */
+Oid
+get_operid(const char *oprname, Oid oprleft, Oid oprright, Oid oprnsp)
+{
+	return GetSysCacheOid(OPERNAMENSP,
+						  CStringGetDatum(oprname),
+						  ObjectIdGetDatum(oprleft),
+						  ObjectIdGetDatum(oprright),
+						  ObjectIdGetDatum(oprnsp));
+}
+
+#endif
+
 
 /*				---------- PG_RANGE CACHE ----------				 */
 

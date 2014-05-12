@@ -14,6 +14,9 @@
 <!## XC>
   <productname>Postgres-XC</productname> allows columns of a table to be
 <!## end>
+<!## XL>
+  <productname>Postgres-XL</productname> allows columns of a table to be
+<!## end>
   defined as variable-length multidimensional arrays. Arrays of any
   built-in or user-defined base type, enum type, or composite type
   can be created.
@@ -91,6 +94,9 @@ CREATE TABLE tictactoe (
 <!## XC>
   As before, however, <productname>Postgres-XC</> does not enforce the
 <!## end>
+<!## XL>
+  As before, however, <productname>Postgres-XL</> does not enforce the
+<!## end>
   size restriction in any case.
  </para>
  </sect2>
@@ -122,6 +128,9 @@ CREATE TABLE tictactoe (
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname> distribution, all use a comma
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> distribution, all use a comma
 <!## end>
    (<literal>,</>), except for type <type>box</> which uses a semicolon
    (<literal>;</>). Each <replaceable>val</replaceable> is
@@ -241,6 +250,9 @@ SELECT name FROM sal_emp WHERE pay_by_quarter[1] &lt;&gt; pay_by_quarter[2];
 <!## end>
 <!## XC>
   By default <productname>Postgres-XC</productname> uses a
+<!## end>
+<!## XL>
+  By default <productname>Postgres-XL</productname> uses a
 <!## end>
   one-based numbering convention for arrays, that is,
   an array of <replaceable>n</> elements starts with <literal>array[1]</literal> and
@@ -626,6 +638,9 @@ SELECT * FROM
 <!## end>
 <!## XC>
    in the <productname>Postgres-XC</productname> distribution, all use a comma,
+<!## end>
+<!## XL>
+   in the <productname>Postgres-XL</productname> distribution, all use a comma,
 <!## end>
    except for type <type>box</>, which uses a semicolon (<literal>;</>).
    In a multidimensional array, each dimension (row, plane,

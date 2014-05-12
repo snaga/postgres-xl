@@ -23,6 +23,11 @@
  * for aborts (whether sync or async), since the post-crash assumption would
  * be that such transactions failed anyway.
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
@@ -353,10 +358,21 @@ TransactionIdSetStatusBit(TransactionId xid, XidStatus status, XLogRecPtr lsn, i
 	 * Current state change should be from 0 or subcommitted to target state
 	 * or we should already be there when replaying changes during recovery.
 	 */
+#ifdef XCP
+	if (!(curval == 0 ||
+		   (curval == TRANSACTION_STATUS_SUB_COMMITTED &&
+			status != TRANSACTION_STATUS_IN_PROGRESS) ||
+		   curval == status))
+	{
+		elog(WARNING, "Unexpected clog condition. curval = %d, status = %d",
+					curval, status);
+	}
+#else
 	Assert(curval == 0 ||
 		   (curval == TRANSACTION_STATUS_SUB_COMMITTED &&
 			status != TRANSACTION_STATUS_IN_PROGRESS) ||
 		   curval == status);
+#endif
 
 	/* note this assumes exclusive access to the clog page */
 	byteval = *byteptr;

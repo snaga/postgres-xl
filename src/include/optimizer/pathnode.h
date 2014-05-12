@@ -4,6 +4,11 @@
  *	  prototypes for pathnode.c, relnode.c.
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -67,8 +72,14 @@ extern ResultPath *create_result_path(List *quals);
 extern MaterialPath *create_material_path(RelOptInfo *rel, Path *subpath);
 extern UniquePath *create_unique_path(PlannerInfo *root, RelOptInfo *rel,
 				   Path *subpath, SpecialJoinInfo *sjinfo);
+#ifdef XCP
+extern Path *create_subqueryscan_path(PlannerInfo *root, RelOptInfo *rel,
+						 List *pathkeys, Relids required_outer,
+						 Distribution *distribution);
+#else
 extern Path *create_subqueryscan_path(PlannerInfo *root, RelOptInfo *rel,
 						 List *pathkeys, Relids required_outer);
+#endif
 extern Path *create_functionscan_path(PlannerInfo *root, RelOptInfo *rel);
 extern Path *create_valuesscan_path(PlannerInfo *root, RelOptInfo *rel);
 extern Path *create_ctescan_path(PlannerInfo *root, RelOptInfo *rel);
@@ -78,6 +89,12 @@ extern ForeignPath *create_foreignscan_path(PlannerInfo *root, RelOptInfo *rel,
 						List *pathkeys,
 						Relids required_outer,
 						List *fdw_private);
+#ifdef PGXC
+#ifndef XCP
+extern Path *create_remotequery_path(PlannerInfo *root, RelOptInfo *rel);
+#endif
+#endif
+
 extern Relids calc_nestloop_required_outer(Path *outer_path, Path *inner_path);
 extern Relids calc_non_nestloop_required_outer(Path *outer_path, Path *inner_path);
 

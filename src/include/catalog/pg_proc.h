@@ -4,6 +4,11 @@
  *	  definition of the system "procedure" relation (pg_proc)
  *	  along with the relation's initial contents.
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -226,10 +231,6 @@ DATA(insert OID = 1258 (  textcat		   PGNSP PGUID 12 1 0 0 0 f f f f t f i 2 0 2
 DATA(insert OID =  84 (  boolne			   PGNSP PGUID 12 1 0 0 0 f f f t t f i 2 0 16 "16 16" _null_ _null_ _null_ _null_ boolne _null_ _null_ _null_ ));
 DATA(insert OID =  89 (  version		   PGNSP PGUID 12 1 0 0 0 f f f f t f s 0 0 25 "" _null_ _null_ _null_ _null_ pgsql_version _null_ _null_ _null_ ));
 DESCR("PostgreSQL version string");
-#ifdef PGXC
-DATA(insert OID =  90 (  pgxc_version	   PGNSP PGUID 12 1 0 0 0 f f f f t f s 0 0 25 "" _null_ _null_ _null_ _null_ pgxc_version _null_ _null_ _null_ ));
-DESCR("Postgres-XC version string");
-#endif
 
 /* OIDS 100 - 199 */
 
@@ -4670,6 +4671,12 @@ DATA(insert OID = 3202 ( pgxc_node_str		PGNSP PGUID 12 1 0 0 0 f f f f t f s 0 0
 DESCR("get the name of the node");
 DATA(insert OID = 3203 (  pgxc_is_committed	PGNSP PGUID 12 1 1 0 0 f f f f t t s 1 0 16 "28" _null_ _null_ _null_ _null_ pgxc_is_committed _null_ _null_ _null_ ));
 DESCR("is given GXID committed or aborted?");
+DATA(insert OID = 3205 ( pgxc_lock_for_backup PGNSP PGUID 12 1 0 0 0 f f f f t f v 0 0 16 "" _null_ _null_ _null_ _null_ pgxc_lock_for_backup _null_ _null_ _null_ ));
+DESCR("lock the cluster for taking backup");
+#ifdef XCP
+DATA(insert OID = 3204 ( stormdb_promote_standby	PGNSP PGUID 12 1 0 0 0 f f f f t f v 0 0 2278 "" _null_ _null_ _null_ _null_ stormdb_promote_standby _null_ _null_ _null_ ));
+DESCR("touch trigger file on a standby machine to end replication");
+#endif
 #endif
 
 /*

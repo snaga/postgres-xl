@@ -3,6 +3,11 @@
  * pg_aggregate.c
  *	  routines to support manipulation of the pg_aggregate relation
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -53,6 +58,9 @@ AggregateCreate(const char *aggName,
 				List *aggfinalfnName,
 				List *aggsortopName,
 				Oid aggTransType,
+#ifdef XCP
+				Oid aggCollectType,
+#endif
 #ifdef PGXC
 				const char *agginitval,
 				const char *agginitcollect)
@@ -172,6 +180,27 @@ AggregateCreate(const char *aggName,
 	ReleaseSysCache(tup);
 
 #ifdef PGXC
+#ifdef XCP
+	if (aggcollectfnName)
+	{
+		/*
+		 * Collection function must be of two arguments
+		 * First must be of aggCollectType, second must be of aggTransType
+		 * Return value must be of aggCollectType
+		 */
+		fnArgs[0] = aggCollectType;
+		fnArgs[1] = aggTransType;
+		collectfn = lookup_agg_function(aggcollectfnName, 2, fnArgs,
+										  &rettype);
+		if (rettype != aggCollectType)
+			ereport(ERROR,
+					(errcode(ERRCODE_DATATYPE_MISMATCH),
+					 errmsg("return type of collection function %s is not %s",
+							NameListToString(aggcollectfnName),
+							format_type_be(aggCollectType)
+						   )));
+	}
+#else
 	if (aggcollectfnName)
 	{
 		/*
@@ -189,11 +218,16 @@ AggregateCreate(const char *aggName,
 							NameListToString(aggcollectfnName),
 							format_type_be(aggTransType))));
 	}
-
+#endif
 #endif
 	/* handle finalfn, if supplied */
 	if (aggfinalfnName)
 	{
+#ifdef XCP
+		if (OidIsValid(aggCollectType))
+			fnArgs[0] = aggCollectType;
+		else
+#endif
 		fnArgs[0] = aggTransType;
 		finalfn = lookup_agg_function(aggfinalfnName, 1, fnArgs,
 									  &finaltype);
@@ -203,6 +237,11 @@ AggregateCreate(const char *aggName,
 		/*
 		 * If no finalfn, aggregate result type is type of the state value
 		 */
+#ifdef XCP
+		if (OidIsValid(aggCollectType))
+			finaltype = aggCollectType;
+		else
+#endif
 		finaltype = aggTransType;
 	}
 	Assert(OidIsValid(finaltype));
@@ -253,19 +292,16 @@ AggregateCreate(const char *aggName,
 	{
 		aclresult = pg_type_aclcheck(aggArgTypes[i], GetUserId(), ACL_USAGE);
 		if (aclresult != ACLCHECK_OK)
-			aclcheck_error(aclresult, ACL_KIND_TYPE,
-						   format_type_be(aggArgTypes[i]));
+			aclcheck_error_type(aclresult, aggArgTypes[i]);
 	}
 
 	aclresult = pg_type_aclcheck(aggTransType, GetUserId(), ACL_USAGE);
 	if (aclresult != ACLCHECK_OK)
-		aclcheck_error(aclresult, ACL_KIND_TYPE,
-					   format_type_be(aggTransType));
+		aclcheck_error_type(aclresult, aggTransType);
 
 	aclresult = pg_type_aclcheck(finaltype, GetUserId(), ACL_USAGE);
 	if (aclresult != ACLCHECK_OK)
-		aclcheck_error(aclresult, ACL_KIND_TYPE,
-					   format_type_be(finaltype));
+		aclcheck_error_type(aclresult, finaltype);
 
 
 	/*
@@ -318,6 +354,9 @@ AggregateCreate(const char *aggName,
 	values[Anum_pg_aggregate_aggtranstype - 1] = ObjectIdGetDatum(aggTransType);
 #ifdef PGXC
 	values[Anum_pg_aggregate_aggcollectfn - 1] = ObjectIdGetDatum(collectfn);
+#endif
+#ifdef XCP
+	values[Anum_pg_aggregate_aggcollecttype - 1] = ObjectIdGetDatum(aggCollectType);
 #endif
 	if (agginitval)
 		values[Anum_pg_aggregate_agginitval - 1] = CStringGetTextDatum(agginitval);

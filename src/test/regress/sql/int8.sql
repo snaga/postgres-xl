@@ -2,7 +2,10 @@
 -- INT8
 -- Test int8 64-bit integers.
 --
-CREATE TABLE INT8_TBL(q1 int8, q2 int8);
+
+--XL: because of how it is used later, make replicated to avoid failures
+--    to avoid partition column update
+CREATE TABLE INT8_TBL(q1 int8, q2 int8) DISTRIBUTE BY REPLICATION;
 
 INSERT INTO INT8_TBL VALUES('  123   ','  456');
 INSERT INTO INT8_TBL VALUES('123   ','4567890123456789');
@@ -194,3 +197,14 @@ SELECT * FROM generate_series('+4567890123456789'::int8, '+4567890123456799'::in
 -- corner case
 SELECT (-1::int8<<63)::text;
 SELECT ((-1::int8<<63)+1)::text;
+
+-- check sane handling of INT64_MIN overflow cases
+SELECT (-9223372036854775808)::int8 * (-1)::int8;
+SELECT (-9223372036854775808)::int8 / (-1)::int8;
+SELECT (-9223372036854775808)::int8 % (-1)::int8;
+SELECT (-9223372036854775808)::int8 * (-1)::int4;
+SELECT (-9223372036854775808)::int8 / (-1)::int4;
+SELECT (-9223372036854775808)::int8 % (-1)::int4;
+SELECT (-9223372036854775808)::int8 * (-1)::int2;
+SELECT (-9223372036854775808)::int8 / (-1)::int2;
+SELECT (-9223372036854775808)::int8 % (-1)::int2;

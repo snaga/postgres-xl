@@ -11,6 +11,14 @@
    original <productname>PostgreSQL</> manuals.
   </para>
 <!## end>
+<!## XL>
+&xlonly;
+  <para>
+   Original <productname>PostgreSQL</> has a lot of external projects.
+   For details, please see the corresponding sections of
+   original <productname>PostgreSQL</> manuals.
+  </para>
+<!## end>
 
 <!## PG>
   <para>

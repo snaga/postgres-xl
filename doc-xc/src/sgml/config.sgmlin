@@ -7,6 +7,9 @@
 <!## XC>
   <title>Coordinator and Datanode Configuration</title>
 <!## end>
+<!## XL>
+  <title>Coordinator and Datanode Configuration</title>
+<!## end>
 
   <indexterm>
    <primary>configuration</primary>
@@ -23,6 +26,15 @@
   </para>
 <!## end>
 <!## XC>
+  <para>
+   There are many configuration parameters that affect the behavior of
+   the database system. In the first section of this chapter, we
+   describe how to set configuration parameters for Coordinator and
+   Datanodes. The subsequent sections discuss each parameter in
+   detail.
+  </para>
+<!## end>
+<!## XL>
   <para>
    There are many configuration parameters that affect the behavior of
    the database system. In the first section of this chapter, we
@@ -133,6 +145,17 @@ include 'filename'
     any changes to their entries in the configuration file will be ignored
     until the server is restarted.
 <!## end>
+<!## XL>
+    The configuration file is reread whenever the main Coordinator/Datanode process receives a
+    <systemitem>SIGHUP</> signal (which is most easily sent by means
+    of <literal>pg_ctl reload</>). The main Coordinator/Datanode process
+    also propagates this signal to all currently running server
+    processes so that existing sessions also get the new
+    value. Alternatively, you can send the signal to a single server
+    process directly.  Some parameters can only be set at server start;
+    any changes to their entries in the configuration file will be ignored
+    until the server is restarted.
+<!## end>
    </para>
 
    <para>
@@ -144,6 +167,11 @@ postgres -c log_connections=yes -c log_destination='syslog'
 </programlisting>
 <!## end>
 <!## XC>
+<programlisting>
+postgres --coordinator -c log_connections=yes -c log_destination='syslog'
+</programlisting>
+<!## end>
+<!## XL>
 <programlisting>
 postgres --coordinator -c log_connections=yes -c log_destination='syslog'
 </programlisting>
@@ -199,6 +227,9 @@ SET ENABLE_SEQSCAN TO OFF;
 <!## XC>
     <productname>Postgres-XC</productname> server.  Also,
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> server.  Also,
+<!## end>
     some <command>SET</command> or <command>ALTER</> parameter modifications
     require superuser permission.
    </para>
@@ -231,6 +262,9 @@ SET ENABLE_SEQSCAN TO OFF;
 <!## end>
 <!## XC>
       already mentioned, <productname>Postgres-XC</productname> uses
+<!## end>
+<!## XL>
+      already mentioned, <productname>Postgres-XL</productname> uses
 <!## end>
       two other manually-edited configuration files, which control
       client authentication (their use is discussed in <xref
@@ -423,7 +457,18 @@ SET ENABLE_SEQSCAN TO OFF;
 
 <!## XC>
        <para>
-        In the case of the Coordinator, this parameter determines how many
+        In the case of the Coordinator, this parameter determines how many 
+        connections can each Coordinator accept.
+       </para>
+       <para>
+        In the case of the Datanode, number of connection to each
+        Datanode may become as large as <varname>max_connections</>
+        multiplied by the number of Coordinators.
+       </para>
+<!## end>
+<!## XL>
+       <para>
+        In the case of the Coordinator, this parameter determines how many 
         connections can each Coordinator accept.
        </para>
        <para>
@@ -442,6 +487,13 @@ SET ENABLE_SEQSCAN TO OFF;
         adjust those parameters, if necessary.
 <!## end>
 <!## XC>
+        Increasing this parameter might cause <filename>Coordinator</> or <filename>Datanode</>
+        to request more <systemitem class="osname">System V</> shared
+        memory or semaphores than your operating system's default configuration
+        allows. See <xref linkend="sysvipc"> for information on how to
+        adjust those parameters, if necessary.
+<!## end>
+<!## XL>
         Increasing this parameter might cause <filename>Coordinator</> or <filename>Datanode</>
         to request more <systemitem class="osname">System V</> shared
         memory or semaphores than your operating system's default configuration
@@ -479,6 +531,17 @@ SET ENABLE_SEQSCAN TO OFF;
         new replication connections will be accepted.
 <!## end>
 <!## XC>
+        Determines the number of connection <quote>slots</quote> that
+        are reserved for connections by <filename>Coordinator</> or <filename>Datanode</>
+        superusers.  At most <xref linkend="guc-max-connections">
+        connections can ever be active simultaneously.  Whenever the
+        number of active concurrent connections is at least
+        <varname>max_connections</> minus
+        <varname>superuser_reserved_connections</varname>, new
+        connections will be accepted only for superusers, and no
+        new replication connections will be accepted.
+<!## end>
+<!## XL>
         Determines the number of connection <quote>slots</quote> that
         are reserved for connections by <filename>Coordinator</> or <filename>Datanode</>
         superusers.  At most <xref linkend="guc-max-connections">
@@ -930,6 +993,9 @@ SET ENABLE_SEQSCAN TO OFF;
 <!## XC>
         because <productname>Postgres-XC</productname> also relies on the
 <!## end>
+<!## XL>
+        because <productname>Postgres-XL</productname> also relies on the
+<!## end>
         operating system cache, it is unlikely that an allocation of more than
         40% of RAM to <varname>shared_buffers</varname> will work better than a
         smaller amount.  Larger settings for <varname>shared_buffers</varname>
@@ -955,6 +1021,9 @@ SET ENABLE_SEQSCAN TO OFF;
 <!## end>
 <!## XC>
         Increasing this parameter might cause <productname>Postgres-XC</>
+<!## end>
+<!## XL>
+        Increasing this parameter might cause <productname>Postgres-XL</>
 <!## end>
         to request more <systemitem class="osname">System V</> shared
         memory than your operating system's default configuration
@@ -1023,6 +1092,9 @@ SET ENABLE_SEQSCAN TO OFF;
 <!## XC>
         Increasing this parameter might cause <productname>Postgres-XC</>
 <!## end>
+<!## XL>
+        Increasing this parameter might cause <productname>Postgres-XL</>
+<!## end>
         to request more <systemitem class="osname">System V</> shared
         memory than your operating system's default configuration
         allows. See <xref linkend="sysvipc"> for information on how to
@@ -1036,6 +1108,15 @@ SET ENABLE_SEQSCAN TO OFF;
        </para>
 
 <!## XC>
+       <para>
+        Even though your application does not issue <command>PREPARE
+        TRANSACTION</> explicitly, Coordinator may generate this
+        command when an updating transaction involves more than one
+        Coordinators and Datanodes. For Datanodes, you should specify
+        this value as the same value as <varname>max_connections</>.
+       </para>
+<!## end>
+<!## XL>
        <para>
         Even though your application does not issue <command>PREPARE
         TRANSACTION</> explicitly, Coordinator may generate this
@@ -1128,6 +1209,9 @@ SET ENABLE_SEQSCAN TO OFF;
 <!## XC>
         <productname>Postgres-XC</productname> can determine the kernel limit,
 <!## end>
+<!## XL>
+        <productname>Postgres-XL</productname> can determine the kernel limit,
+<!## end>
         the server will not allow this variable to be set to an unsafe
         value.  However, not all platforms provide the information,
         so caution is recommended in selecting a value.
@@ -1195,6 +1279,13 @@ SET ENABLE_SEQSCAN TO OFF;
         <literal>XXX</literal> is <literal>pgsql</>, <literal>perl</>,
         <literal>tcl</>, or <literal>python</>.
 <!## end>
+<!## XL>
+        <productname>Postgres-XL</productname> procedural language
+        libraries can be preloaded in this way, typically by using the
+        syntax <literal>'$libdir/plXXX'</literal> where
+        <literal>XXX</literal> is <literal>pgsql</>, <literal>perl</>,
+        <literal>tcl</>, or <literal>python</>.
+<!## end>
        </para>
 
        <para>
@@ -1233,8 +1324,14 @@ SET ENABLE_SEQSCAN TO OFF;
 <!## end>
 <!## XC>
         Every  Postgres-XC-supported library has a <quote>magic
-        block</> that is checked to guarantee compatibility.
-        For this reason, non-Postgres-XC libraries cannot be
+        block</> that is checked to guarantee compatibility.  
+        For this reason, non-Postgres-XC libraries cannot be 
+        loaded in this way.
+<!## end>
+<!## XL>
+        Every  Postgres-XL-supported library has a <quote>magic
+        block</> that is checked to guarantee compatibility.  
+        For this reason, non-Postgres-XL libraries cannot be 
         loaded in this way.
 <!## end>
        </para>
@@ -1595,6 +1692,9 @@ SET ENABLE_SEQSCAN TO OFF;
 <!## XC>
         If this parameter is on, the <productname>Postgres-XC</> server
 <!## end>
+<!## XL>
+        If this parameter is on, the <productname>Postgres-XL</> server
+<!## end>
         will try to make sure that updates are physically written to
         disk, by issuing <function>fsync()</> system calls or various
         equivalent methods (see <xref linkend="guc-wal-sync-method">).
@@ -1757,6 +1857,9 @@ SET ENABLE_SEQSCAN TO OFF;
 <!## XC>
         When this parameter is on, the <productname>Postgres-XC</> server
 <!## end>
+<!## XL>
+        When this parameter is on, the <productname>Postgres-XL</> server
+<!## end>
         writes the entire content of each disk page to WAL during the
         first modification of that page after a checkpoint.
         This is needed because
@@ -1829,6 +1932,9 @@ SET ENABLE_SEQSCAN TO OFF;
 <!## end>
 <!## XC>
         Increasing this parameter might cause <productname>Postgres-XC</>
+<!## end>
+<!## XL>
+        Increasing this parameter might cause <productname>Postgres-XL</>
 <!## end>
         to request more <systemitem class="osname">System V</> shared
         memory than your operating system's default configuration
@@ -2083,6 +2189,13 @@ SET ENABLE_SEQSCAN TO OFF;
       there could be a risk to have the status of Coordinators and
       Datanodes inconsistent.  The development team leaves the test
       and the use of this entirely to users.
+     </para>
+<!## end>
+<!## XL>
+&pgonly;
+     <para>
+      Streaming replication only been thoroughly tested in asynchronous mode
+      with <productname>Postgres-XL</productname>.
      </para>
 <!## end>
 
@@ -2600,87 +2713,6 @@ SET ENABLE_SEQSCAN TO OFF;
       </listitem>
      </varlistentry>
 
-<!## XC>
-     <varlistentry id="guc-enable-fastqueryshipping" xreflabel="enable_fast_query_shipping">
-      <term><varname>enable_fast_query_shipping</varname> (<type>boolean</type>)</term>
-      <indexterm>
-       <primary><varname>enable_fast_query_shipping</> configuration parameter</primary>
-      </indexterm>
-      <listitem>
-&xconly;
-       <para>
-        Enables or disables the query planner's use of fast query shipping
-        steps. When disabled, queries that could be completely shipped to remote
-        nodes are planned through the standard planner instead. The default
-        is <literal>on</>.
-       </para>
-      </listitem>
-     </varlistentry>
-
-     <varlistentry id="guc-enable-remotejoin" xreflabel="enable_remotejoin">
-      <term><varname>enable_remotejoin</varname> (<type>boolean</type>)</term>
-      <indexterm>
-       <primary><varname>enable_remotejoin</> configuration parameter</primary>
-      </indexterm>
-      <listitem>
-&xconly;
-       <para>
-        Enables or disables the query planner's use of remote join shippability
-        steps. When disabled, joins that could be shipped to remote nodes are
-        evaluated on local node instead. The default is <literal>on</>.
-       </para>
-      </listitem>
-     </varlistentry>
-
-     <varlistentry id="guc-enable-remotegroup" xreflabel="enable_remotegroup">
-      <term><varname>enable_remotegroup</varname> (<type>boolean</type>)</term>
-      <indexterm>
-       <primary><varname>enable_remotegroup</> configuration parameter</primary>
-      </indexterm>
-      <listitem>
-&xconly;
-       <para>
-        Enables or disables the query planner's use of remote <literal>GROUP
-        BY</> shippability steps. When disabled, <literal>GROUP BY</> clauses
-        that could be shipped to remote nodes are evaluated on local node
-        instead. The default is <literal>on</>.
-       </para>
-      </listitem>
-     </varlistentry>
-
-     <varlistentry id="guc-enable-remotelimit" xreflabel="enable_remotelimit">
-      <term><varname>enable_remotelimit</varname> (<type>boolean</type>)</term>
-      <indexterm>
-       <primary><varname>enable_remotelimit</> configuration parameter</primary>
-      </indexterm>
-      <listitem>
-&xconly;
-       <para>
-        Enables or disables the query planner's use of remote <literal>LIMIT</>
-        shippability steps. When disabled, <literal>LIMIT</> clauses that
-        could be shipped to remote nodes are fully evaluated on local node
-        instead. The default is <literal>on</>.
-       </para>
-      </listitem>
-     </varlistentry>
-
-     <varlistentry id="guc-enable-remotesort" xreflabel="enable_remotesort">
-      <term><varname>enable_remotesort</varname> (<type>boolean</type>)</term>
-      <indexterm>
-       <primary><varname>enable_remotesort</> configuration parameter</primary>
-      </indexterm>
-      <listitem>
-&xconly;
-       <para>
-        Enables or disables the query planner's use of remote <literal>ORDER BY</>
-        shippability steps. When disabled, <literal>ORDER BY</> clauses that
-        could be shipped to remote nodes are fully evaluated on local node
-        instead. The default is <literal>on</>.
-       </para>
-      </listitem>
-     </varlistentry>
-<!## end>
-
      </variablelist>
      </sect2>
      <sect2 id="runtime-config-query-constants">
@@ -2829,6 +2861,11 @@ SET ENABLE_SEQSCAN TO OFF;
         portion of the kernel's disk cache that will be used for
         <productname>Postgres-XC</productname> data files.  Also, take
 <!## end>
+<!## XL>
+        <productname>Postgres-XL</productname>'s shared buffers and the
+        portion of the kernel's disk cache that will be used for
+        <productname>Postgres-XL</productname> data files.  Also, take
+<!## end>
         into account the expected number of concurrent queries on different
         tables, since they will have to share the available
         space.  This parameter has no effect on the size of shared
@@ -2837,6 +2874,9 @@ SET ENABLE_SEQSCAN TO OFF;
 <!## end>
 <!## XC>
         memory allocated by <productname>Postgres-XC</productname>, nor
+<!## end>
+<!## XL>
+        memory allocated by <productname>Postgres-XL</productname>, nor
 <!## end>
         does it reserve kernel disk cache; it is used only for estimation
         purposes.  The system also does not assume data remains in
@@ -3019,6 +3059,9 @@ SET ENABLE_SEQSCAN TO OFF;
 <!## XC>
         on the use of statistics by the <productname>Postgres-XC</>
 <!## end>
+<!## XL>
+        on the use of statistics by the <productname>Postgres-XL</>
+<!## end>
         query planner, refer to <xref linkend="planner-stats">.
        </para>
       </listitem>
@@ -3195,6 +3238,9 @@ SELECT * FROM parent WHERE key = 2400;
 <!## XC>
         <productname>Postgres-XC</productname> supports several methods
 <!## end>
+<!## XL>
+        <productname>Postgres-XL</productname> supports several methods
+<!## end>
          for logging server messages, including
          <systemitem>stderr</systemitem>, <systemitem>csvlog</systemitem> and
          <systemitem>syslog</systemitem>. On Windows,
@@ -3225,6 +3271,9 @@ SELECT * FROM parent WHERE key = 2400;
 <!## end>
 <!## XC>
          <varname>log_destination</>.  <productname>Postgres-XC</productname>
+<!## end>
+<!## XL>
+         <varname>log_destination</>.  <productname>Postgres-XL</productname>
 <!## end>
          can log to <application>syslog</application> facilities
          <literal>LOCAL0</> through <literal>LOCAL7</> (see <xref
@@ -3317,6 +3366,9 @@ local0.*    /var/log/postgresql
 <!## end>
 <!## XC>
         present, <productname>Postgres-XC</productname> would append
+<!## end>
+<!## XL>
+        present, <productname>Postgres-XL</productname> would append
 <!## end>
         the epoch of the new log file's creation time, but this is no
         longer the case.
@@ -3420,6 +3472,9 @@ local0.*    /var/log/postgresql
 <!## XC>
         this parameter will cause <productname>Postgres-XC</productname> to truncate (overwrite),
 <!## end>
+<!## XL>
+        this parameter will cause <productname>Postgres-XL</productname> to truncate (overwrite),
+<!## end>
         rather than append to, any existing log file of the same name.
         However, truncation will occur only when a new file is being opened
         due to time-based rotation, not during server startup or size-based
@@ -3489,6 +3544,9 @@ local0.*    /var/log/postgresql
 <!## end>
 <!## XC>
          <productname>Postgres-XC</productname> messages in
+<!## end>
+<!## XL>
+         <productname>Postgres-XL</productname> messages in
 <!## end>
          <application>syslog</application> logs. The default is
          <literal>postgres</literal>.
@@ -3655,6 +3713,9 @@ local0.*    /var/log/postgresql
 <!## end>
 <!## XC>
      severity levels used by <productname>Postgres-XC</>.  If logging output
+<!## end>
+<!## XL>
+     severity levels used by <productname>Postgres-XL</>.  If logging output
 <!## end>
      is sent to <systemitem>syslog</systemitem> or Windows'
      <systemitem>eventlog</systemitem>, the severity levels are translated
@@ -4228,6 +4289,9 @@ FROM pg_stat_activity;
 <!## end>
 <!## XC>
         location of the error in the Postgres-XC source code
+<!## end>
+<!## XL>
+        location of the error in the Postgres-XL source code
 <!## end>
         (if <varname>log_error_verbosity</> is set to <literal>verbose</>),
         and application name.
@@ -4839,6 +4903,9 @@ COPY postgres_log FROM '/full/path/to/logfile.csv' WITH csv;
 <!## XC>
         <productname>Postgres-XC</> will automatically use the default
 <!## end>
+<!## XL>
+        <productname>Postgres-XL</> will automatically use the default
+<!## end>
         tablespace of the current database.  If a nondefault tablespace
         is specified, the user must have <literal>CREATE</> privilege
         for it, or creation attempts will fail.
@@ -4885,6 +4952,9 @@ COPY postgres_log FROM '/full/path/to/logfile.csv' WITH csv;
 <!## XC>
         one name in the list, <productname>Postgres-XC</> chooses a random
 <!## end>
+<!## XL>
+        one name in the list, <productname>Postgres-XL</> chooses a random
+<!## end>
         member of the list each time a temporary object is to be created;
         except that within a transaction, successively created temporary
         objects are placed in successive tablespaces from the list.
@@ -4894,6 +4964,9 @@ COPY postgres_log FROM '/full/path/to/logfile.csv' WITH csv;
 <!## end>
 <!## XC>
         <productname>Postgres-XC</> will automatically use the default
+<!## end>
+<!## XL>
+        <productname>Postgres-XL</> will automatically use the default
 <!## end>
         tablespace of the current database instead.
        </para>
@@ -4936,7 +5009,17 @@ COPY postgres_log FROM '/full/path/to/logfile.csv' WITH csv;
         <note>
          <para>
           In <productname>Postgres-XC</> setting <varname>check_function_bodies</varname>
-          to <literal>off</> is not recomended. If SQL functions are created after setting
+          to <literal>off</> is not recommended. If SQL functions are created after setting
+          <varname>check_function_bodies</varname> to <literal>off</>, the behaviour of the
+          function when executed is un-defined.
+         </para>
+        </note>
+<!## end>
+<!## XL>
+        <note>
+         <para>
+          In <productname>Postgres-XL</> setting <varname>check_function_bodies</varname>
+          to <literal>off</> is not recommended. If SQL functions are created after setting
           <varname>check_function_bodies</varname> to <literal>off</>, the behaviour of the
           function when executed is un-defined.
          </para>
@@ -5128,6 +5211,9 @@ COPY postgres_log FROM '/full/path/to/logfile.csv' WITH csv;
 <!## XC>
         and <literal>escape</literal> (the traditional Postgres-XC
 <!## end>
+<!## XL>
+        and <literal>escape</literal> (the traditional Postgres-XL
+<!## end>
         format).  See <xref linkend="datatype-binary"> for more
         information.  The <type>bytea</type> type always
         accepts both formats on input, regardless of this setting.
@@ -5194,6 +5280,9 @@ SET XML OPTION { DOCUMENT | CONTENT };
 <!## end>
 <!## XC>
         This syntax is also available in Postgres-XC.
+<!## end>
+<!## XL>
+        This syntax is also available in Postgres-XL.
 <!## end>
        </para>
       </listitem>
@@ -5482,6 +5571,9 @@ SET XML OPTION { DOCUMENT | CONTENT };
 <!## XC>
         compiled-in <productname>Postgres-XC</productname> package
 <!## end>
+<!## XL>
+        compiled-in <productname>Postgres-XL</productname> package
+<!## end>
         library directory is substituted for <literal>$libdir</literal>; this
         is where the modules provided by the standard
 <!## PG>
@@ -5489,6 +5581,9 @@ SET XML OPTION { DOCUMENT | CONTENT };
 <!## end>
 <!## XC>
         <productname>Postgres-XC</productname> distribution are installed.
+<!## end>
+<!## XL>
+        <productname>Postgres-XL</productname> distribution are installed.
 <!## end>
         (Use <literal>pg_config --pkglibdir</literal> to find out the name of
         this directory.) For example:
@@ -5644,6 +5739,18 @@ dynamic_library_path = 'C:\tools\postgresql;H:\my_project\lib;$libdir'
         involved.
        </para>
 <!## end>
+<!## XL>
+&xlonly;
+       <para>
+        <productname>Postgres-XL</> does not detect global deadlocks
+        where multiple node (Coordinators and/or Datanodes) are
+        involved. To get around this it is recommended to set
+        <varname>statement_timeout</varname> to cause those statements to
+        fail in a normal processing environment. If however, it is a reporting
+        environment, you may want to set this higher globally, or just for
+        the session temporarily.
+       </para>
+<!## end>
       </listitem>
      </varlistentry>
 
@@ -5676,6 +5783,9 @@ dynamic_library_path = 'C:\tools\postgresql;H:\my_project\lib;$libdir'
 <!## end>
 <!## XC>
         Increasing this parameter might cause <productname>Postgres-XC</>
+<!## end>
+<!## XL>
+        Increasing this parameter might cause <productname>Postgres-XL</>
 <!## end>
         to request more <systemitem class="osname">System V</> shared
         memory than your operating system's default configuration
@@ -5776,6 +5886,9 @@ dynamic_library_path = 'C:\tools\postgresql;H:\my_project\lib;$libdir'
 <!## end>
 <!## XC>
         <productname>Postgres-XC</> has historically also accepted
+<!## end>
+<!## XL>
+        <productname>Postgres-XL</> has historically also accepted
 <!## end>
         <literal>\'</>. However, use of <literal>\'</> creates security risks
         because in some client character set encodings, there are multibyte
@@ -6068,6 +6181,9 @@ dynamic_library_path = 'C:\tools\postgresql;H:\my_project\lib;$libdir'
 <!## XC>
      when <productname>Postgres-XC</productname> is compiled or when it is
 <!## end>
+<!## XL>
+     when <productname>Postgres-XL</productname> is compiled or when it is
+<!## end>
      installed. As such, they have been excluded from the sample
      <filename>postgresql.conf</> file.  These options report
 <!## PG>
@@ -6075,6 +6191,9 @@ dynamic_library_path = 'C:\tools\postgresql;H:\my_project\lib;$libdir'
 <!## end>
 <!## XC>
      various aspects of <productname>Postgres-XC</productname> behavior
+<!## end>
+<!## XL>
+     various aspects of <productname>Postgres-XL</productname> behavior
 <!## end>
      that might be of interest to certain applications, particularly
      administrative front-ends.
@@ -6118,6 +6237,13 @@ dynamic_library_path = 'C:\tools\postgresql;H:\my_project\lib;$libdir'
         support for 64-bit-integer dates and times.  This can be
         disabled by configuring with <literal>--disable-integer-datetimes</>
         when building <productname>Postgres-XC</>.  The default value is
+        <literal>on</literal>.
+<!## end>
+<!## XL>
+        Reports whether <productname>Postgres-XL</> was built with
+        support for 64-bit-integer dates and times.  This can be
+        disabled by configuring with <literal>--disable-integer-datetimes</>
+        when building <productname>Postgres-XL</>.  The default value is
         <literal>on</literal>.
 <!## end>
        </para>
@@ -6302,6 +6428,9 @@ dynamic_library_path = 'C:\tools\postgresql;H:\my_project\lib;$libdir'
 <!## XC>
      <productname>Postgres-XC</productname> to be added by add-on modules
 <!## end>
+<!## XL>
+     <productname>Postgres-XL</productname> to be added by add-on modules
+<!## end>
      (such as procedural languages).  This allows add-on modules to be
      configured in the standard ways.
     </para>
@@ -6323,6 +6452,9 @@ dynamic_library_path = 'C:\tools\postgresql;H:\my_project\lib;$libdir'
 <!## end>
 <!## XC>
         to <productname>Postgres-XC</productname> proper but used by some
+<!## end>
+<!## XL>
+        to <productname>Postgres-XL</productname> proper but used by some
 <!## end>
         add-on module.  Such variables must have names consisting of a class
         name, a dot, and a variable name.  <varname>custom_variable_classes</>
@@ -6374,6 +6506,9 @@ plruby.use_strict = true        # generates error: unknown class name
 <!## XC>
      <productname>Postgres-XC</productname> source code, and in some cases
 <!## end>
+<!## XL>
+     <productname>Postgres-XL</productname> source code, and in some cases
+<!## end>
      to assist with recovery of severely damaged databases.  There
      should be no reason to use them on a production database.
      As such, they have been excluded from the sample
@@ -6413,6 +6548,9 @@ plruby.use_strict = true        # generates error: unknown class name
 <!## XC>
         must be defined when <productname>Postgres-XC</productname> is
 <!## end>
+<!## XL>
+        must be defined when <productname>Postgres-XL</productname> is
+<!## end>
         built (accomplished by the <command>configure</command> option
         <option>--enable-cassert</option>). Note that
         <varname>debug_assertions</varname> defaults to <literal>on</>
@@ -6421,6 +6559,9 @@ plruby.use_strict = true        # generates error: unknown class name
 <!## end>
 <!## XC>
         if <productname>Postgres-XC</productname> has been built with
+<!## end>
+<!## XL>
+        if <productname>Postgres-XL</productname> has been built with
 <!## end>
         assertions enabled.
        </para>
@@ -6533,6 +6674,9 @@ plruby.use_strict = true        # generates error: unknown class name
 <!## XC>
         was defined when <productname>Postgres-XC</productname> was compiled.
 <!## end>
+<!## XL>
+        was defined when <productname>Postgres-XL</productname> was compiled.
+<!## end>
         (However, <symbol>TRACE_SORT</symbol> is currently defined by default.)
        </para>
       </listitem>
@@ -6578,6 +6722,9 @@ LOG:  CleanUpLock: deleting: lock(0xb7acd844) id(24688,24696,0,0,0,1)
 <!## XC>
         macro was defined when <productname>Postgres-XC</productname> was
 <!## end>
+<!## XL>
+        macro was defined when <productname>Postgres-XL</productname> was
+<!## end>
         compiled.
        </para>
       </listitem>
@@ -6601,6 +6748,9 @@ LOG:  CleanUpLock: deleting: lock(0xb7acd844) id(24688,24696,0,0,0,1)
 <!## end>
 <!## XC>
         macro was defined when <productname>Postgres-XC</productname> was
+<!## end>
+<!## XL>
+        macro was defined when <productname>Postgres-XL</productname> was
 <!## end>
         compiled.
        </para>
@@ -6629,6 +6779,9 @@ LOG:  CleanUpLock: deleting: lock(0xb7acd844) id(24688,24696,0,0,0,1)
 <!## XC>
         macro was defined when <productname>Postgres-XC</productname> was
 <!## end>
+<!## XL>
+        macro was defined when <productname>Postgres-XL</productname> was
+<!## end>
         compiled.
        </para>
       </listitem>
@@ -6652,6 +6805,9 @@ LOG:  CleanUpLock: deleting: lock(0xb7acd844) id(24688,24696,0,0,0,1)
 <!## XC>
         macro was defined when <productname>Postgres-XC</productname> was
 <!## end>
+<!## XL>
+        macro was defined when <productname>Postgres-XL</productname> was
+<!## end>
         compiled.
        </para>
       </listitem>
@@ -6673,6 +6829,9 @@ LOG:  CleanUpLock: deleting: lock(0xb7acd844) id(24688,24696,0,0,0,1)
 <!## end>
 <!## XC>
         macro was defined when <productname>Postgres-XC</productname> was
+<!## end>
+<!## XL>
+        macro was defined when <productname>Postgres-XL</productname> was
 <!## end>
         compiled.
        </para>
@@ -6697,12 +6856,23 @@ LOG:  CleanUpLock: deleting: lock(0xb7acd844) id(24688,24696,0,0,0,1)
 <!## XC>
         macro was defined when <productname>Postgres-XC</productname> was
 <!## end>
+<!## XL>
+        macro was defined when <productname>Postgres-XL</productname> was
+<!## end>
         compiled.
        </para>
 <!## XC>
 &xconly;
        <para>
         <productname>Postgres-XC</> does not detect global deadlocks
+        where multiple node (Coordinators and/or Datanodes) are
+        involved.
+       </para>
+<!## end>
+<!## XL>
+&xlonly;
+       <para>
+        <productname>Postgres-XL</> does not detect global deadlocks
         where multiple node (Coordinators and/or Datanodes) are
         involved.
        </para>
@@ -6728,6 +6898,9 @@ LOG:  CleanUpLock: deleting: lock(0xb7acd844) id(24688,24696,0,0,0,1)
 <!## XC>
         macro was defined when <productname>Postgres-XC</productname> was
 <!## end>
+<!## XL>
+        macro was defined when <productname>Postgres-XL</productname> was
+<!## end>
         compiled.
        </para>
       </listitem>
@@ -6748,6 +6921,9 @@ LOG:  CleanUpLock: deleting: lock(0xb7acd844) id(24688,24696,0,0,0,1)
 <!## XC>
         defined when <productname>Postgres-XC</productname> was
 <!## end>
+<!## XL>
+        defined when <productname>Postgres-XL</productname> was
+<!## end>
         compiled.
        </para>
       </listitem>
@@ -6766,6 +6942,9 @@ LOG:  CleanUpLock: deleting: lock(0xb7acd844) id(24688,24696,0,0,0,1)
 <!## end>
 <!## XC>
         <productname>Postgres-XC</> to report an error, aborting the current
+<!## end>
+<!## XL>
+        <productname>Postgres-XL</> to report an error, aborting the current
 <!## end>
         transaction.  Setting <varname>zero_damaged_pages</> to on causes
         the system to instead report a warning, zero out the damaged
@@ -7071,6 +7250,276 @@ Postgres-XC Specific Parameters
       </listitem>
      </varlistentry>
 
+    </variablelist>
+
+  </sect1>
+<!## end>
+<!## XL>
+<!--
+Postgres-XL Specific Parameters
+-->
+  <sect1 id="pg-xc-specifics">
+   <title>Postgres-XL Specific Parameters</title>
+&xlonly;
+   <para>
+    Because <productname>Postgres-XL</> distributes data into multiple
+    Datanodes and multiple Coordinators can accept transactions in
+    parallel, the Coordinators must know what Coordinators and
+    Datanodes to connect to.  The Coordinators and Datanodes also must know
+    where they can request transaction information.  The following
+    describes these additional GUC parameters.
+   </para>
+
+    <variablelist>
+
+     <varlistentry id="guc-max-pool-size" xreflabel="max_pool_size">
+      <term><varname>max_pool_size</varname> (<type>integer</type>)</term>
+      <indexterm>
+       <primary><varname>max_pool_size</> configuration parameter</primary>
+      </indexterm>
+      <listitem>
+       <para>
+        Specify the maximum connection pool of the Coordinator to Datanodes.
+        Because each transaction can be involved by all the Datanodes,
+        this parameter should at least be <varname>max_connections</>
+        multiplied by number of Datanodes.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="guc-min-pool-size" xreflabel="min_pool_size">
+      <term><varname>min_pool_size</varname> (<type>integer</type>)</term>
+      <indexterm>
+       <primary><varname>min_pool_size</> configuration parameter</primary>
+      </indexterm>
+      <listitem>
+       <para>
+        Minumum number of the connection from the Coordinator to Datanodes.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="guc-pool-maintenance-timeout" xreflabel="pool_maintenance_timeout">
+     <term><varname>pool_maintenance_timeout</varname> (<type>integer</type>)</term>
+      <indexterm>
+       <primary><varname>pool_maintenance_timeout</> configuration parameter</primary>
+      </indexterm>
+      <listitem>
+       <para>
+        This parameter specifies how long to wait until pooler
+        maintenance is performed. During such maintenance,
+        old idle connections are discarded.
+        This parameter is useful in multi-tenant environments where
+        many connections to many different databases may be used,
+        so that idle connections may cleaned up.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="guc-remote-query-cost" xreflabel="remote_query_cost">
+     <term><varname>remote_query_cost</varname> (<type>integer</type>)</term>
+      <indexterm>
+       <primary><varname>remote_query_cost</> configuration parameter</primary>
+      </indexterm>
+      <listitem>
+       <para>
+        This parameter specifies the cost overhead of setting up
+        a remote query to obtain remote data. It is used by
+        the planner in costing queries.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="guc-network-byte-cost" xreflabel="network_byte_cost">
+     <term><varname>network_byte_cost</varname> (<type>integer</type>)</term>
+      <indexterm>
+       <primary><varname>network_byte_cost</> configuration parameter</primary>
+      </indexterm>
+      <listitem>
+       <para>
+        This parameter is used in query cost planning to
+        estimate the cost involved in row shipping and obtaining
+        remote data based on the expected data size.
+        Row shipping is expensive and adds latency, so this
+        setting helps to favor plans that minimizes row shipping.
+       </para>
+      </listitem>
+     </varlistentry>
+ 
+     <varlistentry id="guc-sequence-range" xreflabel="sequence_range">
+     <term><varname>sequence_range</varname> (<type>integer</type>)</term>
+      <indexterm>
+       <primary><varname>sequence_range</> configuration parameter</primary>
+      </indexterm>
+      <listitem>
+       <para>
+        This parameter is used to get several sequence values
+        at once from GTM.  This greatly speeds up COPY and INSERT SELECT
+        operations where the target table uses sequences.
+        <productname>Postgres-XL</productname> will not use this entire
+        amount at once, but will increase the request size over
+        time if many requests are done in a short time frame in
+        the same session.
+        After a short time without any sequence requests, decreases back down to 1.
+        Note that any settings here are overriden if the CACHE clause was
+        used in <xref linkend='sql-createsequence'> or <xref linkend='sql-altersequence'>.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="guc-max-coordinators" xreflabel="max_coordinators">
+      <term><varname>max_coordinators</varname> (<type>integer</type>)</term>
+      <indexterm>
+       <primary><varname>max_coordinators</> configuration parameter</primary>
+      </indexterm>
+      <listitem>
+       <para>
+        Maximum number of Coordinators that can be configured in the cluster.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="guc-max-datanodes" xreflabel="max_datanodes">
+      <term><varname>max_datanodes</varname> (<type>integer</type>)</term>
+      <indexterm>
+       <primary><varname>max_datanodes</> configuration parameter</primary>
+      </indexterm>
+      <listitem>
+       <para>
+        Maximum number of Datanodes that can be configured in the cluster.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="guc-pgxc-node-name" xreflabel="pgxc_node_name">
+      <term><varname>pgxc_node_name</varname> (<type>integer</type>)</term>
+      <indexterm>
+       <primary><varname>pgxc_node_name</> configuration parameter</primary>
+      </indexterm>
+      <listitem>
+       <para>
+        Specifies the node name. A node uses this parameter to identify itself
+        with <link linkend="catalog-pgxc-node"><structname>pgxc_node</structname>
+        </link>.nodename
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="guc-pooler-port" xreflabel="pooler_port">
+      <term><varname>pooler_port</varname> (<type>integer</type>)</term>
+      <indexterm>
+       <primary><varname>pooler_port</> configuration parameter</primary>
+      </indexterm>
+      <listitem>
+       <para>
+        Specifies the port number assigned to the connection pooler process.
+        This is used in both the Coordinator and Datanode processes to
+        connect to other nodes.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="guc-gtm-host" xreflabel="gtm_host">
+      <term><varname>gtm_host</varname> (<type>string</type>)</term>
+      <indexterm>
+       <primary><varname>gtm_host</> configuration parameter</primary>
+      </indexterm>
+      <listitem>
+       <para>
+        Specifies the host name or IP address of the <filename>GTM</>.  If you use <filename>GTM-Proxy</>, specify the <filename>GTM-Proxy</>'s one.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="guc-gtm-port" xreflabel="gtm_port">
+      <term><varname>gtm_port</varname> (<type>integer</type>)</term>
+      <indexterm>
+       <primary><varname>gtm_port</> configuration parameter</primary>
+      </indexterm>
+      <listitem>
+       <para>
+        Specifieis the port number of GTM.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="guc-xc-maintenance-mode" xreflabel="xc_maintenance_mode">
+      <term><varname>xc_maintenance_mode</varname> (<type>bool</type>)</term>
+      <indexterm>
+       <primary><varname>xc_maintenance_mode</> configuration parameter</primary>
+      </indexterm>
+      <listitem>
+       <para>
+        Specify to enter into maintenance mode. Turning this parameter to on will
+        change behavior of several statements. Each statement
+        behavior may not be compatible in future releases, so users
+        must be extremely careful when they attempt to set this
+        value to <literal>on</literal>.
+       </para>
+       <para>
+        Behavior of <xref linkend="sql-commit-prepared"> and
+        <xref linkend="sql-rollback-prepared"> statements are affected by
+        this parameter.
+       </para>
+       <para>
+        If this is set to ON, you can do maintenance work to update
+        Datanode locally through <literal>EXECUTE DIRECT</literal> or connecting
+        directly to Datanodes. As a DBA, you are totally responsible to any side
+        effects. You must be extremely careful not to bring in any inconsistencies
+        to Postgres-XL database cluster.
+       </para>
+       <para>
+        This parameter can only be set by superuser
+        with <literal>SET</literal> command. Otherwise, the setting
+        will be ignored.
+       </para>
+       <para>
+        As a session parameter, this parameter is shared among all
+        the connections of the session. It affects originating Coordinator as
+        well as remote nodes involved in session.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="guc-shared-queues" xreflabel="shared_queues">
+      <term><varname>shared_queues</varname> (<type>integer</type>)</term>
+      <indexterm>
+       <primary><varname>shared_queues</> configuration parameter</primary>
+      </indexterm>
+      <listitem>
+       <para>
+        Datanode Only
+       </para>
+       <para>
+        For some joins that occur in queries, data from one Datanode may
+        need to be joined with data from another Datanode.
+        <productname>Postgres-XL</productname> uses shared queues for this purpose.
+        During execution each Datanode knows if it needs to produce or consume
+        tuples, or both.
+       </para>
+       <para>
+        Note that there may be mulitple shared_queues used even for a single
+        query. So a value should be set taking into account the number of
+        connections it can accept and expected number of such joins occurring
+        simultaneously.
+       </para>
+     </listitem>
+     </varlistentry>
+
+     <varlistentry id="guc-shared-queue-size" xreflabel="shared_queue_size">
+      <term><varname>shared_queue_size</varname> (<type>integer</type>)</term>
+      <indexterm>
+       <primary><varname>shared_queue_size</> configuration parameter</primary>
+      </indexterm>
+      <listitem>
+       <para>
+        Datanode Only
+       </para>
+       <para>
+        This parameter sets the size of each each shared queue allocated.
+       </para>
+      </listitem>
+     </varlistentry>
     </variablelist>
 
   </sect1>

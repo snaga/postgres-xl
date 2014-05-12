@@ -38,6 +38,11 @@
  *
  * This code is released under the terms of the PostgreSQL License.
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
@@ -136,6 +141,9 @@ static char *conf_file;
 static char *conversion_file;
 static char *dictionary_file;
 static char *info_schema_file;
+#ifdef XCP
+static char *storm_cat_file;
+#endif
 static char *features_file;
 static char *system_views_file;
 static bool made_new_pgdata = false;
@@ -216,6 +224,9 @@ static void setup_dictionary(void);
 static void setup_privileges(void);
 static void set_info_version(void);
 static void setup_schema(void);
+#ifdef XCP
+static void setup_storm(void);
+#endif
 static void load_plpgsql(void);
 static void vacuum_db(void);
 static void make_template0(void);
@@ -296,6 +307,9 @@ pg_malloc(size_t size)
 {
 	void	   *result;
 
+	/* Avoid unportable behavior of malloc(0) */
+	if (size == 0)
+		size = 1;
 	result = malloc(size);
 	if (!result)
 	{
@@ -416,6 +430,7 @@ readfile(const char *path)
 	int			maxlength = 1,
 				linelen = 0;
 	int			nlines = 0;
+	int			n;
 	char	  **result;
 	char	   *buffer;
 	int			c;
@@ -453,13 +468,13 @@ readfile(const char *path)
 
 	/* now reprocess the file and store the lines */
 	rewind(infile);
-	nlines = 0;
-	while (fgets(buffer, maxlength + 1, infile) != NULL)
-		result[nlines++] = xstrdup(buffer);
+	n = 0;
+	while (fgets(buffer, maxlength + 1, infile) != NULL && n < nlines)
+		result[n++] = xstrdup(buffer);
 
 	fclose(infile);
 	free(buffer);
-	result[nlines] = NULL;
+	result[n] = NULL;
 
 	return result;
 }
@@ -719,14 +734,22 @@ find_matching_ts_config(const char *lc_type)
 
 	/*
 	 * Convert lc_ctype to a language name by stripping everything after an
-	 * underscore.	Just for paranoia, we also stop at '.' or '@'.
+	 * underscore (usual case) or a hyphen (Windows "locale name"; see
+	 * comments at IsoLocaleName()).
+	 *
+	 * XXX Should ' ' be a stop character?  This would select "norwegian" for
+	 * the Windows locale "Norwegian (Nynorsk)_Norway.1252".  If we do so, we
+	 * should also accept the "nn" and "nb" Unix locales.
+	 *
+	 * Just for paranoia, we also stop at '.' or '@'.
 	 */
 	if (lc_type == NULL)
 		langname = xstrdup("");
 	else
 	{
 		ptr = langname = xstrdup(lc_type);
-		while (*ptr && *ptr != '_' && *ptr != '.' && *ptr != '@')
+		while (*ptr &&
+			   *ptr != '_' && *ptr != '-' && *ptr != '.' && *ptr != '@')
 			ptr++;
 		*ptr = '\0';
 	}
@@ -1591,7 +1614,11 @@ setup_description(void)
 	PG_CMD_PRINTF1("COPY tmp_pg_shdescription FROM E'%s';\n",
 				   escape_quotes(shdesc_file));
 
+#ifdef XCP
+	PG_CMD_PUTS("INSERT INTO pg_catalog.pg_shdescription "
+#else
 	PG_CMD_PUTS("INSERT INTO pg_shdescription "
+#endif
 				" SELECT t.objoid, c.oid, t.description "
 				"  FROM tmp_pg_shdescription t, pg_class c "
 				"   WHERE c.relname = t.classname;\n");
@@ -1890,6 +1917,9 @@ setup_privileges(void)
 		"  WHERE relkind IN ('r', 'v', 'S') AND relacl IS NULL;\n",
 		"GRANT USAGE ON SCHEMA pg_catalog TO PUBLIC;\n",
 		"GRANT CREATE, USAGE ON SCHEMA public TO PUBLIC;\n",
+#ifdef XCP
+        "GRANT USAGE ON SCHEMA storm_catalog TO PUBLIC;\n",
+#endif
 		"REVOKE ALL ON pg_largeobject FROM PUBLIC;\n",
 		NULL
 	};
@@ -2000,6 +2030,46 @@ setup_schema(void)
 	check_ok();
 }
 
+#ifdef XCP
+/*
+ * load storm catalog and populate from features file
+ */
+static void
+setup_storm(void)
+{
+        PG_CMD_DECL;
+        char      **line;
+        char      **lines;
+
+        fputs(_("creating storm catalog... "), stdout);
+        fflush(stdout);
+
+        lines = readfile(storm_cat_file);
+
+        /*
+         * We use -j here to avoid backslashing stuff in storm_catalog.sql
+         */
+        snprintf(cmd, sizeof(cmd),
+                         "\"%s\" %s -j template1 >%s",
+                         backend_exec, backend_options,
+                         DEVNULL);
+
+        PG_CMD_OPEN;
+
+        for (line = lines; *line != NULL; line++)
+        {
+                PG_CMD_PUTS(*line);
+                free(*line);
+        }
+
+        free(lines);
+
+        PG_CMD_CLOSE;
+
+        check_ok();
+}
+#endif
+
 /*
  * load PL/pgsql server-side language
  */
@@ -2090,7 +2160,11 @@ make_template0(void)
 	const char **line;
 	static const char *template0_setup[] = {
 		"CREATE DATABASE template0;\n",
+#ifdef XCP
+		"UPDATE pg_catalog.pg_database SET "
+#else
 		"UPDATE pg_database SET "
+#endif
 		"	datistemplate = 't', "
 		"	datallowconn = 'f' "
 		"    WHERE datname = 'template0';\n",
@@ -2098,8 +2172,13 @@ make_template0(void)
 		/*
 		 * We use the OID of template0 to determine lastsysoid
 		 */
+#ifdef XCP
+		"UPDATE pg_catalog.pg_database SET datlastsysoid = "
+		"    (SELECT oid FROM pg_catalog.pg_database "
+#else
 		"UPDATE pg_database SET datlastsysoid = "
 		"    (SELECT oid FROM pg_database "
+#endif
 		"    WHERE datname = 'template0');\n",
 
 		/*
@@ -2115,7 +2194,11 @@ make_template0(void)
 		/*
 		 * Finally vacuum to clean up dead rows in pg_database
 		 */
+#ifdef XCP
+		"VACUUM FULL pg_catalog.pg_database;\n",
+#else
 		"VACUUM FULL pg_database;\n",
+#endif
 		NULL
 	};
 
@@ -2593,7 +2676,11 @@ usage(const char *progname)
 	printf(_("      --auth-local=METHOD   default authentication method for local-socket connections\n"));
 	printf(_(" [-D, --pgdata=]DATADIR     location for this database cluster\n"));
 #ifdef PGXC
+#ifdef XCP
+	printf(_("      --nodename=NODENAME   name of Postgres-XL node initialized\n"));
+#else
 	printf(_("      --nodename=NODENAME   name of Postgres-XC node initialized\n"));
+#endif
 #endif
 	printf(_("  -E, --encoding=ENCODING   set default encoding for new databases\n"));
 	printf(_("      --locale=LOCALE       set default locale for new databases\n"));
@@ -2614,8 +2701,8 @@ usage(const char *progname)
 	printf(_("  -n, --noclean             do not clean up after errors\n"));
 	printf(_("  -s, --show                show internal settings\n"));
 	printf(_("\nOther options:\n"));
-	printf(_("  -?, --help                show this help, then exit\n"));
 	printf(_("  -V, --version             output version information, then exit\n"));
+	printf(_("  -?, --help                show this help, then exit\n"));
 	printf(_("\nIf the data directory is not specified, the environment variable PGDATA\n"
 			 "is used.\n"));
 	printf(_("\nReport bugs to <pgsql-bugs@postgresql.org>.\n"));
@@ -2654,13 +2741,19 @@ check_authmethod_valid(const char *authmethod, const char **valid_methods, const
 }
 
 static void
-check_need_password(const char *authmethod)
+check_need_password(const char *authmethodlocal, const char *authmethodhost)
 {
-	if ((strcmp(authmethod, "md5") == 0 ||
-		 strcmp(authmethod, "password") == 0) &&
+	if ((strcmp(authmethodlocal, "md5") == 0 ||
+		 strcmp(authmethodlocal, "password") == 0) &&
+		(strcmp(authmethodhost, "md5") == 0 ||
+		 strcmp(authmethodhost, "password") == 0) &&
 		!(pwprompt || pwfilename))
 	{
-		fprintf(stderr, _("%s: must specify a password for the superuser to enable %s authentication\n"), progname, authmethod);
+		fprintf(stderr, _("%s: must specify a password for the superuser to enable %s authentication\n"), progname,
+				(strcmp(authmethodlocal, "md5") == 0 ||
+				 strcmp(authmethodlocal, "password") == 0)
+				? authmethodlocal
+				: authmethodhost);
 		exit(1);
 	}
 }
@@ -2862,7 +2955,7 @@ main(int argc, char *argv[])
 	if (optind < argc)
 	{
 		fprintf(stderr, _("%s: too many command-line arguments (first is \"%s\")\n"),
-				progname, argv[optind + 1]);
+				progname, argv[optind]);
 		fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
 				progname);
 		exit(1);
@@ -2877,7 +2970,11 @@ main(int argc, char *argv[])
 #ifdef PGXC
 	if (!nodename)
 	{
+#ifdef XCP
+		fprintf(stderr, _("%s: Postgres-XL node name is mandatory\n"), progname);
+#else
 		fprintf(stderr, _("%s: Postgres-XC node name is mandatory\n"), progname);
+#endif
 		fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
 				progname);
 		exit(1);
@@ -2890,8 +2987,7 @@ main(int argc, char *argv[])
 	check_authmethod_valid(authmethodlocal, auth_methods_local, "local");
 	check_authmethod_valid(authmethodhost, auth_methods_host, "host");
 
-	check_need_password(authmethodlocal);
-	check_need_password(authmethodhost);
+	check_need_password(authmethodlocal, authmethodhost);
 
 	if (strlen(pg_data) == 0)
 	{
@@ -3025,6 +3121,9 @@ main(int argc, char *argv[])
 	set_input(&conversion_file, "conversion_create.sql");
 	set_input(&dictionary_file, "snowball_create.sql");
 	set_input(&info_schema_file, "information_schema.sql");
+#ifdef XCP
+	set_input(&storm_cat_file, "storm_catalog.sql");
+#endif
 	set_input(&features_file, "sql_features.txt");
 	set_input(&system_views_file, "system_views.sql");
 
@@ -3058,6 +3157,9 @@ main(int argc, char *argv[])
 	check_input(conversion_file);
 	check_input(dictionary_file);
 	check_input(info_schema_file);
+#ifdef XCP
+	check_input(storm_cat_file);
+#endif
 	check_input(features_file);
 	check_input(system_views_file);
 
@@ -3402,6 +3504,10 @@ main(int argc, char *argv[])
 
 	load_plpgsql();
 
+#ifdef XCP
+	setup_storm();
+#endif
+
 	vacuum_db();
 
 	make_template0();
@@ -3418,16 +3524,24 @@ main(int argc, char *argv[])
 		fprintf(stderr, "%s", authwarning);
 
 	/* Get directory specification used to start this executable */
-	strcpy(bin_dir, argv[0]);
+	strlcpy(bin_dir, argv[0], sizeof(bin_dir));
 	get_parent_directory(bin_dir);
 
 
 #ifdef PGXC
+#ifdef XCP
+	printf(_("\nSuccess.\n You can now start the database server of the Postgres-XL coordinator using:\n\n"
+#else
 	printf(_("\nSuccess.\n You can now start the database server of the Postgres-XC coordinator using:\n\n"
+#endif
 			 "    %s%s%spostgres%s --coordinator -D %s%s%s\n"
 			 "or\n"
 			 "    %s%s%spg_ctl%s start -D %s%s%s -Z coordinator -l logfile\n\n"
+#ifdef XCP
+			 " You can now start the database server of the Postgres-XL datanode using:\n\n"
+#else
 			 " You can now start the database server of the Postgres-XC datanode using:\n\n"
+#endif
 			 "    %s%s%spostgres%s --datanode -D %s%s%s\n"
 			 "or \n"
 			 "    %s%s%spg_ctl%s start -D %s%s%s -Z datanode -l logfile\n\n"),

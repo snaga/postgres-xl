@@ -63,6 +63,9 @@
 <!## XC>
   implementation in <productname>Postgres-XC</productname> is inherited from <productname>PostgreSQL</> and is primarily
 <!## end>
+<!## XL>
+  implementation in <productname>Postgres-XL</productname> is inherited from <productname>PostgreSQL</> and is primarily
+<!## end>
   maintained by Teodor Sigaev and Oleg Bartunov. There is more
   information about <acronym>GIN</acronym> on their
   <ulink url="http://www.sai.msu.su/~megera/wiki/Gin">website</ulink>.
@@ -452,6 +455,9 @@
 <!## XC>
      <productname>Postgres-XC</productname>, and there are often situations when
 <!## end>
+<!## XL>
+     <productname>Postgres-XL</productname>, and there are often situations when
+<!## end>
      a full-text search returns a very large set of results.  Moreover, this
      often happens when the query contains very frequent words, so that the
      large result set is not even useful.  Since reading many
@@ -508,6 +514,9 @@
 <!## end>
 <!## XC>
   The <productname>Postgres-XC</productname> source distribution includes
+<!## end>
+<!## XL>
+  The <productname>Postgres-XL</productname> source distribution includes
 <!## end>
   <acronym>GIN</acronym> operator classes for <type>tsvector</> and
   for one-dimensional arrays of all internal types.  Prefix searching in

@@ -4,6 +4,11 @@
  *	  POSTGRES relation descriptor (a/k/a relcache entry) definitions.
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
@@ -26,6 +31,9 @@
 #endif
 #include "rewrite/prs2lock.h"
 #include "storage/block.h"
+#ifdef XCP
+#include "storage/proc.h"
+#endif
 #include "storage/relfilenode.h"
 #include "utils/relcache.h"
 #include "utils/reltrigger.h"
@@ -89,6 +97,7 @@ typedef struct RelationData
 	bool		rd_isvalid;		/* relcache entry is valid */
 	char		rd_indexvalid;	/* state of rd_indexlist: 0 = not valid, 1 =
 								 * valid, 2 = temporarily forced */
+	bool		rd_islocaltemp; /* rel is a temp rel of this session */
 
 	/*
 	 * rd_createSubid is the ID of the highest subtransaction the rel has
@@ -366,15 +375,14 @@ typedef struct StdRdOptions
  * RelationUsesLocalBuffers
  *		True if relation's pages are stored in local buffers.
  */
+#ifdef XCP
+#define RelationUsesLocalBuffers(relation) \
+	!OidIsValid(MyCoordId) && \
+		((relation)->rd_rel->relpersistence == RELPERSISTENCE_TEMP)
+#else
 #define RelationUsesLocalBuffers(relation) \
 	((relation)->rd_rel->relpersistence == RELPERSISTENCE_TEMP)
-
-/*
- * RelationUsesTempNamespace
- *		True if relation's catalog entries live in a private namespace.
- */
-#define RelationUsesTempNamespace(relation) \
-	((relation)->rd_rel->relpersistence == RELPERSISTENCE_TEMP)
+#endif
 
 #ifdef PGXC
 /*
@@ -387,13 +395,32 @@ typedef struct StdRdOptions
 /*
  * RELATION_IS_LOCAL
  *		If a rel is either temp or newly created in the current transaction,
- *		it can be assumed to be visible only to the current backend.
+ *		it can be assumed to be accessible only to the current backend.
+ *		This is typically used to decide that we can skip acquiring locks.
  *
  * Beware of multiple eval of argument
  */
+#ifdef XCP
 #define RELATION_IS_LOCAL(relation) \
-	((relation)->rd_backend == MyBackendId || \
+	((!OidIsValid(MyCoordId) && (relation)->rd_backend == MyBackendId) || \
+	 (OidIsValid(MyCoordId) && (relation)->rd_backend == MyFirstBackendId) || \
+	 ((relation)->rd_islocaltemp || \
+	 (relation)->rd_createSubid != InvalidSubTransactionId))
+#else
+#define RELATION_IS_LOCAL(relation) \
+	((relation)->rd_islocaltemp || \
 	 (relation)->rd_createSubid != InvalidSubTransactionId)
+#endif
+
+#ifdef XCP
+/*
+ * RelationGetLocatorType
+ *		Returns the rel's locator type.
+ */
+#define RelationGetLocatorType(relation) \
+	((relation)->rd_locator_info->locatorType)
+
+#endif
 
 /*
  * RELATION_IS_OTHER_TEMP
@@ -401,9 +428,17 @@ typedef struct StdRdOptions
  *
  * Beware of multiple eval of argument
  */
+#ifdef XCP
 #define RELATION_IS_OTHER_TEMP(relation) \
-	((relation)->rd_rel->relpersistence == RELPERSISTENCE_TEMP \
-	&& (relation)->rd_backend != MyBackendId)
+	(((relation)->rd_rel->relpersistence == RELPERSISTENCE_TEMP && \
+	 !(relation)->rd_islocaltemp) && \
+	 ((!OidIsValid(MyCoordId) && (relation)->rd_backend != MyBackendId) || \
+	  (OidIsValid(MyCoordId) && (relation)->rd_backend != MyFirstBackendId)))
+#else
+#define RELATION_IS_OTHER_TEMP(relation) \
+	((relation)->rd_rel->relpersistence == RELPERSISTENCE_TEMP && \
+	 !(relation)->rd_islocaltemp)
+#endif
 
 /* routines in utils/cache/relcache.c */
 extern void RelationIncrementReferenceCount(Relation rel);

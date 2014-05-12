@@ -297,16 +297,14 @@ StreamServerPort(int family, char *hostName, unsigned short portNumber,
 			continue;
 		}
 
-#define GTM_MAX_CONNECTIONS		1024
+#define GTM_MAX_CONNECTIONS		4096
 
 		/*
 		 * Select appropriate accept-queue length limit.  PG_SOMAXCONN is only
 		 * intended to provide a clamp on the request on platforms where an
 		 * overly large request provokes a kernel error (are there any?).
 		 */
-		maxconn = GTM_MAX_CONNECTIONS * 2;
-
-		err = listen(fd, maxconn);
+		err = listen(fd, GTM_MAX_CONNECTIONS);
 		if (err < 0)
 		{
 			ereport(LOG,

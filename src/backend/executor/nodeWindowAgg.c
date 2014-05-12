@@ -23,6 +23,11 @@
  * aggregate function over all rows in the current row's window frame.
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -1717,10 +1722,19 @@ initialize_peragg(WindowAggState *winstate, WindowFunc *wfunc,
 	HeapTuple	aggTuple;
 	Form_pg_aggregate aggform;
 	Oid			aggtranstype;
+#ifdef XCP
+	Oid			aggcollecttype;
+#endif
 	AclResult	aclresult;
 	Oid			transfn_oid,
+#ifdef XCP
+				collectfn_oid,
+#endif
 				finalfn_oid;
 	Expr	   *transfnexpr,
+#ifdef XCP
+			   *collectfnexpr,
+#endif
 			   *finalfnexpr;
 	Datum		textInitVal;
 	int			i;
@@ -1746,6 +1760,9 @@ initialize_peragg(WindowAggState *winstate, WindowFunc *wfunc,
 	 */
 
 	peraggstate->transfn_oid = transfn_oid = aggform->aggtransfn;
+#ifdef XCP
+	collectfn_oid = aggform->aggcollectfn;
+#endif
 	peraggstate->finalfn_oid = finalfn_oid = aggform->aggfinalfn;
 
 	/* Check that aggregate owner has permission to call component fns */
@@ -1794,16 +1811,28 @@ initialize_peragg(WindowAggState *winstate, WindowFunc *wfunc,
 														false);
 		pfree(declaredArgTypes);
 	}
+#ifdef XCP
+	aggcollecttype = aggform->aggcollecttype;
+#endif
 
 	/* build expression trees using actual argument & result types */
 	build_aggregate_fnexprs(inputTypes,
 							numArguments,
 							aggtranstype,
+#ifdef XCP
+							aggcollecttype,
+#endif
 							wfunc->wintype,
 							wfunc->inputcollid,
 							transfn_oid,
+#ifdef XCP
+							collectfn_oid,
+#endif
 							finalfn_oid,
 							&transfnexpr,
+#ifdef XCP
+							&collectfnexpr,
+#endif
 							&finalfnexpr);
 
 	fmgr_info(transfn_oid, &peraggstate->transfn);

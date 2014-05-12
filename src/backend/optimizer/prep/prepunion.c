@@ -17,6 +17,11 @@
  * append relations, and thenceforth share code with the UNION ALL case.
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -236,6 +241,9 @@ recurse_set_operations(Node *setOp, PlannerInfo *root,
 		 */
 		rel = build_simple_rel(root, rtr->rtindex, RELOPT_BASEREL);
 
+		/* plan_params should not be in use in current query level */
+		Assert(root->plan_params == NIL);
+
 		/*
 		 * Generate plan for primitive subquery
 		 */
@@ -243,10 +251,27 @@ recurse_set_operations(Node *setOp, PlannerInfo *root,
 								   root,
 								   false, tuple_fraction,
 								   &subroot);
+#ifdef XCP
+		if (subroot->distribution)
+		{
+			subplan = (Plan *) make_remotesubplan(subroot,
+												  subplan,
+												  NULL,
+												  subroot->distribution,
+												  subroot->query_pathkeys);
+		}
+#endif
 
 		/* Save subroot and subplan in RelOptInfo for setrefs.c */
 		rel->subplan = subplan;
 		rel->subroot = subroot;
+
+		/*
+		 * It should not be possible for the primitive query to contain any
+		 * cross-references to other primitive queries in the setop tree.
+		 */
+		if (root->plan_params)
+			elog(ERROR, "unexpected outer reference in set operation subquery");
 
 		/*
 		 * Estimate number of groups if caller wants it.  If the subquery used

@@ -3,6 +3,11 @@
  * gtm_serialize.c
  *  Serialization management of GTM data
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2010, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
@@ -701,6 +706,13 @@ gtm_get_pgxcnodeinfo_size(GTM_PGXCNodeInfo *data)
 
 	len += sizeof(GTM_PGXCNodeStatus);   /* status */
 
+#ifdef XCP
+	len += sizeof(uint32);			/* max_sessions */
+	len += sizeof(uint32);			/* num_sessions */
+	if (data->num_sessions > 0)		/* sessions */
+		len += (data->num_sessions * sizeof(GTM_PGXCSession));
+#endif
+
 	return len;
 }
 
@@ -787,6 +799,21 @@ gtm_serialize_pgxcnodeinfo(GTM_PGXCNodeInfo *data, char *buf, size_t buflen)
 	memcpy(buf + len, &(data->status), sizeof(GTM_PGXCNodeStatus));
 	len += sizeof(GTM_PGXCNodeStatus);
 
+#ifdef XCP
+	/* GTM_PGXCNodeInfo.sessions */
+	len_wk = data->max_sessions;
+	memcpy(buf + len, &len_wk, sizeof(uint32));
+	len += sizeof(uint32);
+	len_wk = data->num_sessions;
+	memcpy(buf + len, &len_wk, sizeof(uint32));
+	len += sizeof(uint32);
+	if (len_wk > 0)
+	{
+		memcpy(buf + len, data->sessions, len_wk * sizeof(GTM_PGXCSession));
+		len += len_wk * sizeof(GTM_PGXCSession);
+	}
+#endif
+
 	/* NOTE: nothing to be done for node_lock */
 	return len;
 }
@@ -795,31 +822,53 @@ gtm_serialize_pgxcnodeinfo(GTM_PGXCNodeInfo *data, char *buf, size_t buflen)
 /*
  * Return a deserialize number of PGXC node information
  */
+#ifdef XCP
+size_t
+gtm_deserialize_pgxcnodeinfo(GTM_PGXCNodeInfo *data, const char *buf, size_t buflen, PQExpBuffer *errorbuf)
+#else
 size_t
 gtm_deserialize_pgxcnodeinfo(GTM_PGXCNodeInfo *data, const char *buf, size_t buflen)
+#endif
 {
 	size_t len = 0;
 	uint32 len_wk;
 
 	/* GTM_PGXCNodeInfo.type */
+#ifdef XCP
+	if (len + sizeof(GTM_PGXCNodeType) > buflen)
+	{
+		printfGTMPQExpBuffer(errorbuf, "Buffer length error in deserialization of node info. buflen = %d", (int) buflen);
+		return (size_t) 0;
+	}
+#endif
 	memcpy(&(data->type), buf + len, sizeof(GTM_PGXCNodeType));
 	len += sizeof(GTM_PGXCNodeType);
 
 	/* GTM_PGXCNodeInfo.nodename*/
 	memcpy(&len_wk, buf + len, sizeof(uint32));
 	len += sizeof(uint32);
+
 	if (len_wk == 0)
 	{
 		data->nodename = NULL;
 	}
 	else
 	{
+#ifdef XCP
+		if (len + len_wk > buflen)
+		{
+			printfGTMPQExpBuffer(errorbuf, "Buffer length error in deserialization of node name");
+			return (size_t) 0;
+		}
+#endif
+
 		/* PGXCTODO: free memory */
 		data->nodename = (char *)genAlloc(len_wk + 1);
 		memcpy(data->nodename, buf + len, (size_t)len_wk);
 		data->nodename[len_wk] = 0;	/* null_terminate */
 		len += len_wk;
 	}
+
 
 	/* GTM_PGXCNodeInfo.proxyname*/
 	memcpy(&len_wk, buf + len, sizeof(uint32));
@@ -830,6 +879,13 @@ gtm_deserialize_pgxcnodeinfo(GTM_PGXCNodeInfo *data, const char *buf, size_t buf
 	}
 	else
 	{
+#ifdef XCP
+		if (len + len_wk > buflen)
+		{
+			printfGTMPQExpBuffer(errorbuf, "Buffer length error in deserialization of node info after proxy name");
+			return (size_t) 0;
+		}
+#endif
 		/* PGXCTODO: free memory */
 		data->proxyname = (char *)genAlloc(len_wk + 1);
 		memcpy(data->proxyname, buf + len, (size_t)len_wk);
@@ -838,6 +894,13 @@ gtm_deserialize_pgxcnodeinfo(GTM_PGXCNodeInfo *data, const char *buf, size_t buf
 	}
 
 	/* GTM_PGXCNodeInfo.port */
+#ifdef XCP
+	if (len + sizeof(GTM_PGXCNodePort) > buflen)
+	{
+		printfGTMPQExpBuffer(errorbuf, "Buffer length error in deserialization of node port");
+		return (size_t) 0;
+	}
+#endif
 	memcpy(&(data->port), buf + len, sizeof(GTM_PGXCNodePort));
 	len += sizeof(GTM_PGXCNodePort);
 
@@ -850,6 +913,13 @@ gtm_deserialize_pgxcnodeinfo(GTM_PGXCNodeInfo *data, const char *buf, size_t buf
 	}
 	else
 	{
+#ifdef XCP
+		if (len + len_wk > buflen)
+		{
+			printfGTMPQExpBuffer(errorbuf, "Buffer length error in deserialization of ipaddress");
+			return (size_t) 0;
+		}
+#endif
 		data->ipaddress = (char *)genAlloc(len_wk + 1);
 		memcpy(data->ipaddress, buf + len, (size_t)len_wk);
 		data->ipaddress[len_wk] = 0;	/* null_terminate */
@@ -865,6 +935,13 @@ gtm_deserialize_pgxcnodeinfo(GTM_PGXCNodeInfo *data, const char *buf, size_t buf
 	}
 	else
 	{
+#ifdef XCP
+		if (len + len_wk > buflen)
+		{
+			printfGTMPQExpBuffer(errorbuf, "Buffer length error in deserialization of node info after data folder");
+			return (size_t) 0;
+		}
+#endif
 		data->datafolder = (char *)genAlloc(len_wk + 1);
 		memcpy(data->datafolder, buf + len, (size_t)len_wk);
 		data->datafolder[len_wk] = 0;	/* null_terminate */
@@ -872,8 +949,38 @@ gtm_deserialize_pgxcnodeinfo(GTM_PGXCNodeInfo *data, const char *buf, size_t buf
 	}
 
 	/* GTM_PGXCNodeInfo.status */
+#ifdef XCP
+	if (len + sizeof(GTM_PGXCNodeStatus) > buflen)
+	{
+		printfGTMPQExpBuffer(errorbuf, "Buffer length error in deserialization of node info after status");
+		return (size_t) 0;
+	}
+#endif
 	memcpy(&(data->status), buf + len, sizeof(GTM_PGXCNodeStatus));
 	len += sizeof(GTM_PGXCNodeStatus);
+
+#ifdef XCP
+	/* GTM_PGXCNodeInfo.sessions */
+	memcpy(&len_wk, buf + len, sizeof(uint32));
+	len += sizeof(uint32);
+	data->max_sessions = len_wk;
+	if (len_wk > 0)
+		data->sessions = (GTM_PGXCSession *)
+				genAlloc(len_wk * sizeof(GTM_PGXCSession));
+	memcpy(&len_wk, buf + len, sizeof(uint32));
+	len += sizeof(uint32);
+	data->num_sessions = len_wk;
+	if (len_wk > 0)
+	{
+		if (len + (data->num_sessions * sizeof(GTM_PGXCSession)) > buflen)
+		{
+			printfGTMPQExpBuffer(errorbuf, "Buffer length error in deserialization of session info");
+			return (size_t) 0;
+		}
+		memcpy(data->sessions, buf + len, len_wk * sizeof(GTM_PGXCSession));
+		len += len_wk * sizeof(GTM_PGXCSession);
+	}
+#endif
 
 	/* NOTE: nothing to be done for node_lock */
 
@@ -894,7 +1001,13 @@ gtm_get_sequence_size(GTM_SeqInfo *seq)
 	len += sizeof(GTM_SequenceKeyType);   /* gs_key.gsk_type */
 	len += sizeof(GTM_Sequence);  /* gs_value */
 	len += sizeof(GTM_Sequence);  /* gs_init_value */
+#ifdef XCP
+	len += sizeof(uint32);		  /* gs_max_lastvals */
+	len += sizeof(uint32);		  /* gs_lastval_count */
+	len += seq->gs_lastval_count * sizeof(GTM_SeqLastVal); /* gs_last_values */
+#else
 	len += sizeof(GTM_Sequence);  /* gs_last_value */
+#endif
 	len += sizeof(GTM_Sequence);  /* gs_increment_by */
 	len += sizeof(GTM_Sequence);  /* gs_min_value */
 	len += sizeof(GTM_Sequence);  /* gs_max_value */
@@ -935,8 +1048,18 @@ gtm_serialize_sequence(GTM_SeqInfo *s, char *buf, size_t buflen)
 	memcpy(buf + len, &s->gs_init_value, sizeof(GTM_Sequence));
 	len += sizeof(GTM_Sequence);  /* gs_init_value */
 
+#ifdef XCP
+	memcpy(buf + len, &s->gs_max_lastvals, sizeof(uint32));
+	len += sizeof(uint32);		  /* gs_max_lastvals */
+	memcpy(buf + len, &s->gs_lastval_count, sizeof(uint32));
+	len += sizeof(uint32);		  /* gs_lastval_count */
+	memcpy(buf + len, s->gs_last_values,
+			s->gs_lastval_count * sizeof(GTM_SeqLastVal));
+	len += s->gs_lastval_count * sizeof(GTM_SeqLastVal); /* gs_last_values */
+#else
 	memcpy(buf + len, &s->gs_last_value, sizeof(GTM_Sequence));
 	len += sizeof(GTM_Sequence);  /* gs_last_value */
+#endif
 
 	memcpy(buf + len, &s->gs_increment_by, sizeof(GTM_Sequence));
 	len += sizeof(GTM_Sequence);  /* gs_increment_by */
@@ -965,13 +1088,11 @@ gtm_serialize_sequence(GTM_SeqInfo *s, char *buf, size_t buflen)
 /*
  * Return number of deserialized sequence information
  */
-GTM_SeqInfo *
-gtm_deserialize_sequence(const char *buf, size_t buflen)
+size_t
+gtm_deserialize_sequence(GTM_SeqInfo *seq, const char *buf, size_t buflen)
 {
 	size_t len = 0;
-	GTM_SeqInfo *seq;
 
-	seq = (GTM_SeqInfo *)genAlloc0(sizeof(GTM_SeqInfo));
 	seq->gs_key = (GTM_SequenceKeyData *)genAlloc0(sizeof(GTM_SequenceKeyData));
 
 	memcpy(&seq->gs_key->gsk_keylen, buf + len, sizeof(uint32));
@@ -990,8 +1111,24 @@ gtm_deserialize_sequence(const char *buf, size_t buflen)
 	memcpy(&seq->gs_init_value, buf + len, sizeof(GTM_Sequence));
 	len += sizeof(GTM_Sequence);  /* gs_init_value */
 
+#ifdef XCP
+	memcpy(&seq->gs_max_lastvals, buf + len, sizeof(uint32));
+	len += sizeof(uint32);		  /* gs_max_lastvals */
+	if (seq->gs_max_lastvals > 0)
+		seq->gs_last_values = (GTM_SeqLastVal *)
+				genAlloc(seq->gs_max_lastvals * sizeof(GTM_SeqLastVal));
+	memcpy(&seq->gs_lastval_count, buf + len, sizeof(uint32));
+	len += sizeof(uint32);		  /* gs_lastval_count */
+	if (seq->gs_lastval_count > 0)
+	{
+		memcpy(seq->gs_last_values, buf + len,
+				seq->gs_lastval_count * sizeof(GTM_SeqLastVal));
+		len += seq->gs_lastval_count * sizeof(GTM_SeqLastVal); /* gs_last_values */
+	}
+#else
 	memcpy(&seq->gs_last_value, buf + len, sizeof(GTM_Sequence));
 	len += sizeof(GTM_Sequence);  /* gs_last_value */
+#endif
 
 	memcpy(&seq->gs_increment_by, buf + len, sizeof(GTM_Sequence));
 	len += sizeof(GTM_Sequence);  /* gs_increment_by */
@@ -1014,5 +1151,5 @@ gtm_deserialize_sequence(const char *buf, size_t buflen)
 	memcpy(&seq->gs_state, buf + len, sizeof(uint32));
 	len += sizeof(uint32);
 
-	return seq;
+	return len;
 }

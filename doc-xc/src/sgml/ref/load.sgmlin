@@ -60,11 +60,21 @@ LOAD '<replaceable class="PARAMETER">filename</replaceable>'
    are installed there.)
   </para>
 
-&xconly;
 <!## XC>
+&xconly;
   <para>
    Please note that <command>LOAD</command> command loads library only
    locally.  You should load library manually in each Datanode and
+   Coordinator (you can use psql directly to Datanodes for this
+   puupose), or <filename>edit postgresql.conf</filename> for all the
+   Datanodes and Coordinators.
+  </para>
+<!## end>
+<!## XL>
+&xlonly;
+  <para>
+   Please note that <command>LOAD</command> command loads the library only
+   locally.  You should load library manually on each Datanode and
    Coordinator (you can use psql directly to Datanodes for this
    puupose), or <filename>edit postgresql.conf</filename> for all the
    Datanodes and Coordinators.

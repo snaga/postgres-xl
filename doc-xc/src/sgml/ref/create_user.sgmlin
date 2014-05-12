@@ -71,6 +71,9 @@ CREATE USER <replaceable class="PARAMETER">name</replaceable> [ [ WITH ] <replac
 <!## XC>
    <productname>Postgres-XC</productname> extension.  The SQL standard
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> extension.  The SQL standard
+<!## end>
    leaves the definition of users to the implementation.
   </para>
  </refsect1>

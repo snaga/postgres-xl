@@ -20,6 +20,9 @@
 <!## XC>
   <productname>Postgres-XC</productname> and are modelled after
 <!## end>
+<!## XL>
+  <productname>Postgres-XL</productname> and are modelled after
+<!## end>
   implementation concerns.  The information schema views do not,
   however, contain information about
 <!## PG>
@@ -27,6 +30,9 @@
 <!## end>
 <!## XC>
   <productname>Postgres-XC</productname>-specific features; to inquire
+<!## end>
+<!## XL>
+  <productname>Postgres-XL</productname>-specific features; to inquire
 <!## end>
   about those you need to query the system catalogs or other
   <productname>PostgreSQL</productname>-specific views.
@@ -43,6 +49,9 @@
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname> does not enforce this
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> does not enforce this
 <!## end>
    restriction.  <productname>PostgreSQL</productname>
    automatically-generated constraint names avoid duplicates in the
@@ -306,6 +315,9 @@
 <!## XC>
    which are sometimes called attributes in Postgres-XC contexts.)
 <!## end>
+<!## XL>
+   which are sometimes called attributes in Postgres-XL contexts.)
+<!## end>
   </para>
 
   <table>
@@ -501,6 +513,9 @@
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -511,6 +526,9 @@
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -523,6 +541,9 @@
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -533,6 +554,9 @@
 <!## end>
 <!## XC>
       <entry>Always null, because arrays always have unlimited maximum cardinality in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Always null, because arrays always have unlimited maximum cardinality in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -558,6 +582,9 @@
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
     </tbody>
    </tgroup>
@@ -579,6 +606,9 @@
 <!## end>
 <!## XC>
    sets available in the current database.  Since Postgres-XC does not
+<!## end>
+<!## XL>
+   sets available in the current database.  Since Postgres-XL does not
 <!## end>
    support multiple character sets within one database, this view only
    shows one, which is the database encoding.
@@ -615,6 +645,9 @@
 <!## XC>
        all supported by Postgres-XC).  Encoding forms are not exposed
 <!## end>
+<!## XL>
+       all supported by Postgres-XL).  Encoding forms are not exposed
+<!## end>
        as an SQL object, but are visible in this view.
       </para>
      </listitem>
@@ -641,6 +674,9 @@
 <!## end>
 <!## XC>
    You can think of an <quote>encoding</quote> in Postgres-XC either as
+<!## end>
+<!## XL>
+   You can think of an <quote>encoding</quote> in Postgres-XL either as
 <!## end>
    a character set or a character encoding form.  They will have the
    same name, and there can only be one in one database.
@@ -885,6 +921,9 @@
 <!## XC>
        SPACE</literal> is not supported by Postgres-XC.)
 <!## end>
+<!## XL>
+       SPACE</literal> is not supported by Postgres-XL.)
+<!## end>
       </entry>
      </row>
     </tbody>
@@ -903,6 +942,9 @@
 <!## end>
 <!## XC>
    applicable to.  In Postgres-XC, there is only one character set per
+<!## end>
+<!## XL>
+   applicable to.  In Postgres-XL, there is only one character set per
 <!## end>
    database (see explanation
    in <xref linkend="infoschema-character-sets">), so this view does
@@ -1128,6 +1170,9 @@
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname>, built-in data types behave
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname>, built-in data types behave
 <!## end>
    like user-defined types, so they are included here as well.  See
    also <xref linkend="infoschema-columns"> for details.
@@ -1386,6 +1431,9 @@
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -1396,6 +1444,9 @@
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -1408,6 +1459,9 @@
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -1418,6 +1472,9 @@
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -1430,6 +1487,9 @@
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -1440,6 +1500,9 @@
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -1505,6 +1568,9 @@
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -1515,6 +1581,9 @@
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -1527,6 +1596,9 @@
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -1537,6 +1609,9 @@
 <!## end>
 <!## XC>
       <entry>Always null, because arrays always have unlimited maximum cardinality in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Always null, because arrays always have unlimited maximum cardinality in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -1562,6 +1637,9 @@
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -1572,6 +1650,9 @@
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -1584,6 +1665,9 @@
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -1594,6 +1678,9 @@
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -1606,6 +1693,9 @@
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -1616,6 +1706,9 @@
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -1628,6 +1721,9 @@
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -1638,6 +1734,9 @@
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -1650,6 +1749,9 @@
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -1660,6 +1762,9 @@
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -1684,6 +1789,9 @@
 <!## XC>
    <productname>Postgres-XC</productname> contains additional ways to
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> contains additional ways to
+<!## end>
    define data types, their representation in the information schema
    can be somewhat difficult.  The column <literal>data_type</literal>
    is supposed to identify the underlying built-in type of the column.
@@ -1692,6 +1800,9 @@
 <!## end>
 <!## XC>
    In <productname>Postgres-XC</productname>, this means that the type
+<!## end>
+<!## XL>
+   In <productname>Postgres-XL</productname>, this means that the type
 <!## end>
    is defined in the system catalog schema
    <literal>pg_catalog</literal>.  This column might be useful if the
@@ -1706,6 +1817,9 @@
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname> treats built-in types like
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> treats built-in types like
 <!## end>
    user-defined types, built-in types appear here as well.  This is an
    extension of the SQL standard.)  These columns should be used if an
@@ -2042,6 +2156,9 @@
 <!## XC>
    Note that in <productname>Postgres-XC</productname>, built-in data
 <!## end>
+<!## XL>
+   Note that in <productname>Postgres-XL</productname>, built-in data
+<!## end>
    types behave like user-defined types, so they are included here as
    well.
   </para>
@@ -2181,6 +2298,9 @@
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -2191,6 +2311,9 @@
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -2203,6 +2326,9 @@
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -2213,6 +2339,9 @@
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -2225,6 +2354,9 @@
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -2235,6 +2367,9 @@
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -2336,6 +2471,9 @@
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -2346,6 +2484,9 @@
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -2358,6 +2499,9 @@
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -2368,6 +2512,9 @@
 <!## end>
 <!## XC>
       <entry>Always null, because arrays always have unlimited maximum cardinality in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Always null, because arrays always have unlimited maximum cardinality in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -2494,6 +2641,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Always null, since this information is not applied to array element data types in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Always null, since this information is not applied to array element data types in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -2504,6 +2654,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Always null, since this information is not applied to array element data types in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Always null, since this information is not applied to array element data types in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -2516,6 +2669,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -2526,6 +2682,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -2538,6 +2697,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -2548,6 +2710,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -2560,6 +2725,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -2570,6 +2738,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -2582,6 +2753,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Always null, since this information is not applied to array element data types in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Always null, since this information is not applied to array element data types in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -2592,6 +2766,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Always null, since this information is not applied to array element data types in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Always null, since this information is not applied to array element data types in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -2604,6 +2781,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Always null, since this information is not applied to array element data types in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Always null, since this information is not applied to array element data types in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -2614,6 +2794,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Always null, since this information is not applied to array element data types in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Always null, since this information is not applied to array element data types in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -2626,6 +2809,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Always null, since this information is not applied to array element data types in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Always null, since this information is not applied to array element data types in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -2636,6 +2822,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Always null, since this information is not applied to array element data types in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Always null, since this information is not applied to array element data types in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -2680,6 +2869,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -2690,6 +2882,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -2702,6 +2897,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -2712,6 +2910,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Always null, because arrays always have unlimited maximum cardinality in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Always null, because arrays always have unlimited maximum cardinality in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -3295,6 +3496,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -3305,6 +3509,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -3336,6 +3543,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Always null, since this information is not applied to parameter data types in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Always null, since this information is not applied to parameter data types in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -3346,6 +3556,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Always null, since this information is not applied to parameter data types in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Always null, since this information is not applied to parameter data types in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -3358,6 +3571,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -3368,6 +3584,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -3380,6 +3599,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -3390,6 +3612,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -3402,6 +3627,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -3412,6 +3640,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -3424,6 +3655,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Always null, since this information is not applied to parameter data types in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Always null, since this information is not applied to parameter data types in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -3434,6 +3668,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Always null, since this information is not applied to parameter data types in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Always null, since this information is not applied to parameter data types in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -3446,6 +3683,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Always null, since this information is not applied to parameter data types in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Always null, since this information is not applied to parameter data types in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -3456,6 +3696,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Always null, since this information is not applied to parameter data types in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Always null, since this information is not applied to parameter data types in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -3468,6 +3711,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Always null, since this information is not applied to parameter data types in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Always null, since this information is not applied to parameter data types in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -3478,6 +3724,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Always null, since this information is not applied to parameter data types in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Always null, since this information is not applied to parameter data types in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -3516,6 +3765,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -3526,6 +3778,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -3538,6 +3793,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -3548,6 +3806,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Always null, because arrays always have unlimited maximum cardinality in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Always null, because arrays always have unlimited maximum cardinality in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -3937,6 +4198,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
     </tbody>
    </tgroup>
@@ -4199,6 +4463,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -4209,6 +4476,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -4221,6 +4491,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -4231,6 +4504,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -4243,6 +4519,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -4253,6 +4532,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -4278,6 +4560,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Always null, since this information is not applied to return data types in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Always null, since this information is not applied to return data types in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -4288,6 +4573,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Always null, since this information is not applied to return data types in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Always null, since this information is not applied to return data types in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -4300,6 +4588,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -4310,6 +4601,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -4322,6 +4616,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -4332,6 +4629,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -4344,6 +4644,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -4354,6 +4657,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -4366,6 +4672,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Always null, since this information is not applied to return data types in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Always null, since this information is not applied to return data types in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -4376,6 +4685,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Always null, since this information is not applied to return data types in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Always null, since this information is not applied to return data types in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -4388,6 +4700,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Always null, since this information is not applied to return data types in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Always null, since this information is not applied to return data types in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -4398,6 +4713,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Always null, since this information is not applied to return data types in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Always null, since this information is not applied to return data types in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -4410,6 +4728,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Always null, since this information is not applied to return data types in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Always null, since this information is not applied to return data types in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -4420,6 +4741,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Always null, since this information is not applied to return data types in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Always null, since this information is not applied to return data types in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -4458,6 +4782,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -4468,6 +4795,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -4480,6 +4810,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -4490,6 +4823,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Always null, because arrays always have unlimited maximum cardinality in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Always null, because arrays always have unlimited maximum cardinality in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -4529,6 +4865,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
        in <productname>Postgres-XC</productname> it will contain
 <!## end>
+<!## XL>
+       in <productname>Postgres-XL</productname> it will contain
+<!## end>
        whatever source text was specified when the function was
        created.)
       </entry>
@@ -4562,6 +4901,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
        other parameter styles, which are not available in <productname>Postgres-XC</>.)
 <!## end>
+<!## XL>
+       other parameter styles, which are not available in <productname>Postgres-XL</>.)
+<!## end>
       </entry>
      </row>
 
@@ -4578,6 +4920,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
        levels available in <productname>Postgres-XC</> through the information schema.)
 <!## end>
+<!## XL>
+       levels available in <productname>Postgres-XL</> through the information schema.)
+<!## end>
       </entry>
      </row>
 
@@ -4592,6 +4937,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
        <productname>Postgres-XC</>.
+<!## end>
+<!## XL>
+       <productname>Postgres-XL</>.
 <!## end>
       </entry>
      </row>
@@ -4615,6 +4963,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -4629,6 +4980,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
        <productname>Postgres-XC</>.)
 <!## end>
+<!## XL>
+       <productname>Postgres-XL</>.)
+<!## end>
       </entry>
      </row>
 
@@ -4641,6 +4995,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -4652,6 +5009,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -4662,6 +5022,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -4685,6 +5048,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -4695,6 +5061,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -4707,6 +5076,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -4717,6 +5089,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -4729,6 +5104,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -4739,6 +5117,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -4751,6 +5132,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -4761,6 +5145,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -4773,6 +5160,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -4783,6 +5173,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -4795,6 +5188,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -4805,6 +5201,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -4817,6 +5216,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -4827,6 +5229,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -4839,6 +5244,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -4849,6 +5257,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -4861,6 +5272,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -4871,6 +5285,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -4883,6 +5300,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -4893,6 +5313,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -4905,6 +5328,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -4915,6 +5341,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -4927,6 +5356,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -4937,6 +5369,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -4949,6 +5384,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -4959,6 +5397,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -4971,6 +5412,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -4981,6 +5425,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -4993,6 +5440,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -5003,6 +5453,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -5015,6 +5468,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -5025,6 +5481,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
     </tbody>
@@ -5081,6 +5540,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -5091,6 +5553,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -5103,6 +5568,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -5113,6 +5581,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
     </tbody>
@@ -5172,6 +5643,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
        <productname>Postgres-XC</productname>, this is currently always
+<!## end>
+<!## XL>
+       <productname>Postgres-XL</productname>, this is currently always
 <!## end>
        <literal>bigint</literal>.
       </entry>
@@ -5265,6 +5739,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
    supported by <productname>Postgres-XC</productname>.  This is the
 <!## end>
+<!## XL>
+   supported by <productname>Postgres-XL</productname>.  This is the
+<!## end>
    same information that is presented in <xref linkend="features">.
    There you can also find some additional background information.
   </para>
@@ -5317,6 +5794,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
        current version of <productname>Postgres-XC</>, <literal>NO</literal> if not
 <!## end>
+<!## XL>
+       current version of <productname>Postgres-XL</>, <literal>NO</literal> if not
+<!## end>
       </entry>
      </row>
 
@@ -5329,6 +5809,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
        Always null, since the <productname>Postgres-XC</> development group does not
+<!## end>
+<!## XL>
+       Always null, since the <productname>Postgres-XL</> development group does not
 <!## end>
        perform formal testing of feature conformance
       </entry>
@@ -5427,11 +5910,17 @@ ORDER BY c.ordinal_position;
 <!## XC>
    <productname>Postgres-XC</productname>.
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname>.
+<!## end>
 <!## PG>
    <productname>PostgreSQL</productname> supports direct SQL and
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname> supports direct SQL and
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> supports direct SQL and
 <!## end>
    embedded SQL in C; that is all you will learn from this table.
   </para>
@@ -5509,6 +5998,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
        <literal>EMBEDDED</literal>, else null.  <productname>Postgres-XC</> only
 <!## end>
+<!## XL>
+       <literal>EMBEDDED</literal>, else null.  <productname>Postgres-XL</> only
+<!## end>
        supports the language C.
       </entry>
      </row>
@@ -5529,6 +6021,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
    supported by <productname>Postgres-XC</productname>.  Refer to <xref
+<!## end>
+<!## XL>
+   supported by <productname>Postgres-XL</productname>.  Refer to <xref
 <!## end>
    linkend="features"> for background information on feature packages.
   </para>
@@ -5569,6 +6064,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
        current version of <productname>Postgres-XC</>, <literal>NO</literal> if not
 <!## end>
+<!## XL>
+       current version of <productname>Postgres-XL</>, <literal>NO</literal> if not
+<!## end>
       </entry>
      </row>
 
@@ -5581,6 +6079,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
        Always null, since the <productname>Postgres-XC</> development group does not
+<!## end>
+<!## XL>
+       Always null, since the <productname>Postgres-XL</> development group does not
 <!## end>
        perform formal testing of feature conformance
       </entry>
@@ -5608,6 +6109,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname>.
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname>.
 <!## end>
   </para>
 
@@ -5647,6 +6151,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
        current version of <productname>Postgres-XC</>,
 <!## end>
+<!## XL>
+       current version of <productname>Postgres-XL</>,
+<!## end>
        <literal>NO</literal> if not
       </entry>
      </row>
@@ -5660,6 +6167,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
        Always null, since the <productname>Postgres-XC</> development group does not
+<!## end>
+<!## XL>
+       Always null, since the <productname>Postgres-XL</> development group does not
 <!## end>
        perform formal testing of feature conformance
       </entry>
@@ -5687,6 +6197,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname>.  This information is
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname>.  This information is
 <!## end>
    primarily intended for use in the context of the ODBC interface;
    users of other interfaces will probably find this information to be
@@ -5752,6 +6265,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
    required by various profiles of the SQL standard.  <productname>Postgres-XC</> does
+<!## end>
+<!## XL>
+   required by various profiles of the SQL standard.  <productname>Postgres-XL</> does
 <!## end>
    not track any SQL profiles, so this table is empty.
   </para>
@@ -5973,6 +6489,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
     </tbody>
    </tgroup>
@@ -6042,6 +6561,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
 <!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
+<!## end>
      </row>
 
      <row>
@@ -6052,6 +6574,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 
@@ -6111,6 +6636,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
        not supported by <productname>Postgres-XC</>.)
+<!## end>
+<!## XL>
+       not supported by <productname>Postgres-XL</>.)
 <!## end>
       </entry>
      </row>
@@ -6407,6 +6935,9 @@ ORDER BY c.ordinal_position;
 <!## XC>
    In <productname>Postgres-XC</productname>, this currently applies to
 <!## end>
+<!## XL>
+   In <productname>Postgres-XL</productname>, this currently applies to
+<!## end>
    collations, domains, foreign-data wrappers, and foreign servers.  There is one
    row for each combination of object, grantor, and grantee.
   </para>
@@ -6418,6 +6949,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
    in <productname>Postgres-XC</productname>, this view shows implicit
+<!## end>
+<!## XL>
+   in <productname>Postgres-XL</productname>, this view shows implicit
 <!## end>
    non-grantable <literal>USAGE</literal> privileges granted by the
    owner to <literal>PUBLIC</literal> for all collations and domains.  The other
@@ -6897,6 +7431,9 @@ ORDER BY c.ordinal_position;
 <!## end>
 <!## XC>
       <entry>Applies to a feature not available in <productname>Postgres-XC</></entry>
+<!## end>
+<!## XL>
+      <entry>Applies to a feature not available in <productname>Postgres-XL</></entry>
 <!## end>
      </row>
 

@@ -169,11 +169,7 @@ typedef struct GTM_Transactions
 
 extern GTM_Transactions	GTMTransactions;
 
-/*
- * This macro should be used with READ lock held on gt_TransArrayLock as the
- * number of open transactions might change when counting open transactions
- * if a lock is not hold.
- */
+/* NOTE: This macro should be used with READ lock held on gt_TransArrayLock! */
 #define GTM_CountOpenTransactions()	(gtm_list_length(GTMTransactions.gt_open_transactions))
 
 /*

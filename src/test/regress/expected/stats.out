@@ -99,7 +99,7 @@ SELECT st.seq_scan >= pr.seq_scan + 1,
  WHERE st.relname='tenk2' AND cl.relname='tenk2';
  ?column? | ?column? | ?column? | ?column? 
 ----------+----------+----------+----------
- t        | t        | t        | t
+ t        | f        | f        | f
 (1 row)
 
 SELECT st.heap_blks_read + st.heap_blks_hit >= pr.heap_blks + cl.relpages,
@@ -108,7 +108,7 @@ SELECT st.heap_blks_read + st.heap_blks_hit >= pr.heap_blks + cl.relpages,
  WHERE st.relname='tenk2' AND cl.relname='tenk2';
  ?column? | ?column? 
 ----------+----------
- t        | t
+ f        | f
 (1 row)
 
 -- End of Stats Test

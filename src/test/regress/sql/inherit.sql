@@ -2,6 +2,7 @@
 -- Test inheritance features
 --
 
+
 CREATE TABLE a (aa TEXT) distribute by roundrobin;
 CREATE TABLE b (bb TEXT) INHERITS (a) distribute by roundrobin;
 CREATE TABLE c (cc TEXT) INHERITS (a) distribute by roundrobin;
@@ -43,7 +44,7 @@ SELECT relname, a.* FROM ONLY a, pg_class where a.tableoid = pg_class.oid ORDER 
 SELECT relname, b.* FROM ONLY b, pg_class where b.tableoid = pg_class.oid ORDER BY relname, b.aa;
 SELECT relname, c.* FROM ONLY c, pg_class where c.tableoid = pg_class.oid ORDER BY relname, c.aa;
 SELECT relname, d.* FROM ONLY d, pg_class where d.tableoid = pg_class.oid ORDER BY relname, d.aa;
--- In Postgres-XC OIDs are not consistent across the cluster. Hence above
+-- In Postgres-XL OIDs are not consistent across the cluster. Hence above
 -- queries do not show any result. Hence in order to ensure data consistency, we
 -- add following SQLs. In case above set of queries start producing valid
 -- results in XC, we should remove the following set
@@ -70,7 +71,7 @@ SELECT relname, a.* FROM ONLY a, pg_class where a.tableoid = pg_class.oid ORDER 
 SELECT relname, b.* FROM ONLY b, pg_class where b.tableoid = pg_class.oid ORDER BY relname, b.aa;
 SELECT relname, c.* FROM ONLY c, pg_class where c.tableoid = pg_class.oid ORDER BY relname, c.aa;
 SELECT relname, d.* FROM ONLY d, pg_class where d.tableoid = pg_class.oid ORDER BY relname, d.aa;
--- In Postgres-XC OIDs are not consistent across the cluster. Hence above
+-- In Postgres-XL OIDs are not consistent across the cluster. Hence above
 -- queries do not show any result. Hence in order to ensure data consistency, we
 -- add following SQLs. In case above set of queries start producing valid
 -- results in XC, we should remove the following set
@@ -93,7 +94,7 @@ SELECT relname, a.* FROM ONLY a, pg_class where a.tableoid = pg_class.oid ORDER 
 SELECT relname, b.* FROM ONLY b, pg_class where b.tableoid = pg_class.oid ORDER BY relname, b.aa;
 SELECT relname, c.* FROM ONLY c, pg_class where c.tableoid = pg_class.oid ORDER BY relname, c.aa;
 SELECT relname, d.* FROM ONLY d, pg_class where d.tableoid = pg_class.oid ORDER BY relname, d.aa;
--- In Postgres-XC OIDs are not consistent across the cluster. Hence above
+-- In Postgres-XL OIDs are not consistent across the cluster. Hence above
 -- queries do not show any result. Hence in order to ensure data consistency, we
 -- add following SQLs. In case above set of queries start producing valid
 -- results in XC, we should remove the following set
@@ -118,7 +119,7 @@ SELECT relname, a.* FROM ONLY a, pg_class where a.tableoid = pg_class.oid ORDER 
 SELECT relname, b.* FROM ONLY b, pg_class where b.tableoid = pg_class.oid ORDER BY relname, b.aa;
 SELECT relname, c.* FROM ONLY c, pg_class where c.tableoid = pg_class.oid ORDER BY relname, c.aa;
 SELECT relname, d.* FROM ONLY d, pg_class where d.tableoid = pg_class.oid ORDER BY relname, d.aa;
--- In Postgres-XC OIDs are not consistent across the cluster. Hence above
+-- In Postgres-XL OIDs are not consistent across the cluster. Hence above
 -- queries do not show any result. Hence in order to ensure data consistency, we
 -- add following SQLs. In case above set of queries start producing valid
 -- results in XC, we should remove the following set
@@ -141,7 +142,7 @@ SELECT relname, a.* FROM ONLY a, pg_class where a.tableoid = pg_class.oid ORDER 
 SELECT relname, b.* FROM ONLY b, pg_class where b.tableoid = pg_class.oid ORDER BY relname, b.aa;
 SELECT relname, c.* FROM ONLY c, pg_class where c.tableoid = pg_class.oid ORDER BY relname, c.aa;
 SELECT relname, d.* FROM ONLY d, pg_class where d.tableoid = pg_class.oid ORDER BY relname, d.aa;
--- In Postgres-XC OIDs are not consistent across the cluster. Hence above
+-- In Postgres-XL OIDs are not consistent across the cluster. Hence above
 -- queries do not show any result. Hence in order to ensure data consistency, we
 -- add following SQLs. In case above set of queries start producing valid
 -- results in XC, we should remove the following set
@@ -153,9 +154,6 @@ SELECT * FROM ONLY a ORDER BY a.aa;
 SELECT * from ONLY b ORDER BY b.aa;
 SELECT * FROM ONLY c ORDER BY c.aa;
 SELECT * from ONLY d ORDER BY d.aa;
-
--- Enforce use of COMMIT instead of 2PC for temporary objects
-SET enforce_two_phase_commit TO off;
 
 -- Confirm PRIMARY KEY adds NOT NULL constraint to child table
 CREATE TEMP TABLE z (b TEXT, PRIMARY KEY(aa, b)) inherits (a);
@@ -184,7 +182,7 @@ update bar set f2 = f2 + 100 where f1 in (select f1 from foo);
 
 SELECT relname, bar.* FROM bar, pg_class where bar.tableoid = pg_class.oid
 order by 1,2;
--- In Postgres-XC OIDs are not consistent across the cluster. Hence above
+-- In Postgres-XL OIDs are not consistent across the cluster. Hence above
 -- queries do not show any result. Hence in order to ensure data consistency, we
 -- add following SQLs. In case above set of queries start producing valid
 -- results in XC, we should remove the following set
@@ -211,7 +209,7 @@ select * from d;
 
 -- Test non-inheritable parent constraints
 create table p1(ff1 int);
-alter table p1 add constraint p1chk check no inherit (ff1 > 0);
+alter table p1 add constraint p1chk check (ff1 > 0) no inherit;
 alter table p1 add constraint p2chk check (ff1 > 10);
 -- connoinherit should be true for NO INHERIT constraint
 select pc.relname, pgc.conname, pgc.contype, pgc.conislocal, pgc.coninhcount, pgc.connoinherit from pg_class as pc inner join pg_constraint as pgc on (pgc.conrelid = pc.oid) where pc.relname = 'p1' order by 1,2;
@@ -362,16 +360,52 @@ SELECT a.attrelid::regclass, a.attname, a.attinhcount, e.expected
 
 DROP TABLE inht1, inhs1 CASCADE;
 
+
+-- Test non-inheritable indices [UNIQUE, EXCLUDE] contraints
+CREATE TABLE test_constraints (id int, val1 varchar, val2 int, UNIQUE(val1, val2));
+CREATE TABLE test_constraints_inh () INHERITS (test_constraints);
+\d+ test_constraints
+ALTER TABLE ONLY test_constraints DROP CONSTRAINT test_constraints_val1_val2_key;
+\d+ test_constraints
+\d+ test_constraints_inh
+DROP TABLE test_constraints_inh;
+DROP TABLE test_constraints;
+
+CREATE TABLE test_ex_constraints (
+    c circle,
+    EXCLUDE USING gist (c WITH &&)
+);
+CREATE TABLE test_ex_constraints_inh () INHERITS (test_ex_constraints);
+\d+ test_ex_constraints
+ALTER TABLE test_ex_constraints DROP CONSTRAINT test_ex_constraints_c_excl;
+\d+ test_ex_constraints
+\d+ test_ex_constraints_inh
+DROP TABLE test_ex_constraints_inh;
+DROP TABLE test_ex_constraints;
+
+-- Test non-inheritable foreign key contraints
+CREATE TABLE test_primary_constraints(id int PRIMARY KEY);
+CREATE TABLE test_foreign_constraints(id1 int REFERENCES test_primary_constraints(id));
+CREATE TABLE test_foreign_constraints_inh () INHERITS (test_foreign_constraints);
+\d+ test_primary_constraints
+\d+ test_foreign_constraints
+ALTER TABLE test_foreign_constraints DROP CONSTRAINT test_foreign_constraints_id1_fkey;
+\d+ test_foreign_constraints
+\d+ test_foreign_constraints_inh
+DROP TABLE test_foreign_constraints_inh;
+DROP TABLE test_foreign_constraints;
+DROP TABLE test_primary_constraints;
+
 --
 -- Test parameterized append plans for inheritance trees
 --
 
-create table patest0 (id, x) as
+create temp table patest0 (id, x) as
   select x, x from generate_series(0,1000) x;
-create table patest1() inherits (patest0);
+create temp table patest1() inherits (patest0);
 insert into patest1
   select x, x from generate_series(0,1000) x;
-create table patest2() inherits (patest0);
+create temp table patest2() inherits (patest0);
 insert into patest2
   select x, x from generate_series(0,1000) x;
 create index patest0i on patest0(id);
@@ -382,14 +416,14 @@ analyze patest1;
 analyze patest2;
 
 explain (costs off, num_nodes off, nodes off)
-select * from patest0 join (select f1 from int4_tbl limit 1) ss on id = f1;
-select * from patest0 join (select f1 from int4_tbl limit 1) ss on id = f1;
+select * from patest0 join (select f1 from int4_tbl where f1 = 0 limit 1) ss on id = f1;
+select * from patest0 join (select f1 from int4_tbl where f1 = 0 limit 1) ss on id = f1;
 
 drop index patest2i;
 
 explain (costs off, num_nodes off, nodes off)
-select * from patest0 join (select f1 from int4_tbl limit 1) ss on id = f1;
-select * from patest0 join (select f1 from int4_tbl limit 1) ss on id = f1;
+select * from patest0 join (select f1 from int4_tbl where f1 = 0 limit 1) ss on id = f1;
+select * from patest0 join (select f1 from int4_tbl where f1 = 0 limit 1) ss on id = f1;
 
 drop table patest0 cascade;
 

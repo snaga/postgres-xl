@@ -3,6 +3,11 @@
  * gtm_seq.c
  *	Sequence handling on GTM
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
@@ -47,6 +52,9 @@ static int seq_add_seqinfo(GTM_SeqInfo *seqinfo);
 static int seq_remove_seqinfo(GTM_SeqInfo *seqinfo);
 static GTM_SequenceKey seq_copy_key(GTM_SequenceKey key);
 static int seq_drop_with_dbkey(GTM_SequenceKey nsp);
+#ifdef XCP
+static GTM_Sequence get_rangemax(GTM_SeqInfo *seqinfo, GTM_Sequence range);
+#endif
 
 /*
  * Get the hash value given the sequence key
@@ -331,8 +339,14 @@ GTM_SeqOpen(GTM_SequenceKey seqkey,
 	 */
 	seqinfo->gs_cycle = cycle;
 
+#ifdef XCP
+	seqinfo->gs_max_lastvals = 0;
+	seqinfo->gs_lastval_count = 0;
+	seqinfo->gs_last_values = NULL;
+#else
 	/* Set the last value in case of a future restart */
 	seqinfo->gs_last_value = seqinfo->gs_init_value;
+#endif
 
 	if ((errcode = seq_add_seqinfo(seqinfo)))
 	{
@@ -386,14 +400,23 @@ int GTM_SeqAlter(GTM_SequenceKey seqkey,
 	{
 		/* Restart command has been used, reset the sequence */
 		seqinfo->gs_called = false;
+#ifdef XCP
+		seqinfo->gs_value = lastval;
+#else
 		seqinfo->gs_init_value = seqinfo->gs_last_value = lastval;
+#endif
 	}
+#ifdef XCP
+	if (seqinfo->gs_init_value != startval)
+		seqinfo->gs_init_value = startval;
+#else
 	else
 	{
 		/* Start has been used, reinitialize init value */
 		if (seqinfo->gs_init_value != startval)
 			seqinfo->gs_init_value = seqinfo->gs_last_value = startval;
 	}
+#endif
 
 	/* Remove the old key with the old name */
 	GTM_RWLockRelease(&seqinfo->gs_lock);
@@ -433,7 +456,14 @@ GTM_SeqRestore(GTM_SequenceKey seqkey,
 	seqinfo->gs_min_value = minval;
 	seqinfo->gs_max_value = maxval;
 
+#ifdef XCP
+	seqinfo->gs_init_value = startval;
+	seqinfo->gs_max_lastvals = 0;
+	seqinfo->gs_lastval_count = 0;
+	seqinfo->gs_last_values = NULL;
+#else
 	seqinfo->gs_init_value = seqinfo->gs_last_value = startval;
+#endif
 	seqinfo->gs_value = curval;
 
 	/*
@@ -561,7 +591,7 @@ seq_drop_with_dbkey(GTM_SequenceKey nsp)
 					/* Sequence is not is busy state, it can be deleted safely */
 
 					bucket->shb_list = gtm_list_delete_cell(bucket->shb_list, cell, prev);
-					elog(LOG, "Sequence %s was deleted from GTM",
+					elog(DEBUG1, "Sequence %s was deleted from GTM",
 							  curr_seqinfo->gs_key->gsk_key);
 
 					deleted = true;
@@ -625,7 +655,17 @@ GTM_SeqRename(GTM_SequenceKey seqkey, GTM_SequenceKey newseqkey)
 	newseqinfo->gs_cycle = seqinfo->gs_cycle;
 
 	newseqinfo->gs_state = seqinfo->gs_state;
+#ifdef XCP
+	newseqinfo->gs_max_lastvals = seqinfo->gs_max_lastvals;
+	newseqinfo->gs_lastval_count = seqinfo->gs_lastval_count;
+	newseqinfo->gs_last_values = (GTM_SeqLastVal *)
+			MemoryContextAlloc(TopMostMemoryContext,
+					newseqinfo->gs_max_lastvals * sizeof(GTM_SeqLastVal));
+	memcpy(newseqinfo->gs_last_values, seqinfo->gs_last_values,
+		   newseqinfo->gs_max_lastvals * sizeof(GTM_SeqLastVal));
+#else
 	newseqinfo->gs_last_value = seqinfo->gs_last_value;
+#endif
 
 	/* Add the copy to the list */
 	if ((errcode = seq_add_seqinfo(newseqinfo))) /* a lock is taken here for the new sequence */
@@ -648,6 +688,333 @@ GTM_SeqRename(GTM_SequenceKey seqkey, GTM_SequenceKey newseqkey)
 	return errcode;
 }
 
+#ifdef XCP
+/*
+ * Get current value for the sequence without incrementing it
+ */
+void
+GTM_SeqGetCurrent(GTM_SequenceKey seqkey, char *coord_name,
+				  int coord_procid, GTM_Sequence *result)
+{
+	GTM_SeqInfo *seqinfo = seq_find_seqinfo(seqkey);
+	int			i;
+	bool		found = false;
+
+	elog(DEBUG1, "Look up last value of Sequence %s in session %s:%d",
+			seqkey->gsk_key, coord_name, coord_procid);
+
+	if (seqinfo == NULL)
+	{
+		ereport(ERROR,
+				(EINVAL,
+				 errmsg("sequence \"%s\" does not exist", seqkey->gsk_key)));
+		return;
+	}
+
+	GTM_RWLockAcquire(&seqinfo->gs_lock, GTM_LOCKMODE_READ);
+
+	for (i = 0; i < seqinfo->gs_lastval_count; i++)
+	{
+		if (strcmp(seqinfo->gs_last_values[i].gs_coord_name, coord_name) == 0 &&
+				seqinfo->gs_last_values[i].gs_coord_procid == coord_procid)
+		{
+			*result = seqinfo->gs_last_values[i].gs_last_value;
+			found = true;
+			break;
+		}
+	}
+
+	GTM_RWLockRelease(&seqinfo->gs_lock);
+	seq_release_seqinfo(seqinfo);
+	if (!found)
+		ereport(ERROR,
+				(ERANGE,
+				 errmsg("currval of sequence \"%s\" is not yet defined in this session",
+						seqkey->gsk_key)));
+
+}
+
+
+/*
+ * Store the sequence value as last for the specified distributed session
+ */
+static void
+seq_set_lastval(GTM_SeqInfo *seqinfo, char *coord_name,
+				int coord_procid, GTM_Sequence newval)
+{
+	GTM_SeqLastVal *lastval;
+	int			i;
+
+	/* Can not assign value to not defined value */
+	if (coord_name == NULL || coord_procid == 0)
+		return;
+
+	elog(DEBUG1, "Remember last value of Sequence %s in session %s:%d",
+			seqinfo->gs_key->gsk_key, coord_name, coord_procid);
+
+	/*
+	 * If last value is already defined for the session update it
+	 */
+	for (i = 0; i < seqinfo->gs_lastval_count; i++)
+	{
+		if (strcmp(seqinfo->gs_last_values[i].gs_coord_name, coord_name) == 0 &&
+				seqinfo->gs_last_values[i].gs_coord_procid == coord_procid)
+		{
+			seqinfo->gs_last_values[i].gs_last_value = newval;
+			return;
+		}
+	}
+
+	/* Not found, add new entry for the distributed session */
+	if (seqinfo->gs_lastval_count == seqinfo->gs_max_lastvals)
+	{
+		/* Need more room */
+#define INIT_LASTVALS 16
+
+		if (seqinfo->gs_max_lastvals == 0)
+		{
+			/* No values at all, palloc memory block */
+			MemoryContext oldContext;
+			oldContext = MemoryContextSwitchTo(TopMostMemoryContext);
+			seqinfo->gs_last_values = (GTM_SeqLastVal *)
+					palloc(INIT_LASTVALS * sizeof(GTM_SeqLastVal));
+			seqinfo->gs_max_lastvals = INIT_LASTVALS;
+			MemoryContextSwitchTo(oldContext);
+		}
+		else
+		{
+			/* Increase existing array */
+			int newsize = seqinfo->gs_max_lastvals * 2;
+			seqinfo->gs_last_values = (GTM_SeqLastVal *)
+					repalloc(seqinfo->gs_last_values,
+							 newsize * sizeof(GTM_SeqLastVal));
+			seqinfo->gs_max_lastvals = newsize;
+		}
+	}
+
+	/* Populate new entry */
+	lastval = &seqinfo->gs_last_values[seqinfo->gs_lastval_count++];
+	memcpy(lastval->gs_coord_name, coord_name, strlen(coord_name) + 1);
+	lastval->gs_coord_procid = coord_procid;
+	lastval->gs_last_value = newval;
+}
+
+
+/*
+ * Set values for the sequence
+ */
+int
+GTM_SeqSetVal(GTM_SequenceKey seqkey, char *coord_name,
+			  int coord_procid, GTM_Sequence nextval, bool iscalled)
+{
+	GTM_SeqInfo *seqinfo = seq_find_seqinfo(seqkey);
+
+	if (seqinfo == NULL)
+	{
+		ereport(LOG,
+				(EINVAL,
+				 errmsg("The sequence with the given key does not exist")));
+
+		return EINVAL;
+	}
+
+	GTM_RWLockAcquire(&seqinfo->gs_lock, GTM_LOCKMODE_WRITE);
+
+	seqinfo->gs_value = nextval;
+	seqinfo->gs_called = iscalled;
+
+	/* If sequence is not called, update last value for the session */
+	if (!iscalled)
+		seq_set_lastval(seqinfo, coord_name, coord_procid, nextval);
+
+	/* Remove the old key with the old name */
+	GTM_RWLockRelease(&seqinfo->gs_lock);
+	seq_release_seqinfo(seqinfo);
+
+	return 0;
+}
+
+/*
+ * Get next value for the sequence
+ */
+int
+GTM_SeqGetNext(GTM_SequenceKey seqkey, char *coord_name,
+			   int coord_procid, GTM_Sequence range,
+			   GTM_Sequence *result, GTM_Sequence *rangemax)
+{
+	GTM_SeqInfo *seqinfo = seq_find_seqinfo(seqkey);
+
+	if (seqinfo == NULL)
+	{
+		ereport(LOG,
+				(EINVAL,
+				 errmsg("The sequence with the given key does not exist")));
+		return EINVAL;
+	}
+
+	GTM_RWLockAcquire(&seqinfo->gs_lock, GTM_LOCKMODE_WRITE);
+
+	/*
+	 * If the sequence is called for the first time return the current value.
+	 * It should be already initialized.
+	 */
+	if (!SEQ_IS_CALLED(seqinfo))
+	{
+		*result = seqinfo->gs_value;
+		seqinfo->gs_called = true;
+	}
+	else
+	{
+		if (SEQ_IS_ASCENDING(seqinfo))
+		{
+			/*
+			 * Check if the sequence is about to wrap-around. If the sequence
+			 * does not support wrap-around, throw an error.
+			 * Beware overflow!
+			 */
+			if (seqinfo->gs_max_value - seqinfo->gs_increment_by
+					>= seqinfo->gs_value)
+			{
+				int newval = seqinfo->gs_value + seqinfo->gs_increment_by;
+				*result = seqinfo->gs_value = newval;
+			}
+			else if (SEQ_IS_CYCLE(seqinfo))
+				*result = seqinfo->gs_value = seqinfo->gs_min_value;
+			else
+			{
+				GTM_RWLockRelease(&seqinfo->gs_lock);
+				seq_release_seqinfo(seqinfo);
+				ereport(LOG,
+						(ERANGE,
+						 errmsg("Sequence reached maximum value")));
+				return ERANGE;
+			}
+		}
+		else
+		{
+			/*
+			 * Check if the sequence is about to wrap-around. If the sequence
+			 * does not support wrap-around, throw an error.
+			 * Beware overflow!
+			 *
+			 * Note: The gs_increment_by is a signed integer and is negative for
+			 * descending sequences. So we don't need special handling below
+			 */
+			if (seqinfo->gs_min_value - seqinfo->gs_increment_by
+					<= seqinfo->gs_value)
+			{
+				int newval = seqinfo->gs_value + seqinfo->gs_increment_by;
+				*result = seqinfo->gs_value = newval;
+			}
+			else if (SEQ_IS_CYCLE(seqinfo))
+				*result = seqinfo->gs_value = seqinfo->gs_max_value;
+			else
+			{
+				GTM_RWLockRelease(&seqinfo->gs_lock);
+				seq_release_seqinfo(seqinfo);
+				ereport(LOG,
+						(ERANGE,
+						 errmsg("Sequence reached maximum value")));
+				return ERANGE;
+			}
+		}
+	}
+	/* if range is specified calculate valid max value for this range */
+	if (range > 1)
+		*rangemax = get_rangemax(seqinfo, range);
+	else
+		*rangemax = *result;
+	/*
+	 * lastval has to be set to rangemax obtained above because
+	 * values upto it will be consumed by this nextval caller and
+	 * the next caller should get values starting above this
+	 * lastval. Same reasoning for gs_value, but we still return
+	 * result as the first calculated gs_value above to form the
+	 * local starting seed at the caller. This will go upto the
+	 * rangemax value before contacting GTM again..
+	 */
+	seq_set_lastval(seqinfo, coord_name, coord_procid, *rangemax);
+	seqinfo->gs_value = *rangemax;
+	GTM_RWLockRelease(&seqinfo->gs_lock);
+	seq_release_seqinfo(seqinfo);
+	return 0;
+}
+
+/*
+ * Given a sequence and the requested range for its values, calculate
+ * the legitimate maximum permissible value for this range. In
+ * particular we need to be careful about overflow and underflow for
+ * mix and max types of sequences..
+ */
+static GTM_Sequence
+get_rangemax(GTM_SeqInfo *seqinfo, GTM_Sequence range)
+{
+	GTM_Sequence rangemax = seqinfo->gs_value;
+
+	/*
+	 * Deduct 1 from range because the currval has been accounted
+	 * for already before this call has been made
+	 */
+	range--;
+	if (SEQ_IS_ASCENDING(seqinfo))
+	{
+		/*
+		 * Check if the sequence will overflow because of the range
+		 * request. If yes, cap it at close to or equal to max value
+		 */
+		while (range != 0 &&
+				(seqinfo->gs_max_value - seqinfo->gs_increment_by >=
+				  rangemax))
+		{
+			rangemax += seqinfo->gs_increment_by;
+			range--;
+		}
+	}
+	else
+	{
+		/*
+		 * Check if the sequence will underflow because of the range
+		 * request. If yes, cap it at close to or equal to min value
+		 *
+		 * Note: The gs_increment_by is a signed integer and is negative for
+		 * descending sequences. So we don't need special handling below
+		 */
+		while (range != 0 &&
+				(seqinfo->gs_min_value - seqinfo->gs_increment_by <=
+				 rangemax))
+		{
+			rangemax += seqinfo->gs_increment_by;
+			range--;
+		}
+	}
+	return rangemax;
+}
+#else
+/*
+ * Get current value for the sequence without incrementing it
+ */
+GTM_Sequence
+GTM_SeqGetCurrent(GTM_SequenceKey seqkey)
+{
+	GTM_SeqInfo *seqinfo = seq_find_seqinfo(seqkey);
+	GTM_Sequence value;
+
+	if (seqinfo == NULL)
+	{
+		ereport(LOG,
+				(EINVAL,
+				 errmsg("The sequence with the given key does not exist")));
+		return InvalidSequenceValue;
+	}
+
+	GTM_RWLockAcquire(&seqinfo->gs_lock, GTM_LOCKMODE_WRITE);
+
+	value = seqinfo->gs_last_value;
+
+	GTM_RWLockRelease(&seqinfo->gs_lock);
+	seq_release_seqinfo(seqinfo);
+	return value;
+}
 
 /*
  * Set values for the sequence
@@ -769,6 +1136,7 @@ GTM_SeqGetNext(GTM_SequenceKey seqkey)
 	seq_release_seqinfo(seqinfo);
 	return value;
 }
+#endif
 
 /*
  * Reset the sequence
@@ -787,7 +1155,11 @@ GTM_SeqReset(GTM_SequenceKey seqkey)
 	}
 
 	GTM_RWLockAcquire(&seqinfo->gs_lock, GTM_LOCKMODE_WRITE);
+#ifdef XCP
+	seqinfo->gs_value = seqinfo->gs_init_value;
+#else
 	seqinfo->gs_value = seqinfo->gs_last_value = seqinfo->gs_init_value;
+#endif
 	GTM_RWLockRelease(&seqinfo->gs_lock);
 
 	seq_release_seqinfo(seqinfo);
@@ -856,7 +1228,7 @@ ProcessSequenceInitCommand(Port *myport, StringInfo message, bool is_backup)
 
 	MemoryContextSwitchTo(oldContext);
 
-	elog(LOG, "Opening sequence %s", seqkey.gsk_key);
+	elog(DEBUG1, "Opening sequence %s", seqkey.gsk_key);
 
 	pq_getmsgend(message);
 
@@ -869,7 +1241,7 @@ ProcessSequenceInitCommand(Port *myport, StringInfo message, bool is_backup)
 			GTM_Conn *oldconn = GetMyThreadInfo->thr_conn->standby;
 			int count = 0;
 
-			elog(LOG, "calling open_sequence() for standby GTM %p.", GetMyThreadInfo->thr_conn->standby);
+			elog(DEBUG1, "calling open_sequence() for standby GTM %p.", GetMyThreadInfo->thr_conn->standby);
 
 		retry:
 			rc = bkup_open_sequence(GetMyThreadInfo->thr_conn->standby,
@@ -887,8 +1259,12 @@ ProcessSequenceInitCommand(Port *myport, StringInfo message, bool is_backup)
 			if (Backup_synchronously && (myport->remote_type != GTM_NODE_GTM_PROXY))
 				gtm_sync_standby(GetMyThreadInfo->thr_conn->standby);
 
-			elog(LOG, "open_sequence() returns rc %d.", rc);
+			elog(DEBUG1, "open_sequence() returns rc %d.", rc);
 		}
+#ifdef XCP
+		/* Save control file with new seq info */
+        SaveControlInfo();
+#endif
 		/*
 		 * Send a SUCCESS message back to the client
 		 */
@@ -961,7 +1337,7 @@ ProcessSequenceAlterCommand(Port *myport, StringInfo message, bool is_backup)
 	 */
 	oldContext = MemoryContextSwitchTo(TopMostMemoryContext);
 
-	elog(LOG, "Altering sequence key %s", seqkey.gsk_key);
+	elog(DEBUG1, "Altering sequence key %s", seqkey.gsk_key);
 
 	if ((errcode = GTM_SeqAlter(&seqkey, increment, minval, maxval, startval, lastval, cycle, is_restart)))
 		ereport(ERROR,
@@ -981,7 +1357,7 @@ ProcessSequenceAlterCommand(Port *myport, StringInfo message, bool is_backup)
 			GTM_Conn *oldconn = GetMyThreadInfo->thr_conn->standby;
 			int count = 0;
 
-			elog(LOG, "calling alter_sequence() for standby GTM %p.", GetMyThreadInfo->thr_conn->standby);
+			elog(DEBUG1, "calling alter_sequence() for standby GTM %p.", GetMyThreadInfo->thr_conn->standby);
 
 		retry:
 			rc = bkup_alter_sequence(GetMyThreadInfo->thr_conn->standby,
@@ -1001,8 +1377,12 @@ ProcessSequenceAlterCommand(Port *myport, StringInfo message, bool is_backup)
 			if (Backup_synchronously && (myport->remote_type != GTM_NODE_GTM_PROXY))
 				gtm_sync_standby(GetMyThreadInfo->thr_conn->standby);
 
-			elog(LOG, "alter_sequence() returns rc %d.", rc);
+			elog(DEBUG1, "alter_sequence() returns rc %d.", rc);
 		}
+#ifdef XCP
+		/* Save control file info */
+        SaveControlInfo();
+#endif
 		pq_beginmessage(&buf, 'S');
 		pq_sendint(&buf, SEQUENCE_ALTER_RESULT, 4);
 		if (myport->remote_type == GTM_NODE_GTM_PROXY)
@@ -1034,9 +1414,9 @@ void
 ProcessSequenceListCommand(Port *myport, StringInfo message)
 {
 	StringInfoData buf;
-	int seq_count = 0;
-	MemoryContext oldContext;
-	GTM_SeqInfo *seq_list[1024]; /* FIXME: make it expandable. */
+	int seq_count;
+	int seq_maxcount;
+	GTM_SeqInfo **seq_list;
 	int i;
 
 	if (Recovery_IsStandby())
@@ -1044,39 +1424,57 @@ ProcessSequenceListCommand(Port *myport, StringInfo message)
 			(EPERM,
 			 errmsg("Operation not permitted under the standby mode.")));
 
-	memset(seq_list, 0, sizeof(GTM_SeqInfo *) * 1024);
-
-	/*
-	 * We must use the TopMostMemoryContext because the sequence information is
-	 * not bound to a thread and can outlive any of the thread specific
-	 * contextes.
-	 */
-	oldContext = MemoryContextSwitchTo(TopMostMemoryContext);
+	seq_count = 0;
+	seq_maxcount = 1024;
+	seq_list = (GTM_SeqInfo **) palloc(seq_maxcount * sizeof(GTM_SeqInfo *));;
 
 	/*
 	 * Store pointers to all GTM_SeqInfo in the hash buckets into an array.
 	 */
+	for (i = 0 ; i < SEQ_HASH_TABLE_SIZE ; i++)
 	{
 		GTM_SeqInfoHashBucket *b;
 		gtm_ListCell *elem;
 
-		for (i = 0 ; i < SEQ_HASH_TABLE_SIZE ; i++)
+		b = &GTMSequences[i];
+
+		GTM_RWLockAcquire(&b->shb_lock, GTM_LOCKMODE_READ);
+
+		gtm_foreach(elem, b->shb_list)
 		{
-			b = &GTMSequences[i];
-
-			GTM_RWLockAcquire(&b->shb_lock, GTM_LOCKMODE_READ);
-
-			gtm_foreach(elem, b->shb_list)
+			/* Allocate larger array if required */
+			if (seq_count == seq_maxcount)
 			{
-				seq_list[seq_count] = (GTM_SeqInfo *) gtm_lfirst(elem);
-				seq_count++;
+				int 			newcount;
+				GTM_SeqInfo   **newlist;
+
+				newcount = 2 * seq_maxcount;
+				newlist = (GTM_SeqInfo **) repalloc(seq_list, newcount * sizeof(GTM_SeqInfo *));
+				/*
+				 * If failed try to get less. It is unlikely to happen, but
+				 * let's be safe.
+				 */
+				while (newlist == NULL)
+				{
+					newcount = seq_maxcount + (newcount - seq_maxcount) / 2 - 1;
+					if (newcount <= seq_maxcount)
+					{
+						/* give up */
+						ereport(ERROR,
+								(ERANGE,
+								 errmsg("Can not list all the sequences")));
+					}
+					newlist = (GTM_SeqInfo **) repalloc(seq_list, newcount * sizeof(GTM_SeqInfo *));
+				}
+				seq_maxcount = newcount;
+				seq_list = newlist;
 			}
-
-			GTM_RWLockRelease(&b->shb_lock);
+			seq_list[seq_count] = (GTM_SeqInfo *) gtm_lfirst(elem);
+			seq_count++;
 		}
-	}
 
-	MemoryContextSwitchTo(oldContext);
+		GTM_RWLockRelease(&b->shb_lock);
+	}
 
 	pq_getmsgend(message);
 
@@ -1093,33 +1491,123 @@ ProcessSequenceListCommand(Port *myport, StringInfo message)
 	/* Send a number of sequences */
 	pq_sendint(&buf, seq_count, 4);
 
-	for (i = 0 ; i < seq_count ; i++)
+	/*
+	 * Send sequences from the array
+	 */
 	{
-		char *seq_buf;
-		size_t seq_buflen;
+		/*
+		 * TODO set initial size big enough to fit any sequence, and avoid
+		 * reallocations.
+		 */
+		size_t seq_maxlen = 256;
+		char *seq_buf = (char *) palloc(seq_maxlen);
 
-		seq_buflen = gtm_get_sequence_size(seq_list[i]);
-		seq_buf = (char *)malloc(seq_buflen);
+		for (i = 0 ; i < seq_count ; i++)
+		{
+			size_t seq_buflen = gtm_get_sequence_size(seq_list[i]);
+			if (seq_buflen > seq_maxlen)
+			{
+				seq_maxlen = seq_buflen;
+				seq_buf = (char *)repalloc(seq_buf, seq_maxlen);
+			}
 
-		gtm_serialize_sequence(seq_list[i], seq_buf, seq_buflen);
+			gtm_serialize_sequence(seq_list[i], seq_buf, seq_buflen);
 
-		elog(LOG, "seq_buflen = %ld", seq_buflen);
+			elog(DEBUG1, "seq_buflen = %ld", seq_buflen);
 
-		pq_sendint(&buf, seq_buflen, 4);
-		pq_sendbytes(&buf, seq_buf, seq_buflen);
-
-		free(seq_buf);
+			pq_sendint(&buf, seq_buflen, 4);
+			pq_sendbytes(&buf, seq_buf, seq_buflen);
+		}
 	}
 
 	pq_endmessage(myport, &buf);
 
-	elog(LOG, "ProcessSequenceListCommand() done.");
+	elog(DEBUG1, "ProcessSequenceListCommand() done.");
 
 	if (myport->remote_type != GTM_NODE_GTM_PROXY)
 		/* Don't flush to the backup because this does not change the internal status */
 		pq_flush(myport);
 }
 
+
+/*
+ * Process MSG_SEQUENCE_GET_CURRENT message
+ */
+void
+ProcessSequenceGetCurrentCommand(Port *myport, StringInfo message)
+{
+	GTM_SequenceKeyData seqkey;
+	StringInfoData buf;
+	GTM_Sequence seqval;
+#ifdef XCP
+	uint32 coord_namelen;
+	char  *coord_name;
+	uint32 coord_procid;
+#endif
+
+	seqkey.gsk_keylen = pq_getmsgint(message, sizeof (seqkey.gsk_keylen));
+	seqkey.gsk_key = (char *)pq_getmsgbytes(message, seqkey.gsk_keylen);
+#ifdef XCP
+	coord_namelen = pq_getmsgint(message, sizeof(coord_namelen));
+	if (coord_namelen > 0)
+		coord_name = (char *)pq_getmsgbytes(message, coord_namelen);
+	else
+		coord_name = NULL;
+	coord_procid = pq_getmsgint(message, sizeof(coord_procid));
+
+	GTM_SeqGetCurrent(&seqkey, coord_name, coord_procid, &seqval);
+#else
+	seqval = GTM_SeqGetCurrent(&seqkey);
+	if (!SEQVAL_IS_VALID(seqval))
+		ereport(ERROR,
+				(ERANGE,
+				 errmsg("Can not get current value of the sequence")));
+#endif
+
+	elog(DEBUG1, "Getting current value %ld for sequence %s", seqval, seqkey.gsk_key);
+
+	pq_beginmessage(&buf, 'S');
+	pq_sendint(&buf, SEQUENCE_GET_CURRENT_RESULT, 4);
+	if (myport->remote_type == GTM_NODE_GTM_PROXY)
+	{
+		GTM_ProxyMsgHeader proxyhdr;
+		proxyhdr.ph_conid = myport->conn_id;
+		pq_sendbytes(&buf, (char *)&proxyhdr, sizeof (GTM_ProxyMsgHeader));
+	}
+	pq_sendint(&buf, seqkey.gsk_keylen, 4);
+	pq_sendbytes(&buf, seqkey.gsk_key, seqkey.gsk_keylen);
+	pq_sendbytes(&buf, (char *)&seqval, sizeof (GTM_Sequence));
+	pq_endmessage(myport, &buf);
+
+	if (myport->remote_type != GTM_NODE_GTM_PROXY)
+		/* Don't flush to the standby because this does not change the status */
+		pq_flush(myport);
+
+	/*
+	 * I don't think backup is needed here. It does not change internal state.
+	 * 27th Dec., 2011, K.Suzuki
+	 */
+#if 0
+	if (GetMyThreadInfo->thr_conn->standby)
+	{
+		GTM_Sequence loc_seq;
+		GTM_Conn *oldconn = GetMyThreadInfo->thr_conn->standby;
+		int count = 0;
+
+		elog(DEBUG1, "calling get_current() for standby GTM %p.", GetMyThreadInfo->thr_conn->standby);
+
+retry:
+		loc_seq = get_current(GetMyThreadInfo->thr_conn->standby, &seqkey);
+
+		if (gtm_standby_check_communication_error(&count, oldconn))
+			goto retry;
+
+		elog(DEBUG1, "get_current() returns GTM_Sequence %ld.", loc_seq);
+	}
+#endif
+
+	/* FIXME: need to check errors */
+}
 
 /*
  * Process MSG_SEQUENCE_GET_NEXT/MSG_BKUP_SEQUENCE_GET_NEXT message
@@ -1132,17 +1620,40 @@ ProcessSequenceGetNextCommand(Port *myport, StringInfo message, bool is_backup)
 	GTM_SequenceKeyData seqkey;
 	StringInfoData buf;
 	GTM_Sequence seqval;
+#ifdef XCP
+	GTM_Sequence range;
+	GTM_Sequence rangemax;
+	uint32 coord_namelen;
+	char  *coord_name;
+	uint32 coord_procid;
+#endif
 
 	seqkey.gsk_keylen = pq_getmsgint(message, sizeof (seqkey.gsk_keylen));
 	seqkey.gsk_key = (char *)pq_getmsgbytes(message, seqkey.gsk_keylen);
+#ifdef XCP
+	coord_namelen = pq_getmsgint(message, sizeof(coord_namelen));
+	if (coord_namelen > 0)
+		coord_name = (char *)pq_getmsgbytes(message, coord_namelen);
+	else
+		coord_name = NULL;
+	coord_procid = pq_getmsgint(message, sizeof(coord_procid));
+	memcpy(&range, pq_getmsgbytes(message, sizeof (GTM_Sequence)),
+		   sizeof (GTM_Sequence));
 
+	if (GTM_SeqGetNext(&seqkey, coord_name, coord_procid, range,
+					&seqval, &rangemax))
+		ereport(ERROR,
+				(ERANGE,
+				 errmsg("Can not get current value of the sequence")));
+#else
 	seqval = GTM_SeqGetNext(&seqkey);
 	if (!SEQVAL_IS_VALID(seqval))
 		ereport(ERROR,
 				(ERANGE,
 				 errmsg("Can not get current value of the sequence")));
+#endif
 
-	elog(LOG, "Getting next value %ld for sequence %s", seqval, seqkey.gsk_key);
+	elog(DEBUG1, "Getting next value %ld for sequence %s", seqval, seqkey.gsk_key);
 
 	if (!is_backup)
 	{
@@ -1153,10 +1664,16 @@ ProcessSequenceGetNextCommand(Port *myport, StringInfo message, bool is_backup)
 			GTM_Conn *oldconn = GetMyThreadInfo->thr_conn->standby;
 			int count = 0;
 
-			elog(LOG, "calling get_next() for standby GTM %p.", GetMyThreadInfo->thr_conn->standby);
+			elog(DEBUG1, "calling get_next() for standby GTM %p.", GetMyThreadInfo->thr_conn->standby);
 
 		retry:
+#ifdef XCP
+			bkup_get_next(GetMyThreadInfo->thr_conn->standby, &seqkey,
+						  coord_name, coord_procid,
+						  range, &loc_seq, &rangemax);
+#else
 			loc_seq = bkup_get_next(GetMyThreadInfo->thr_conn->standby, &seqkey);
+#endif
 
 			if (gtm_standby_check_communication_error(&count, oldconn))
 				goto retry;
@@ -1165,8 +1682,12 @@ ProcessSequenceGetNextCommand(Port *myport, StringInfo message, bool is_backup)
 			if (Backup_synchronously &&(myport->remote_type != GTM_NODE_GTM_PROXY))
 				gtm_sync_standby(GetMyThreadInfo->thr_conn->standby);
 
-			elog(LOG, "get_next() returns GTM_Sequence %ld.", loc_seq);
+			elog(DEBUG1, "get_next() returns GTM_Sequence %ld.", loc_seq);
 		}
+#ifdef XCP
+		/* Save control file info */
+        SaveControlInfo();
+#endif
 		/* Respond to the client */
 		pq_beginmessage(&buf, 'S');
 		pq_sendint(&buf, SEQUENCE_GET_NEXT_RESULT, 4);
@@ -1179,6 +1700,9 @@ ProcessSequenceGetNextCommand(Port *myport, StringInfo message, bool is_backup)
 		pq_sendint(&buf, seqkey.gsk_keylen, 4);
 		pq_sendbytes(&buf, seqkey.gsk_key, seqkey.gsk_keylen);
 		pq_sendbytes(&buf, (char *)&seqval, sizeof (GTM_Sequence));
+#ifdef XCP
+		pq_sendbytes(&buf, (char *)&rangemax, sizeof (GTM_Sequence));
+#endif
 		pq_endmessage(myport, &buf);
 
 		if (myport->remote_type != GTM_NODE_GTM_PROXY)
@@ -1207,12 +1731,25 @@ ProcessSequenceSetValCommand(Port *myport, StringInfo message, bool is_backup)
 	StringInfoData buf;
 	bool iscalled;
 	int errcode;
+#ifdef XCP
+	uint32 coord_namelen;
+	char  *coord_name;
+	uint32 coord_procid;
+#endif
 
 	/*
 	 * Get the sequence key
 	 */
 	seqkey.gsk_keylen = pq_getmsgint(message, sizeof (seqkey.gsk_keylen));
 	seqkey.gsk_key = (char *)pq_getmsgbytes(message, seqkey.gsk_keylen);
+#ifdef XCP
+	coord_namelen = pq_getmsgint(message, sizeof(coord_namelen));
+	if (coord_namelen > 0)
+		coord_name = (char *)pq_getmsgbytes(message, coord_namelen);
+	else
+		coord_name = NULL;
+	coord_procid = pq_getmsgint(message, sizeof(coord_procid));
+#endif
 
 	/* Read parameters to be set */
 	memcpy(&nextval, pq_getmsgbytes(message, sizeof (GTM_Sequence)),
@@ -1227,12 +1764,19 @@ ProcessSequenceSetValCommand(Port *myport, StringInfo message, bool is_backup)
 	 */
 	oldContext = MemoryContextSwitchTo(TopMostMemoryContext);
 
-	elog(LOG, "Setting new value %ld for sequence %s", nextval, seqkey.gsk_key);
+	elog(DEBUG1, "Setting new value %ld for sequence %s", nextval, seqkey.gsk_key);
 
+#ifdef XCP
+	if ((errcode = GTM_SeqSetVal(&seqkey, coord_name, coord_procid, nextval, iscalled)))
+		ereport(ERROR,
+				(errcode,
+				 errmsg("Failed to set values of sequence")));
+#else
 	if ((errcode = GTM_SeqSetVal(&seqkey, nextval, iscalled)))
 		ereport(ERROR,
 				(errcode,
 				 errmsg("Failed to set values of sequence")));
+#endif
 
 	MemoryContextSwitchTo(oldContext);
 
@@ -1247,13 +1791,22 @@ ProcessSequenceSetValCommand(Port *myport, StringInfo message, bool is_backup)
 			GTM_Conn *oldconn = GetMyThreadInfo->thr_conn->standby;
 			int count = 0;
 
-			elog(LOG, "calling set_val() for standby GTM %p.", GetMyThreadInfo->thr_conn->standby);
+			elog(DEBUG1, "calling set_val() for standby GTM %p.", GetMyThreadInfo->thr_conn->standby);
 
 		retry:
+#ifdef XCP
+			rc = bkup_set_val(GetMyThreadInfo->thr_conn->standby,
+							  &seqkey,
+							  coord_name,
+							  coord_procid,
+							  nextval,
+							  iscalled);
+#else
 			rc = bkup_set_val(GetMyThreadInfo->thr_conn->standby,
 							  &seqkey,
 							  nextval,
 							  iscalled);
+#endif
 
 			if (gtm_standby_check_communication_error(&count, oldconn))
 				goto retry;
@@ -1262,8 +1815,12 @@ ProcessSequenceSetValCommand(Port *myport, StringInfo message, bool is_backup)
 			if (Backup_synchronously && (myport->remote_type != GTM_NODE_GTM_PROXY))
 				gtm_sync_standby(GetMyThreadInfo->thr_conn->standby);
 
-			elog(LOG, "set_val() returns rc %d.", rc);
+			elog(DEBUG1, "set_val() returns rc %d.", rc);
 		}
+#ifdef XCP
+		/* Save control file info */
+        SaveControlInfo();
+#endif
 		/* Respond to the client */
 		pq_beginmessage(&buf, 'S');
 		pq_sendint(&buf, SEQUENCE_SET_VAL_RESULT, 4);
@@ -1304,7 +1861,7 @@ ProcessSequenceResetCommand(Port *myport, StringInfo message, bool is_backup)
 	seqkey.gsk_keylen = pq_getmsgint(message, sizeof (seqkey.gsk_keylen));
 	seqkey.gsk_key = (char *)pq_getmsgbytes(message, seqkey.gsk_keylen);
 
-	elog(LOG, "Resetting sequence %s", seqkey.gsk_key);
+	elog(DEBUG1, "Resetting sequence %s", seqkey.gsk_key);
 
 	if ((errcode = GTM_SeqReset(&seqkey)))
 		ereport(ERROR,
@@ -1320,7 +1877,7 @@ ProcessSequenceResetCommand(Port *myport, StringInfo message, bool is_backup)
 			GTM_Conn *oldconn = GetMyThreadInfo->thr_conn->standby;
 			int count = 0;
 
-			elog(LOG, "calling reset_sequence() for standby GTM %p.", GetMyThreadInfo->thr_conn->standby);
+			elog(DEBUG1, "calling reset_sequence() for standby GTM %p.", GetMyThreadInfo->thr_conn->standby);
 
 		retry:
 			rc = bkup_reset_sequence(GetMyThreadInfo->thr_conn->standby, &seqkey);
@@ -1332,8 +1889,12 @@ ProcessSequenceResetCommand(Port *myport, StringInfo message, bool is_backup)
 			if (Backup_synchronously && (myport->remote_type != GTM_NODE_GTM_PROXY))
 				gtm_sync_standby(GetMyThreadInfo->thr_conn->standby);
 
-			elog(LOG, "reset_sequence() returns rc %d.", rc);
+			elog(DEBUG1, "reset_sequence() returns rc %d.", rc);
 		}
+#ifdef XCP
+		/* Save control file info */
+        SaveControlInfo();
+#endif
 		/* Respond to the client */
 		pq_beginmessage(&buf, 'S');
 		pq_sendint(&buf, SEQUENCE_RESET_RESULT, 4);
@@ -1376,7 +1937,7 @@ ProcessSequenceCloseCommand(Port *myport, StringInfo message, bool is_backup)
 	memcpy(&seqkey.gsk_type, pq_getmsgbytes(message, sizeof (GTM_SequenceKeyType)),
 		   sizeof (GTM_SequenceKeyType));
 
-	elog(LOG, "Closing sequence %s", seqkey.gsk_key);
+	elog(DEBUG1, "Closing sequence %s", seqkey.gsk_key);
 
 	if ((errcode = GTM_SeqClose(&seqkey)))
 		ereport(ERROR,
@@ -1392,7 +1953,7 @@ ProcessSequenceCloseCommand(Port *myport, StringInfo message, bool is_backup)
 			GTM_Conn *oldconn = GetMyThreadInfo->thr_conn->standby;
 			int count = 0;
 
-			elog(LOG, "calling close_sequence() for standby GTM %p.", GetMyThreadInfo->thr_conn->standby);
+			elog(DEBUG1, "calling close_sequence() for standby GTM %p.", GetMyThreadInfo->thr_conn->standby);
 
 		retry:
 			rc = bkup_close_sequence(GetMyThreadInfo->thr_conn->standby, &seqkey);
@@ -1404,8 +1965,12 @@ ProcessSequenceCloseCommand(Port *myport, StringInfo message, bool is_backup)
 			if (Backup_synchronously && (myport->remote_type != GTM_NODE_GTM_PROXY))
 				gtm_sync_standby(GetMyThreadInfo->thr_conn->standby);
 
-			elog(LOG, "close_sequence() returns rc %d.", rc);
+			elog(DEBUG1, "close_sequence() returns rc %d.", rc);
 		}
+#ifdef XCP
+		/* Save control file info */
+        SaveControlInfo();
+#endif
 		/* Respond to the client */
 		pq_beginmessage(&buf, 'S');
 		pq_sendint(&buf, SEQUENCE_CLOSE_RESULT, 4);
@@ -1459,7 +2024,7 @@ ProcessSequenceRenameCommand(Port *myport, StringInfo message, bool is_backup)
 	 */
 	oldContext = MemoryContextSwitchTo(TopMostMemoryContext);
 
-	elog(LOG, "Renaming sequence %s to %s", seqkey.gsk_key, newseqkey.gsk_key);
+	elog(DEBUG1, "Renaming sequence %s to %s", seqkey.gsk_key, newseqkey.gsk_key);
 
 	if ((errcode = GTM_SeqRename(&seqkey, &newseqkey)))
 		ereport(ERROR,
@@ -1479,7 +2044,7 @@ ProcessSequenceRenameCommand(Port *myport, StringInfo message, bool is_backup)
 			GTM_Conn *oldconn = GetMyThreadInfo->thr_conn->standby;
 			int count = 0;
 
-			elog(LOG, "calling rename_sequence() for standby GTM %p.", GetMyThreadInfo->thr_conn->standby);
+			elog(DEBUG1, "calling rename_sequence() for standby GTM %p.", GetMyThreadInfo->thr_conn->standby);
 
 		retry:
 			rc = bkup_rename_sequence(GetMyThreadInfo->thr_conn->standby, &seqkey, &newseqkey);
@@ -1491,8 +2056,12 @@ ProcessSequenceRenameCommand(Port *myport, StringInfo message, bool is_backup)
 			if (Backup_synchronously && (myport->remote_type != GTM_NODE_GTM_PROXY))
 				gtm_sync_standby(GetMyThreadInfo->thr_conn->standby);
 
-			elog(LOG, "rename_sequence() returns rc %d.", rc);
+			elog(DEBUG1, "rename_sequence() returns rc %d.", rc);
 		}
+#ifdef XCP
+		/* Save control file info */
+        SaveControlInfo();
+#endif
 		/* Send a SUCCESS message back to the client */
 		pq_beginmessage(&buf, 'S');
 		pq_sendint(&buf, SEQUENCE_RENAME_RESULT, 4);
@@ -1752,3 +2321,67 @@ GTM_RestoreSeqInfo(FILE *ctlf)
 					   state, cycle, called);
 	}
 }
+
+
+#ifdef XCP
+/*
+ * Remove all current values allocated for the specified session from all
+ * sequences.
+ */
+void
+GTM_CleanupSeqSession(char *coord_name, int coord_procid)
+{
+	int i;
+
+	elog(DEBUG1, "Clean up Sequences used in session %s:%d",
+			coord_name, coord_procid);
+
+	for (i = 0; i < SEQ_HASH_TABLE_SIZE; i++)
+	{
+		GTM_SeqInfoHashBucket *bucket = &GTMSequences[i];
+		gtm_ListCell *elem;
+		GTM_SeqInfo *curr_seqinfo;
+
+		GTM_RWLockAcquire(&bucket->shb_lock, GTM_LOCKMODE_READ);
+
+		gtm_foreach(elem, bucket->shb_list)
+		{
+			int j;
+			curr_seqinfo = (GTM_SeqInfo *) gtm_lfirst(elem);
+			GTM_RWLockAcquire(&curr_seqinfo->gs_lock, GTM_LOCKMODE_WRITE);
+			if (curr_seqinfo->gs_state != SEQ_STATE_ACTIVE)
+			{
+				GTM_RWLockRelease(&curr_seqinfo->gs_lock);
+				continue;
+			}
+
+			for (j = 0; j < curr_seqinfo->gs_lastval_count; j++)
+			{
+				GTM_SeqLastVal *lastval = &curr_seqinfo->gs_last_values[j];
+				if (strcmp(lastval->gs_coord_name, coord_name) == 0 &&
+						lastval->gs_coord_procid == coord_procid)
+				{
+					int newcount = --curr_seqinfo->gs_lastval_count;
+					elog(DEBUG1, "remove value of Sequence %s acquired for session %s:%d",
+						 curr_seqinfo->gs_key->gsk_key, lastval->gs_coord_name,
+						 lastval->gs_coord_procid);
+					if (j < newcount)
+						memcpy(lastval, &curr_seqinfo->gs_last_values[newcount],
+								sizeof(GTM_SeqLastVal));
+					if (curr_seqinfo->gs_lastval_count == 0)
+					{
+						elog(DEBUG1, "Sequence %s is not used, free curr values memory",
+							 curr_seqinfo->gs_key->gsk_key);
+						curr_seqinfo->gs_max_lastvals = 0;
+						pfree(curr_seqinfo->gs_last_values);
+						curr_seqinfo->gs_last_values = NULL;
+					}
+					break;
+				}
+			}
+			GTM_RWLockRelease(&curr_seqinfo->gs_lock);
+		}
+		GTM_RWLockRelease(&bucket->shb_lock);
+	}
+}
+#endif

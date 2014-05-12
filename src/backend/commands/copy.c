@@ -3,6 +3,11 @@
  * copy.c
  *		Implements the COPY utility command
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -25,6 +30,10 @@
 #include "access/xact.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_type.h"
+#ifdef XCP
+#include "catalog/dependency.h"
+#include "commands/sequence.h"
+#endif
 #include "commands/copy.h"
 #include "commands/defrem.h"
 #include "commands/trigger.h"
@@ -37,13 +46,13 @@
 #include "optimizer/planner.h"
 #include "parser/parse_relation.h"
 #ifdef PGXC
-#include "optimizer/pgxcship.h"
 #include "pgxc/pgxc.h"
 #include "pgxc/execRemote.h"
 #include "pgxc/locator.h"
 #include "pgxc/remotecopy.h"
 #include "nodes/nodes.h"
 #include "pgxc/poolmgr.h"
+#include "pgxc/postgresql_fdw.h"
 #include "catalog/pgxc_node.h"
 #endif
 #include "rewrite/rewriteHandler.h"
@@ -783,6 +792,9 @@ DoCopy(const CopyStmt *stmt, const char *queryString)
 	bool		pipe = (stmt->filename == NULL);
 	Relation	rel;
 	uint64		processed;
+#ifdef XCP
+	int oldSeqRangeVal = SequenceRangeVal;
+#endif
 
 	/* Disallow file COPY except to superusers. */
 	if (!pipe && !superuser())
@@ -813,9 +825,11 @@ DoCopy(const CopyStmt *stmt, const char *queryString)
 		rte->requiredPerms = required_access;
 
 #ifdef PGXC
+#ifndef XCP
 		/* In case COPY is used on a temporary table, never use 2PC for implicit commits */
 		if (rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP)
 			ExecSetTempObjectIncluded();
+#endif
 #endif
 
 		tupDesc = RelationGetDescr(rel);
@@ -839,17 +853,46 @@ DoCopy(const CopyStmt *stmt, const char *queryString)
 		rel = NULL;
 	}
 
+#ifdef XCP
+	/*
+	 * The COPY might involve sequences. We want to cache a range of
+	 * sequence values to avoid contacting the GTM repeatedly. This
+	 * improves the COPY performance by quite a margin. We set the
+	 * SequenceRangeVal GUC parameter to bring about this effect.
+	 * Note that we could have checked the attribute list to ascertain
+	 * if this GUC is really needed or not. However since this GUC
+	 * only affects nextval calculations, if sequences are not present
+	 * no harm is done..
+	 *
+	 * The user might have set the GUC value himself. Honor that if so
+	 */
+
+#define MAX_CACHEVAL	1024
+	if (rel && getOwnedSequences(RelationGetRelid(rel)) != NIL &&
+				SequenceRangeVal == DEFAULT_CACHEVAL)
+		SequenceRangeVal = MAX_CACHEVAL;
+#endif
+
 	if (is_from)
 	{
 		Assert(rel);
 
 		/* check read-only transaction */
-		if (XactReadOnly && rel->rd_backend != MyBackendId)
+		if (XactReadOnly && !rel->rd_islocaltemp)
 			PreventCommandIfReadOnly("COPY FROM");
 
 		cstate = BeginCopyFrom(rel, stmt->filename,
 							   stmt->attlist, stmt->options);
 		processed = CopyFrom(cstate);	/* copy from file to database */
+#ifdef XCP
+		/*
+		 * We should record insert to distributed table.
+		 * Bulk inserts into local tables are recorded when heap tuples are
+		 * written.
+		 */
+		if (IS_PGXC_COORDINATOR && rel->rd_locator_info)
+			pgstat_count_remote_insert(rel, (int) processed);
+#endif
 		EndCopyFrom(cstate);
 	}
 	else
@@ -859,6 +902,11 @@ DoCopy(const CopyStmt *stmt, const char *queryString)
 		processed = DoCopyTo(cstate);	/* copy from database to file */
 		EndCopyTo(cstate);
 	}
+
+#ifdef XCP
+	/* Set the SequenceRangeVal GUC to its earlier value */
+	SequenceRangeVal = oldSeqRangeVal;
+#endif
 
 	/*
 	 * Close the relation. If reading, we can release the AccessShareLock we
@@ -1418,10 +1466,15 @@ BeginCopy(bool is_from,
 		 */
 		if (remoteCopyState && remoteCopyState->rel_loc)
 		{
+#ifdef XCP
+			DataNodeCopyBegin(remoteCopyState);
+			if (!remoteCopyState->locator)
+#else
 			remoteCopyState->connections = DataNodeCopyBegin(remoteCopyState->query_buf.data,
 														 remoteCopyState->exec_nodes->nodeList,
 														 GetActiveSnapshot());
 			if (!remoteCopyState->connections)
+#endif
 				ereport(ERROR,
 						(errcode(ERRCODE_CONNECTION_EXCEPTION),
 						 errmsg("Failed to initialize Datanodes for COPY")));
@@ -1711,7 +1764,13 @@ CopyTo(CopyState cstate)
 		cstate->remoteCopyState &&
 		cstate->remoteCopyState->rel_loc)
 	{
-		RemoteCopyData *remoteCopyState = cstate->remoteCopyState;
+		RemoteCopyData *rcstate = cstate->remoteCopyState;
+#ifdef XCP
+		processed = DataNodeCopyOut(
+					(PGXCNodeHandle **) getLocatorNodeMap(rcstate->locator),
+					getLocatorNodeCount(rcstate->locator),
+					cstate->copy_dest == COPY_FILE ? cstate->copy_file : NULL);
+#else
 		RemoteCopyType remoteCopyType;
 
 		/* Set up remote COPY to correct operation */
@@ -1732,6 +1791,7 @@ CopyTo(CopyState cstate)
 									cstate->copy_file,
 									NULL,
 									remoteCopyType);
+#endif
 	}
 	else
 	{
@@ -2193,7 +2253,28 @@ CopyFrom(CopyState cstate)
 		 */
 		if (IS_PGXC_COORDINATOR && cstate->remoteCopyState->rel_loc)
 		{
-			Form_pg_attribute *attr = tupDesc->attrs;
+#ifdef XCP
+			Datum 				value = (Datum) 0;
+			bool				isnull = true;
+			RemoteCopyData 	   *rcstate = cstate->remoteCopyState;
+			AttrNumber			dist_col = rcstate->rel_loc->partAttrNum;
+
+			if (AttributeNumberIsValid(dist_col))
+			{
+				value = values[dist_col-1];
+				isnull = nulls[dist_col-1];
+			}
+
+			if (DataNodeCopyIn(cstate->line_buf.data,
+							   cstate->line_buf.len,
+							   GET_NODES(rcstate->locator, value, isnull, NULL),
+					   (PGXCNodeHandle**) getLocatorResults(rcstate->locator)))
+					ereport(ERROR,
+							(errcode(ERRCODE_CONNECTION_EXCEPTION),
+							 errmsg("Copy failed on a data node")));
+			processed++;
+#else
+			Form_pg_attribute  *attr = tupDesc->attrs;
 			Datum	dist_col_value;
 			bool	dist_col_is_null;
 			Oid		dist_col_type;
@@ -2225,11 +2306,11 @@ CopyFrom(CopyState cstate)
 						(errcode(ERRCODE_CONNECTION_EXCEPTION),
 						 errmsg("Copy failed on a Datanode")));
 			processed++;
+#endif
 		}
 		else
 		{
 #endif
-
 		/* And now we can form the input tuple. */
 		tuple = heap_form_tuple(tupDesc, values, nulls);
 
@@ -2320,6 +2401,25 @@ CopyFrom(CopyState cstate)
 		CopyFromInsertBatch(cstate, estate, mycid, hi_options,
 							resultRelInfo, myslot, bistate,
 							nBufferedTuples, bufferedTuples);
+
+#ifdef XCP
+	/*
+	 * Now if line buffer contains some data that is an EOF marker. We should
+	 * send it to all the participating datanodes
+	 */
+	if (cstate->line_buf.len > 0)
+	{
+		RemoteCopyData 	   *rcstate = cstate->remoteCopyState;
+		if (DataNodeCopyIn(cstate->line_buf.data,
+						   cstate->line_buf.len,
+						   getLocatorNodeCount(rcstate->locator),
+					   (PGXCNodeHandle **) getLocatorNodeMap(rcstate->locator)))
+				ereport(ERROR,
+						(errcode(ERRCODE_CONNECTION_EXCEPTION),
+						 errmsg("Copy failed on a data node")));
+
+	}
+#endif
 
 	/* Done, clean up */
 	error_context_stack = errcontext.previous;
@@ -2658,8 +2758,14 @@ BeginCopyFrom(Relation rel,
 			tmp = htonl(tmp);
 			appendBinaryStringInfo(&cstate->line_buf, (char *) &tmp, 4);
 
+#ifdef XCP
+			if (DataNodeCopyInBinaryForAll(cstate->line_buf.data, 19,
+					getLocatorNodeCount(remoteCopyState->locator),
+					(PGXCNodeHandle **) getLocatorNodeMap(remoteCopyState->locator)))
+#else
 			if (DataNodeCopyInBinaryForAll(cstate->line_buf.data, 19, remoteCopyState->connections))
-					ereport(ERROR,
+#endif
+				ereport(ERROR,
 							(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
 							 errmsg("invalid COPY file header (COPY SEND)")));
 		}
@@ -3105,11 +3211,16 @@ EndCopyFrom(CopyState cstate)
 	/* For PGXC related COPY, free also relation location data */
 	if (IS_PGXC_COORDINATOR && remoteCopyState->rel_loc)
 	{
+#ifdef XCP
+		DataNodeCopyFinish(getLocatorNodeCount(remoteCopyState->locator),
+				(PGXCNodeHandle **) getLocatorNodeMap(remoteCopyState->locator));
+#else
 		bool replicated = remoteCopyState->rel_loc->locatorType == LOCATOR_TYPE_REPLICATED;
 		DataNodeCopyFinish(
 				remoteCopyState->connections,
 				replicated ? PGXCNodeGetNodeId(primary_data_node, PGXC_NODE_DATANODE) : -1,
 				replicated ? COMBINE_TYPE_SAME : COMBINE_TYPE_SUM);
+#endif
 		FreeRemoteCopyData(remoteCopyState);
 	}
 #endif

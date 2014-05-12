@@ -1,6 +1,4 @@
 -- from http://www.depesz.com/index.php/2010/04/19/getting-unique-elements/
--- Enforce use of COMMIT instead of 2PC for temporary objects
-SET enforce_two_phase_commit TO off;
 CREATE TEMP TABLE articles (
     id int CONSTRAINT articles_pkey PRIMARY KEY,
     keywords text,
@@ -9,7 +7,7 @@ CREATE TEMP TABLE articles (
     created date
 );
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "articles_pkey" for table "articles"
-ERROR:  Cannot create index whose evaluation cannot be enforced to remote nodes
+ERROR:  Unique index of partitioned table must contain the hash/modulo distribution column.
 CREATE TEMP TABLE articles_in_category (
     article_id int,
     category_id int,
@@ -148,7 +146,7 @@ CREATE TEMP TABLE users (
     UNIQUE (name)
 );
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "users_pkey" for table "users"
-ERROR:  Cannot create index whose evaluation cannot be enforced to remote nodes
+ERROR:  Unique index of partitioned table must contain the hash/modulo distribution column.
 -- OK
 SELECT u.uid, u.name FROM node n
 INNER JOIN users u ON u.uid = n.uid

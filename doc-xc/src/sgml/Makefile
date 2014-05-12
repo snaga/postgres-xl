@@ -51,7 +51,7 @@ ifndef XSLTPROC
 XSLTPROC = xsltproc
 endif
 
-VERSION = 1.1devel
+VERSION = 9.2
 
 override XSLTPROCFLAGS += --stringparam pg.version '$(VERSION)'
 
@@ -401,6 +401,8 @@ clean:
 	rm -f postgres.xml postgres.xmltmp htmlhelp.hhp toc.hhc index.hhk *.fo
 # Texinfo
 	rm -f *.texixml *.texi *.info db2texi.refs
+# sgml
+	rm -f $(ALLSGMLTOREMOVE)
 
 distclean: clean
 
@@ -409,12 +411,10 @@ maintainer-clean: distclean
 	rm -fr html/ html-stamp
 # man
 	rm -rf man1/ man3/ man7/ man-stamp
-# sgml
-	rm -f $(ALLSGMLTOREMOVE)
 
 .PHONY: sgmlfiles
 
-INC_LIST = -I XC -I EN
+INC_LIST = -I XL -I EN
 EXC_LIST = -E PG -E JP
 
 sgmlfiles:

@@ -14,6 +14,13 @@
   correctly with <productname>Postgres-XC</productname>.
  </para>
 <!## end>
+<!## XL>
+&xlonly;
+ <para>
+  The module <filename>pg_stat_statments</filename> does not work
+  correctly with <productname>Postgres-XL</productname>.
+ </para>
+<!## end>
 
 <!## PG>
 &pgonly;

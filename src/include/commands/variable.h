@@ -2,6 +2,11 @@
  * variable.h
  *		Routines for handling specialized SET variables.
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -33,6 +38,10 @@ extern bool check_client_encoding(char **newval, void **extra, GucSource source)
 extern void assign_client_encoding(const char *newval, void *extra);
 extern bool check_session_authorization(char **newval, void **extra, GucSource source);
 extern void assign_session_authorization(const char *newval, void *extra);
+#ifdef XCP
+extern bool check_global_session(char **newval, void **extra, GucSource source);
+extern void assign_global_session(const char *newval, void *extra);
+#endif
 extern bool check_role(char **newval, void **extra, GucSource source);
 extern void assign_role(const char *newval, void *extra);
 extern const char *show_role(void);

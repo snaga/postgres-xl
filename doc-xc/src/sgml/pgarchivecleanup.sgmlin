@@ -18,11 +18,20 @@
 <!## XC>
   running as a standby server.
 <!## end>
+<!## XL>
+  running as a standby server.
+<!## end>
   <application>pg_archivecleanup</> can also be used as a standalone program to
   clean WAL file archives.
  </para>
 
 <!## XC>
+ <para>
+  Please note that this command takes care of each Datanode or
+  Coordinator.  You should configure each of them manually.
+ </para>
+<!## end>
+<!## XL>
  <para>
   Please note that this command takes care of each Datanode or
   Coordinator.  You should configure each of them manually.
@@ -65,6 +74,9 @@ archive_cleanup_command = 'pg_archivecleanup <replaceable>archivelocation</> %r'
    When used within <xref linkend="archive-cleanup-command">, all WAL files
 <!## end>
 <!## XC>
+   When used within archive-cleanup-command, all WAL files
+<!## end>
+<!## XL>
    When used within archive-cleanup-command, all WAL files
 <!## end>
    logically preceding the value of the <literal>%r</> argument will be removed

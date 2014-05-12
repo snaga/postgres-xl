@@ -7,6 +7,9 @@
 <!## XC>
  <title>A Brief History of <productname>PostgreSQL</productname> and <productname>Postgres-XC</productname></title>
 <!## end>
+<!## XL>
+ <title>A Brief History of <productname>PostgreSQL</productname> and <productname>Postgres-XL</productname></title>
+<!## end>
 
  <indexterm zone="history">
   <primary>history</primary>
@@ -229,6 +232,12 @@
    then can be found in release notes.
   </para>
 <!## end>
+<!## XL>
+  <para>
+   Details about what has happened in <productname>PostgreSQL</> since
+   then can be found in release notes.
+  </para>
+<!## end>
  </sect2>
 <!## XC>
 
@@ -301,16 +310,29 @@
   Group since 2012. More details about this legal entity can be found
   <ulink url="https://sourceforge.net/apps/mediawiki/postgres-xc/index.php?title=Charter">here.</ulink>
  </para>
-
-<!## omitted>
- <para>
-  On the other hand, it is very important to provide high availability
-  feature to database clusters. Especially, GTM was pointed out to
-  become single point of failure.
-  High availability feature was also added
-  to <productname>Postgres-XC</productname>.
- </para>
 <!## end>
+<!## XL>
+<sect2 id="pgxc-history">
+ <title><productname>Postgres-XL</productname></title>
+
+ <indexterm zone="pgxc-history">
+ <primary>history</primary>
+ <secondary>of Postgres-XL</secondary>
+ </indexterm>
+&xlonly;
+
+ <para>
+  In 2010, NTT's Open Source Software Center approached EnterpriseDB
+  to build off of NTT OSSC's experience with a project called RitaDB
+  and EnterpriseDB's experience with a project called GridSQL,
+  and the result was a new project, Postgres-XC.
+ </para>
+ <para>
+  In 2012, a company called StormDB was formed with some of the original key Postgres-XC developers. StormDB added enhancements, including MPP parallelism for performance and multi-tenant security.
+ </para>
+ <para>
+  In 2013, TransLattice acquired StormDB, and in 2014, open sourced it as Postgres-XL.
+ </para>
 
 </sect2>
 <!## end>

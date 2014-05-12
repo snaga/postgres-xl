@@ -6,6 +6,11 @@
  * See src/backend/utils/misc/README for more information.
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Copyright (c) 2000-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
  * Written by Peter Eisentraut <peter_e@gmx.net>.
@@ -59,13 +64,19 @@
 #ifdef PGXC
 #include "commands/tablecmds.h"
 #include "nodes/nodes.h"
-#include "optimizer/pgxcship.h"
 #include "pgxc/execRemote.h"
 #include "pgxc/locator.h"
-#include "optimizer/pgxcplan.h"
+#include "pgxc/planner.h"
 #include "pgxc/poolmgr.h"
 #include "pgxc/nodemgr.h"
 #include "pgxc/xc_maintenance_mode.h"
+#endif
+#ifdef XCP
+#include "commands/sequence.h"
+#include "pgxc/nodemgr.h"
+#include "pgxc/squeue.h"
+#include "utils/snapmgr.h"
+#include "parser/parse_utilcmd.h"
 #endif
 #include "postmaster/autovacuum.h"
 #include "postmaster/bgwriter.h"
@@ -201,7 +212,9 @@ static bool check_ssl(bool *newval, void **extra, GucSource source);
 static bool check_stage_log_stats(bool *newval, void **extra, GucSource source);
 static bool check_log_stats(bool *newval, void **extra, GucSource source);
 #ifdef PGXC
+#ifndef XCP
 static bool check_pgxc_maintenance_mode(bool *newval, void **extra, GucSource source);
+#endif
 #endif
 static bool check_canonical_path(char **newval, void **extra, GucSource source);
 static bool check_timezone_abbreviations(char **newval, void **extra, GucSource source);
@@ -229,6 +242,10 @@ static const char *show_log_file_mode(void);
 static char *config_enum_get_options(struct config_enum * record,
 						const char *prefix, const char *suffix,
 						const char *separator);
+#ifdef XCP
+static bool check_storm_catalog_remap_string(char **newval,
+									void **extra, GucSource source);
+#endif
 
 
 /*
@@ -479,6 +496,10 @@ int			tcp_keepalives_idle;
 int			tcp_keepalives_interval;
 int			tcp_keepalives_count;
 
+#ifdef XCP
+char	   *storm_catalog_remap_string;
+#endif
+
 /*
  * These variables are all dummies that don't do anything, except in some
  * cases provide the value for SHOW to display.  The real state is elsewhere
@@ -502,6 +523,9 @@ static char *log_timezone_string;
 static char *timezone_abbreviations_string;
 static char *XactIsoLevel_string;
 static char *session_authorization_string;
+#ifdef XCP
+static char *global_session_string;
+#endif
 static int	max_function_args;
 static int	max_index_keys;
 static int	max_identifier_length;
@@ -808,6 +832,7 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 #ifdef PGXC
+#ifndef XCP
 	{
 		{"enable_remotejoin", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Enables the planner's use of remote join plans."),
@@ -835,24 +860,20 @@ static struct config_bool ConfigureNamesBool[] =
 		true,
 		NULL, NULL, NULL
 	},
+#else
 	{
-		{"enable_remotesort", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enables the planner's use of remote sort plans."),
-			NULL
+		{"loose_constraints", PGC_USERSET, COORDINATORS,
+			gettext_noop("Relax enforcing of constraints"),
+			gettext_noop("If enabled then constraints like foreign keys "
+						 "are not enforced. It's the users responsibility "
+						 "to maintain referential integrity at the application "
+						 "level")
 		},
-		&enable_remotesort,
-		true,
+		&loose_constraints,
+		false,
 		NULL, NULL, NULL
 	},
-	{
-		{"enable_remotelimit", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enables the planner's use of remote limit plans."),
-			NULL
-		},
-		&enable_remotelimit,
-		true,
-		NULL, NULL, NULL
-	},
+#endif
 #endif
 	{
 		{"geqo", PGC_USERSET, QUERY_TUNING_GEQO,
@@ -1454,7 +1475,11 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+#ifdef XCP
+		{"synchronize_seqscans", PGC_SUSET, COMPAT_OPTIONS_PREVIOUS,
+#else
 		{"synchronize_seqscans", PGC_USERSET, COMPAT_OPTIONS_PREVIOUS,
+#endif
 			gettext_noop("Enable synchronized sequential scans."),
 			NULL
 		},
@@ -1516,6 +1541,7 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 #ifdef PGXC
+#ifndef XCP
 	{
 		{"persistent_datanode_connections", PGC_BACKEND, DEVELOPER_OPTIONS,
 			gettext_noop("Session never releases acquired connections."),
@@ -1524,6 +1550,15 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&PersistentConnections,
 		false,
+		NULL, NULL, NULL
+	},
+	{
+		{"strict_statement_checking", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Forbid statements that are not safe for the cluster"),
+			NULL
+		},
+		&StrictStatementChecking,
+		true,
 		NULL, NULL, NULL
 	},
 	{
@@ -1545,6 +1580,7 @@ static struct config_bool ConfigureNamesBool[] =
 		false,
 		check_pgxc_maintenance_mode, NULL, NULL
 	},
+#endif
 #endif
 
 	{
@@ -1585,7 +1621,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_S
 		},
 		&XLogArchiveTimeout,
-		0, 0, INT_MAX,
+		0, 0, INT_MAX / 2,
 		NULL, NULL, NULL
 	},
 	{
@@ -1595,7 +1631,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_NOT_IN_SAMPLE | GUC_UNIT_S
 		},
 		&PostAuthDelay,
-		0, 0, INT_MAX,
+		0, 0, INT_MAX / 1000000,
 		NULL, NULL, NULL
 	},
 	{
@@ -1750,7 +1786,11 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+#ifdef XCP
+		{"temp_buffers", PGC_SUSET, RESOURCES_MEM,
+#else
 		{"temp_buffers", PGC_USERSET, RESOURCES_MEM,
+#endif
 			gettext_noop("Sets the maximum number of temporary buffers used by each session."),
 			NULL,
 			GUC_UNIT_BLOCKS
@@ -1800,7 +1840,11 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+#ifdef XCP
+		{"work_mem", PGC_SUSET, RESOURCES_MEM,
+#else
 		{"work_mem", PGC_USERSET, RESOURCES_MEM,
+#endif
 			gettext_noop("Sets the maximum memory to be used for query workspaces."),
 			gettext_noop("This much memory can be used by each internal "
 						 "sort operation and hash table before switching to "
@@ -1813,7 +1857,11 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+#ifdef XCP
+		{"maintenance_work_mem", PGC_SUSET, RESOURCES_MEM,
+#else
 		{"maintenance_work_mem", PGC_USERSET, RESOURCES_MEM,
+#endif
 			gettext_noop("Sets the maximum memory to be used for maintenance operations."),
 			gettext_noop("This includes operations such as VACUUM and CREATE INDEX."),
 			GUC_UNIT_KB
@@ -1841,7 +1889,7 @@ static struct config_int ConfigureNamesInt[] =
 
 	{
 		{"temp_file_limit", PGC_SUSET, RESOURCES_DISK,
-			gettext_noop("Limits the total size of all temp files used by each session."),
+			gettext_noop("Limits the total size of all temporary files used by each session."),
 			gettext_noop("-1 means no limit."),
 			GUC_UNIT_KB
 		},
@@ -2154,7 +2202,11 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+#ifdef XCP
+		{"commit_delay", PGC_SUSET, WAL_SETTINGS,
+#else
 		{"commit_delay", PGC_USERSET, WAL_SETTINGS,
+#endif
 			gettext_noop("Sets the delay in microseconds between transaction commit and "
 						 "flushing WAL to disk."),
 			NULL
@@ -2165,7 +2217,11 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+#ifdef XCP
+		{"commit_siblings", PGC_SUSET, WAL_SETTINGS,
+#else
 		{"commit_siblings", PGC_USERSET, WAL_SETTINGS,
+#endif
 			gettext_noop("Sets the minimum concurrent open transactions before performing "
 						 "commit_delay."),
 			NULL
@@ -2259,7 +2315,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_MIN
 		},
 		&Log_RotationAge,
-		HOURS_PER_DAY * MINS_PER_HOUR, 0, INT_MAX / MINS_PER_HOUR,
+		HOURS_PER_DAY * MINS_PER_HOUR, 0, INT_MAX / SECS_PER_MINUTE,
 		NULL, NULL, NULL
 	},
 
@@ -2505,6 +2561,51 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 #ifdef PGXC
+#ifdef XCP
+	{
+		{"sequence_range", PGC_USERSET, COORDINATORS | DATA_NODES,
+			gettext_noop("The range of values to ask from GTM for sequences. "
+			             "If CACHE parameter is set then that overrides this."),
+			NULL,
+		},
+		&SequenceRangeVal,
+		1, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"pool_conn_keepalive", PGC_SIGHUP, DATA_NODES,
+			gettext_noop("Close connections if they are idle in the pool for that time."),
+			gettext_noop("A value of -1 turns autoclose off."),
+			GUC_UNIT_S
+		},
+		&PoolConnKeepAlive,
+		600, -1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"pool_maintenance_timeout", PGC_SIGHUP, DATA_NODES,
+			gettext_noop("Launch maintenance routine if pooler idle for that time."),
+			gettext_noop("A value of -1 turns feature off."),
+			GUC_UNIT_S
+		},
+		&PoolMaintenanceTimeout,
+		30, -1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"max_pool_size", PGC_SIGHUP, DATA_NODES,
+			gettext_noop("Max pool size."),
+			gettext_noop("If number of active connections reaches this value, "
+						 "other connection requests will be refused")
+		},
+		&MaxPoolSize,
+		100, 1, 65535,
+		NULL, NULL, NULL
+	},
+#else
 	{
 		{"min_pool_size", PGC_POSTMASTER, DATA_NODES,
 			gettext_noop("Initial pool size."),
@@ -2526,6 +2627,7 @@ static struct config_int ConfigureNamesInt[] =
 		100, 1, 65535,
 		NULL, NULL, NULL
 	},
+#endif
 
 	{
 		{"pooler_port", PGC_POSTMASTER, DATA_NODES,
@@ -2568,7 +2670,37 @@ static struct config_int ConfigureNamesInt[] =
 		16, 2, 65535,
 		NULL, NULL, NULL
 	},
+
+#ifdef XCP
+	/*
+	 * Shared queues provide shared memory buffers to stream data from
+	 * "producer" - process which executes subplan to "consumers" - processes
+	 * that are forwarding data to destination data nodes.
+	 */
+	{
+		{"shared_queues", PGC_POSTMASTER, RESOURCES_MEM,
+			gettext_noop("Sets the number of shared memory queues used by the distributed executor."),
+			NULL,
+			GUC_UNIT_BLOCKS
+		},
+		&NSQueues,
+		64, 16, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"shared_queue_size", PGC_POSTMASTER, RESOURCES_MEM,
+			gettext_noop("Sets the amount of memory allocated for a shared memory queue."),
+			NULL,
+			GUC_UNIT_BLOCKS
+		},
+		&SQueueSize,
+		64, 16, MAX_KILOBYTES,
+		NULL, NULL, NULL
+	},
 #endif
+#endif /* PGXC */
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL, NULL
@@ -2639,6 +2771,28 @@ static struct config_real ConfigureNamesReal[] =
 		DEFAULT_CURSOR_TUPLE_FRACTION, 0.0, 1.0,
 		NULL, NULL, NULL
 	},
+
+#ifdef XCP
+	{
+		{"network_byte_cost", PGC_USERSET, QUERY_TUNING_COST,
+			gettext_noop("Sets the planner's estimate of the cost of "
+						 "sending data from remote node."),
+			NULL
+		},
+		&network_byte_cost,
+		DEFAULT_NETWORK_BYTE_COST, 0, DBL_MAX, NULL, NULL
+	},
+
+	{
+		{"remote_query_cost", PGC_USERSET, QUERY_TUNING_COST,
+			gettext_noop("Sets the planner's estimate of the cost of "
+						 "setting up remote subquery."),
+			NULL
+		},
+		&remote_query_cost,
+		DEFAULT_REMOTE_QUERY_COST, 0, DBL_MAX, NULL, NULL
+	},
+#endif
 
 	{
 		{"geqo_selection_bias", PGC_USERSET, QUERY_TUNING_GEQO,
@@ -2983,6 +3137,31 @@ static struct config_string ConfigureNamesString[] =
 		check_session_authorization, assign_session_authorization, NULL
 	},
 
+#ifdef XCP
+	{
+		{"global_session", PGC_USERSET, UNGROUPED,
+			gettext_noop("Sets the global session identifier."),
+			NULL,
+			GUC_IS_NAME | GUC_REPORT | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE | GUC_NOT_WHILE_SEC_REST
+		},
+		&global_session_string,
+		"none",
+		check_global_session, assign_global_session, NULL
+	},
+
+	{
+		{"pgxc_catalog_remap", PGC_SIGHUP, XC_HOUSEKEEPING_OPTIONS,
+			gettext_noop("List of catalog tables/views that always need to be "
+						 "mapped to the storm_catalog."),
+			NULL,
+			GUC_LIST_INPUT | GUC_LIST_QUOTE | GUC_SUPERUSER_ONLY
+		},
+		&storm_catalog_remap_string,
+		"pg_roles, pg_shdescription, pg_database, pg_db_role_setting, pg_tablespace, pg_auth_members, pg_shdepend, pg_stat_database, pg_stat_database_conflicts, pg_stat_activity, pg_locks, pg_prepared_xacts, pg_settings, pg_user, pg_group, pg_shadow, pg_user_mappings, pg_database_size, pg_show_all_settings, pg_stat_get_activity, pg_lock_status",
+		check_storm_catalog_remap_string, NULL, NULL
+	},
+#endif
+
 	{
 		{"log_destination", PGC_SIGHUP, LOGGING_WHERE,
 			gettext_noop("Sets the destination for server log output."),
@@ -3030,7 +3209,7 @@ static struct config_string ConfigureNamesString[] =
 
 	{
 		{"event_source", PGC_POSTMASTER, LOGGING_WHERE,
-			gettext_noop("Sets the application name used to identify"
+			gettext_noop("Sets the application name used to identify "
 						 "PostgreSQL messages in the event log."),
 			NULL
 		},
@@ -3252,6 +3431,17 @@ static struct config_string ConfigureNamesString[] =
 		NULL, NULL, NULL
 	},
 #endif
+#ifdef XCP
+	{
+		{"parentnode", PGC_BACKEND, CONN_AUTH,
+			gettext_noop("Sets the name of the parent data node"),
+			NULL
+		},
+		&parentPGXCNode,
+		NULL,
+		NULL, NULL, NULL
+	},
+#endif /* XCP */
 	{
 		{"ssl_ciphers", PGC_POSTMASTER, CONN_AUTH_SECURITY,
 			gettext_noop("Sets the list of allowed SSL ciphers."),
@@ -3497,6 +3687,9 @@ static struct config_enum ConfigureNamesEnum[] =
 #ifdef PGXC
 	{
 		{"remotetype", PGC_BACKEND, CONN_AUTH,
+#ifdef XCP
+			gettext_noop("Sets the type of Postgres-XL remote connection"),
+#endif
 			gettext_noop("Sets the type of Postgres-XC remote connection"),
 			NULL
 		},
@@ -3573,6 +3766,9 @@ guc_malloc(int elevel, size_t size)
 {
 	void	   *data;
 
+	/* Avoid unportable behavior of malloc(0) */
+	if (size == 0)
+		size = 1;
 	data = malloc(size);
 	if (data == NULL)
 		ereport(elevel,
@@ -3586,6 +3782,9 @@ guc_realloc(int elevel, void *old, size_t size)
 {
 	void	   *data;
 
+	/* Avoid unportable behavior of realloc(NULL, 0) */
+	if (old == NULL && size == 0)
+		size = 1;
 	data = realloc(old, size);
 	if (data == NULL)
 		ereport(elevel,
@@ -5347,6 +5546,13 @@ set_config_option(const char *name, const char *value,
 	struct config_generic *record;
 	bool		prohibitValueChange = false;
 	bool		makeDefault;
+#ifdef XCP
+	bool		send_to_nodes = false;
+
+	/* Determine now, because source may be changed below in the function */
+	if (source == PGC_S_SESSION && (IS_PGXC_DATANODE || !IsConnFromCoord()))
+		send_to_nodes = true;
+#endif
 
 #ifdef PGXC
 	/*
@@ -6083,6 +6289,75 @@ set_config_option(const char *name, const char *value,
 	if (changeVal && (record->flags & GUC_REPORT))
 		ReportGUCOption(record);
 
+#ifdef XCP
+	if (send_to_nodes)
+	{
+		RemoteQuery    *step;
+		StringInfoData 	poolcmd;
+
+		initStringInfo(&poolcmd);
+
+		/*
+		 * We are getting parse error when sending down
+		 * SET transaction_isolation TO read committed;
+		 * XXX generic solution?
+		 */
+		if (value && strcmp("transaction_isolation", name) == 0)
+			value = quote_identifier(value);
+
+		/*
+		 * Quote value if it is including memory or time units
+		 */
+		if (value && (record->flags & (GUC_UNIT_MEMORY | GUC_UNIT_TIME)))
+			value = quote_identifier(value);
+
+		/*
+		 * Save new parameter value with the node manager.
+		 * XXX here we may check: if value equals to configuration default
+		 * just reset parameter instead. Minus one table entry, shorter SET
+		 * command sent downn... Sounds like optimization.
+		 */
+		if (action == GUC_ACTION_LOCAL)
+		{
+			if (IsTransactionBlock())
+				PGXCNodeSetParam(true, name, value);
+			appendStringInfo(&poolcmd, "SET LOCAL %s TO %s", name,
+					(value ? value : "DEFAULT"));
+		}
+		else
+		{
+			PGXCNodeSetParam(false, name, value);
+			appendStringInfo(&poolcmd, "SET %s TO %s", name,
+					(value ? value : "DEFAULT"));
+		}
+
+		/*
+		 * Send new value down to remote nodes if any is connected
+		 * XXX here we are creatig a node and invoke a function that is trying
+		 * to send some. That introduces some overhead, which may seem to be
+		 * significant if application sets a bunch of parameters before doing
+		 * anything useful - waste work for for each set statement.
+		 * We may want to avoid that, by resetting the remote parameters and
+		 * flagging that parameters needs to be updated before sending down next
+		 * statement.
+		 * On the other hand if session runs with a number of customized
+		 * parameters and switching one, that would cause all values are resent.
+		 * So let's go with "send immediately" approach: parameters are not set
+		 * too often to care about overhead here.
+		 */
+		step = makeNode(RemoteQuery);
+		step->combine_type = COMBINE_TYPE_SAME;
+		step->exec_nodes = NULL;
+		step->sql_statement = poolcmd.data;
+		/* force_autocommit is actually does not start transaction on nodes */
+		step->force_autocommit = true;
+		step->exec_type = EXEC_ON_CURRENT;
+		ExecRemoteUtility(step);
+		pfree(step);
+		pfree(poolcmd.data);
+	}
+#endif
+
 	return changeVal ? 1 : -1;
 }
 
@@ -6407,6 +6682,11 @@ ExecSetVariableStmt(VariableSetStmt *stmt)
 			{
 				ListCell   *head;
 
+#ifdef XCP
+				/* SET TRANSACTION assumes "local" */
+				stmt->is_local = true;
+#endif
+
 				foreach(head, stmt->args)
 				{
 					DefElem    *item = (DefElem *) lfirst(head);
@@ -6428,6 +6708,11 @@ ExecSetVariableStmt(VariableSetStmt *stmt)
 			else if (strcmp(stmt->name, "SESSION CHARACTERISTICS") == 0)
 			{
 				ListCell   *head;
+
+#ifdef XCP
+				/* SET SESSION CHARACTERISTICS assumes "session" */
+				stmt->is_local = false;
+#endif
 
 				foreach(head, stmt->args)
 				{
@@ -6568,6 +6853,7 @@ set_config_by_name(PG_FUNCTION_ARGS)
 
 
 #ifdef PGXC
+#ifndef XCP
 	/*
 	 * Convert this to SET statement and pass it to pooler.
 	 * If command is local and we are not in a transaction block do NOT
@@ -6589,6 +6875,7 @@ set_config_by_name(PG_FUNCTION_ARGS)
 			elog(ERROR, "Postgres-XC: ERROR SET query");
 
 	}
+#endif
 #endif
 
 	/* Convert return string to text */
@@ -8718,6 +9005,7 @@ check_log_stats(bool *newval, void **extra, GucSource source)
 }
 
 #ifdef PGXC
+#ifndef XCP
 /*
  * Only a warning is printed to log.
  * Returning false will cause FATAL error and it will not be good.
@@ -8762,6 +9050,7 @@ check_pgxc_maintenance_mode(bool *newval, void **extra, GucSource source)
 			return false;
 	}
 }
+#endif
 #endif
 
 static bool
@@ -9060,4 +9349,73 @@ show_log_file_mode(void)
 	return buf;
 }
 
+#ifdef XCP
+/*
+ * remove all unwanted spaces from the input, lowercase all the characters and
+ * also add a ',' towards the end if it does not exist. This makes calling
+ * strstr easier on it
+ */
+static bool
+check_storm_catalog_remap_string(char **newval, void **extra, GucSource source)
+{
+	/*
+	 * Check syntax. newval must be a comma separated list of identifiers.
+	 * Whitespace is allowed but removed from the result.
+	 */
+	bool		hasSpaceAfterToken = false;
+	const char *cp = *newval;
+	int			symLen = 0;
+	char		c;
+	StringInfoData buf;
+
+	/* Default NULL is OK */
+	if (cp == NULL)
+		return true;
+
+	initStringInfo(&buf);
+	while ((c = *cp++) != '\0')
+	{
+		if (isspace((unsigned char) c))
+		{
+			if (symLen > 0)
+				hasSpaceAfterToken = true;
+			continue;
+		}
+
+		if (c == ',')
+		{
+			if (symLen > 0)		/* terminate identifier */
+			{
+				appendStringInfoChar(&buf, ',');
+				symLen = 0;
+			}
+			hasSpaceAfterToken = false;
+			continue;
+		}
+
+		if (hasSpaceAfterToken)
+		{
+			/*
+			 * Syntax error due to token following space after token
+			 */
+			pfree(buf.data);
+			return false;
+		}
+		/* We lower case everything */
+		appendStringInfoChar(&buf, pg_tolower(c));
+		symLen++;
+	}
+
+	/* Append ',' at end if not present already */
+	if (symLen != 0 && buf.len > 0)
+		appendStringInfoChar(&buf, ',');
+
+	/* GUC wants the result malloc'd */
+	free(*newval);
+	*newval = guc_strdup(LOG, buf.data);
+
+	pfree(buf.data);
+	return true;
+}
+#endif
 #include "guc-file.c"

@@ -659,6 +659,14 @@ SELECT release_hosts_query();
       future releases.
      </para>
 <!## end>
+<!## XL>
+&xlonly;
+     <para>
+      <command>PREPARE</> is not supported in the current release
+      of <productname>Postgres-XL</>.  This may be supported in the
+      future releases.
+     </para>
+<!## end>
     </listitem>
     </varlistentry>
    </variablelist>

@@ -21,6 +21,11 @@
  * Also, we have changed the API to return tuples in TupleTableSlots,
  * so that there is a check to prevent attempted access to system columns.
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -81,5 +86,15 @@ extern void tuplestore_rescan(Tuplestorestate *state);
 extern void tuplestore_clear(Tuplestorestate *state);
 
 extern void tuplestore_end(Tuplestorestate *state);
+
+#ifdef XCP
+extern Tuplestorestate *tuplestore_begin_datarow(bool interXact, int maxKBytes,
+						 MemoryContext tmpcxt);
+extern Tuplestorestate *tuplestore_begin_message(bool interXact, int maxKBytes);
+extern void tuplestore_putmessage(Tuplestorestate *state, int len, char* msg);
+extern char *tuplestore_getmessage(Tuplestorestate *state, int *len);
+#endif
+
+extern void tuplestore_collect_stat(Tuplestorestate *state, char *name);
 
 #endif   /* TUPLESTORE_H */

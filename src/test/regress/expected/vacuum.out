@@ -1,7 +1,7 @@
 --
 -- VACUUM
 --
-CREATE TABLE vactst (i INT);
+CREATE TABLE vactst (i INT) DISTRIBUTE BY REPLICATION;
 INSERT INTO vactst VALUES (1);
 INSERT INTO vactst SELECT * FROM vactst;
 INSERT INTO vactst SELECT * FROM vactst;
@@ -30,7 +30,6 @@ SELECT * FROM vactst;
 
 VACUUM FULL vactst;
 UPDATE vactst SET i = i + 1;
-ERROR:  Partition column can't be updated in current version
 INSERT INTO vactst SELECT * FROM vactst;
 INSERT INTO vactst SELECT * FROM vactst;
 INSERT INTO vactst SELECT * FROM vactst;
@@ -66,7 +65,7 @@ INSERT INTO vaccluster SELECT * FROM vactst;
 CLUSTER vaccluster;
 VACUUM FULL pg_am;
 VACUUM FULL pg_class;
-VACUUM FULL pg_database;
+VACUUM FULL pg_catalog.pg_database;
 VACUUM FULL vaccluster;
 VACUUM FULL vactst;
 DROP TABLE vaccluster;

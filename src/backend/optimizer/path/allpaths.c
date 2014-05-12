@@ -3,6 +3,11 @@
  * allpaths.c
  *	  Routines to find possible search paths for processing a query
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -36,6 +41,16 @@
 #include "optimizer/var.h"
 #include "parser/parse_clause.h"
 #include "parser/parsetree.h"
+#ifdef PGXC
+#ifdef XCP
+#include "nodes/makefuncs.h"
+#include "miscadmin.h"
+#else
+#include "catalog/pg_namespace.h"
+#include "catalog/pg_class.h"
+#include "pgxc/pgxc.h"
+#endif /* XCP */
+#endif /* PGXC */
 #include "rewrite/rewriteManip.h"
 #include "utils/lsyscache.h"
 
@@ -378,9 +393,22 @@ static void
 set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 {
 #ifdef PGXC
-	if (!create_plainrel_rqpath(root, rel, rte))
+#ifndef XCP
+	/*
+	 * If we are on the Coordinator, we always want to use
+	 * the remote query path unless it is a pg_catalog table
+	 * or a sequence relation.
+	 */
+	if (IS_PGXC_COORDINATOR &&
+		!IsConnFromCoord() &&
+		get_rel_namespace(rte->relid) != PG_CATALOG_NAMESPACE &&
+		get_rel_relkind(rte->relid) != RELKIND_SEQUENCE &&
+		!root->parse->is_local)
+		add_path(rel, create_remotequery_path(root, rel));
+	else
 	{
-#endif
+#endif /* XCP */
+#endif /* PGXC */
 
 	/* Consider sequential scan */
 	add_path(rel, create_seqscan_path(root, rel, NULL));
@@ -391,8 +419,10 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	/* Consider TID scans */
 	create_tidscan_paths(root, rel);
 #ifdef PGXC
+#ifndef XCP
 	}
-#endif
+#endif /* XCP */
+#endif /* PGXC */
 
 	/* Now find the cheapest of the paths for this rel */
 	set_cheapest(rel);
@@ -1035,6 +1065,9 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	double		tuple_fraction;
 	PlannerInfo *subroot;
 	List	   *pathkeys;
+#ifdef XCP
+	Distribution *distribution;
+#endif
 
 	/*
 	 * Must copy the Query so that planning doesn't mess up the RTE contents
@@ -1119,12 +1152,22 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	else
 		tuple_fraction = root->tuple_fraction;
 
+	/* plan_params should not be in use in current query level */
+	Assert(root->plan_params == NIL);
+
 	/* Generate the plan for the subquery */
 	rel->subplan = subquery_planner(root->glob, subquery,
 									root,
 									false, tuple_fraction,
 									&subroot);
 	rel->subroot = subroot;
+
+	/*
+	 * Since we don't yet support LATERAL, it should not be possible for the
+	 * sub-query to have requested parameters of this level.
+	 */
+	if (root->plan_params)
+		elog(ERROR, "unexpected outer reference in subquery in FROM");
 
 	/*
 	 * It's possible that constraint exclusion proved the subquery empty. If
@@ -1144,7 +1187,53 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	pathkeys = convert_subquery_pathkeys(root, rel, subroot->query_pathkeys);
 
 	/* Generate appropriate path */
+#ifdef XCP
+	if (subroot->distribution && subroot->distribution->distributionExpr)
+	{
+		ListCell *lc;
+		/*
+		 * The distribution expression from the subplan's tlist, but it should
+		 * be from the rel, need conversion.
+		 */
+		distribution = makeNode(Distribution);
+		distribution->distributionType = subroot->distribution->distributionType;
+		distribution->nodes = bms_copy(subroot->distribution->nodes);
+		distribution->restrictNodes = bms_copy(subroot->distribution->restrictNodes);
+		foreach(lc, rel->subplan->targetlist)
+		{
+			TargetEntry *tle = (TargetEntry *) lfirst(lc);
+			if (equal(tle->expr, subroot->distribution->distributionExpr))
+			{
+				distribution->distributionExpr = (Node *)
+						makeVarFromTargetEntry(rel->relid, tle);
+				break;
+			}
+		}
+	}
+	else
+		distribution = subroot->distribution;
+	add_path(rel, create_subqueryscan_path(root, rel, pathkeys, NULL,
+			 distribution));
+
+	/* 
+	 * Temporarily block ORDER BY in subqueries until we can add support 
+	 * it in Postgres-XL without outputting incorrect results. Should
+	 * do this only in normal processing mode though!
+     *
+     * The extra conditions below try to handle cases where an ORDER BY
+     * appears in a simple VIEW or INSERT SELECT.
+     */
+	if (IsUnderPostmaster &&
+		list_length(subquery->sortClause) > 1
+				&& (subroot->parent_root != root
+				|| (subroot->parent_root == root 
+					&& (root->parse->commandType != CMD_SELECT
+						|| (root->parse->commandType == CMD_SELECT
+							&& root->parse->hasWindowFuncs)))))
+		elog(ERROR, "Postgres-XL does not currently support ORDER BY in subqueries");
+#else
 	add_path(rel, create_subqueryscan_path(root, rel, pathkeys, NULL));
+#endif
 
 	/* Select cheapest path (pretty easy in this case...) */
 	set_cheapest(rel);

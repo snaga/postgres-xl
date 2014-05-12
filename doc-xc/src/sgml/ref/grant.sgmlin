@@ -361,6 +361,9 @@ GRANT <replaceable class="PARAMETER">role_name</replaceable> [, ...] TO <replace
 <!## XC>
        <productname>Postgres-XC</productname>, though it is required by
 <!## end>
+<!## XL>
+       <productname>Postgres-XL</productname>, though it is required by
+<!## end>
        strict SQL.
       </para>
      </listitem>
@@ -614,6 +617,9 @@ GRANT admins TO joe;
 <!## XC>
     <productname>Postgres-XC</productname> allows an object owner to revoke his
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> allows an object owner to revoke his
+<!## end>
     own ordinary privileges: for example, a table owner can make the table
     read-only to himself by revoking his own <literal>INSERT</>,
     <literal>UPDATE</>, <literal>DELETE</>, and <literal>TRUNCATE</>
@@ -623,6 +629,9 @@ GRANT admins TO joe;
 <!## end>
 <!## XC>
     reason is that <productname>Postgres-XC</productname> treats the owner's
+<!## end>
+<!## XL>
+    reason is that <productname>Postgres-XL</productname> treats the owner's
 <!## end>
     privileges as having been granted by the owner to himself; therefore he
     can revoke them too.  In the SQL standard, the owner's privileges are
@@ -643,6 +652,9 @@ GRANT admins TO joe;
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname> extensions.
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> extensions.
 <!## end>
    </para>
  </refsect1>

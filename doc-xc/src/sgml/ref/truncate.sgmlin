@@ -62,7 +62,11 @@ TRUNCATE [ TABLE ] [ ONLY ] <replaceable class="PARAMETER">name</replaceable> [,
     <listitem>
      <para>
       Automatically restart sequences owned by columns of
-      the truncated table(s).
+      the truncated table(s). 
+<!## XL>
+This feature is not implemented in
+      Postgres-XL currently.
+<!## end>
      </para>
     </listitem>
    </varlistentry>

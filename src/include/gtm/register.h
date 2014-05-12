@@ -3,6 +3,11 @@
  * register.h
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
@@ -17,7 +22,6 @@
 #include "gtm/libpq-be.h"
 #include "gtm/gtm_c.h"
 #include "gtm/gtm_lock.h"
-#include "gtm/gtm_list.h"
 #include "gtm/stringinfo.h"
 
 /*
@@ -39,6 +43,14 @@ typedef enum GTM_PGXCNodeStatus
 	NODE_DISCONNECTED
 } GTM_PGXCNodeStatus;
 
+#ifdef XCP
+typedef struct GTM_PGXCSession
+{
+	int		gps_coord_proc_id;
+	int		gps_coord_backend_id;
+} GTM_PGXCSession;
+#endif
+
 typedef struct GTM_PGXCNodeInfo
 {
 	GTM_PGXCNodeType	type;		/* Type of node */
@@ -48,9 +60,15 @@ typedef struct GTM_PGXCNodeInfo
 	char			*ipaddress;	/* IP address of the nodes */
 	char			*datafolder;	/* Data folder of the node */
 	GTM_PGXCNodeStatus	status;		/* Node status */
+#ifdef XCP
+	int 			max_sessions;
+	int 			num_sessions;
+	GTM_PGXCSession	*sessions;
+#endif
 	GTM_RWLock		node_lock;	/* Lock on this structure */
 	int			socket;		/* socket number used for registration */
 } GTM_PGXCNodeInfo;
+
 
 /* Maximum number of nodes that can be registered */
 #define MAX_NODES 1024
@@ -78,6 +96,11 @@ void Recovery_RestoreRegisterInfo(void);
 void Recovery_SaveRegisterInfo(void);
 void Recovery_PGXCNodeDisconnect(Port *myport);
 void Recovery_SaveRegisterFileName(char *dir);
+#ifdef XCP
+int Recovery_PGXCNodeRegisterCoordProcess(char *coord_node, int coord_procid,
+								      int coord_backendid);
+void ProcessPGXCRegisterSession(Port *myport, StringInfo message);
+#endif
 
 void ProcessPGXCNodeRegister(Port *myport, StringInfo message, bool is_backup);
 void ProcessPGXCNodeUnregister(Port *myport, StringInfo message, bool is_backup);

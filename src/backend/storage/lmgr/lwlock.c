@@ -11,6 +11,11 @@
  * LWLocks to protect its shared state.
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -31,7 +36,10 @@
 #include "storage/predicate.h"
 #include "storage/proc.h"
 #include "storage/spin.h"
-
+#ifdef XCP
+#include "pgxc/nodemgr.h"
+#include "pgxc/squeue.h"
+#endif
 
 /* We use the ShmemLock spinlock to protect LWLockAssign */
 extern slock_t *ShmemLock;
@@ -200,6 +208,12 @@ NumLWLocks(void)
 
 	/* predicate.c needs one per old serializable xid buffer */
 	numLocks += NUM_OLDSERXID_BUFFERS;
+
+#ifdef XCP
+	/* squeue.c needs one per consumer node in each shared queue.
+	 * Max number of consumers is MaxDataNodes-1 */
+	numLocks += NUM_SQUEUES * (MaxDataNodes-1);
+#endif
 
 	/*
 	 * Add any requested by loadable modules; for backwards-compatibility
@@ -739,6 +753,7 @@ LWLockRelease(LWLockId lockid)
 	}
 	if (i < 0)
 		elog(ERROR, "lock %d is not held", (int) lockid);
+
 	num_held_lwlocks--;
 	for (; i < num_held_lwlocks; i++)
 		held_lwlocks[i] = held_lwlocks[i + 1];

@@ -75,8 +75,6 @@ SELECT * FROM tab WHERE lower(col) = LOWER(?);
  <sect2>
   <title>How to Use It</title>
 
-&xconly;
-
   <para>
    Here's a simple example of usage:
 
@@ -113,14 +111,37 @@ INSERT INTO users VALUES (5,  'Bj&oslash;rn',  md5(random()::text) );
 SELECT * FROM users WHERE nick = 'Larry';
 </programlisting>
 <!## end>
+<!## XL>
+<programlisting>
+CREATE TABLE users (
+    id   int    PRIMARY KEY,
+    nick CITEXT,
+    pass TEXT   NOT NULL
+);
+
+INSERT INTO users VALUES (1,  'larry',  md5(random()::text) );
+INSERT INTO users VALUES (2,  'Tom',    md5(random()::text) );
+INSERT INTO users VALUES (3,  'Damian', md5(random()::text) );
+INSERT INTO users VALUES (4,  'NEAL',   md5(random()::text) );
+INSERT INTO users VALUES (5,  'Bj&oslash;rn',  md5(random()::text) );
+
+SELECT * FROM users WHERE nick = 'Larry';
+</programlisting>
+<!## end>
 
    The <command>SELECT</> statement will return one tuple, even though
    the <structfield>nick</> column was set to <literal>larry</> and the query
    was for <literal>Larry</>.
   </para>
 
-&xconly;
 <!## XC>
+&xconly;
+  <para>
+   Please note that the column of the type <literal>CITEXT</literal>
+   cannot be the distribution column;
+  </para>
+<!## end>
+<!## XL>
   <para>
    Please note that the column of the type <literal>CITEXT</literal>
    cannot be the distribution column;

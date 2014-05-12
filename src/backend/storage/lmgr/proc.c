@@ -3,6 +3,11 @@
  * proc.c
  *	  routines to manage per-process shared memory data structure
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -296,6 +301,13 @@ InitProcess(void)
 		elog(ERROR, "you already exist");
 
 	/*
+	 * Initialize process-local latch support.  This could fail if the kernel
+	 * is low on resources, and if so we want to exit cleanly before acquiring
+	 * any shared-memory resources.
+	 */
+	InitializeLatchSupport();
+
+	/*
 	 * Try to get a proc struct from the free list.  If this fails, we must be
 	 * out of PGPROC structures (not to mention semaphores).
 	 *
@@ -350,6 +362,8 @@ InitProcess(void)
 	SHMQueueElemInit(&(MyProc->links));
 	MyProc->waitStatus = STATUS_OK;
 	MyProc->lxid = InvalidLocalTransactionId;
+	MyProc->fpVXIDLock = false;
+	MyProc->fpLocalTransactionId = InvalidLocalTransactionId;
 	MyPgXact->xid = InvalidTransactionId;
 	MyPgXact->xmin = InvalidTransactionId;
 	MyProc->pid = MyProcPid;
@@ -357,6 +371,10 @@ InitProcess(void)
 	MyProc->backendId = InvalidBackendId;
 	MyProc->databaseId = InvalidOid;
 	MyProc->roleId = InvalidOid;
+#ifdef XCP
+	MyProc->coordId = InvalidOid;
+	MyProc->coordPid = 0;
+#endif
 	MyPgXact->inCommit = false;
 	MyPgXact->vacuumFlags = 0;
 #ifdef PGXC
@@ -472,6 +490,13 @@ InitAuxiliaryProcess(void)
 		elog(ERROR, "you already exist");
 
 	/*
+	 * Initialize process-local latch support.  This could fail if the kernel
+	 * is low on resources, and if so we want to exit cleanly before acquiring
+	 * any shared-memory resources.
+	 */
+	InitializeLatchSupport();
+
+	/*
 	 * We use the ProcStructLock to protect assignment and releasing of
 	 * AuxiliaryProcs entries.
 	 *
@@ -513,11 +538,17 @@ InitAuxiliaryProcess(void)
 	SHMQueueElemInit(&(MyProc->links));
 	MyProc->waitStatus = STATUS_OK;
 	MyProc->lxid = InvalidLocalTransactionId;
+	MyProc->fpVXIDLock = false;
+	MyProc->fpLocalTransactionId = InvalidLocalTransactionId;
 	MyPgXact->xid = InvalidTransactionId;
 	MyPgXact->xmin = InvalidTransactionId;
 	MyProc->backendId = InvalidBackendId;
 	MyProc->databaseId = InvalidOid;
 	MyProc->roleId = InvalidOid;
+#ifdef XCP
+	MyProc->coordId = InvalidOid;
+	MyProc->coordPid = 0;
+#endif
 #ifdef PGXC
 	MyProc->isPooler = false;
 	if (IsPGXCPoolerProcess())
@@ -1112,12 +1143,29 @@ ProcSleep(LOCALLOCK *locallock, LockMethod lockMethodTable)
 				!(autovac_pgxact->vacuumFlags & PROC_VACUUM_FOR_WRAPAROUND))
 			{
 				int			pid = autovac->pid;
+				StringInfoData locktagbuf;
+				StringInfoData logbuf;		/* errdetail for server log */
 
-				elog(DEBUG2, "sending cancel to blocking autovacuum PID %d",
-					 pid);
+				initStringInfo(&locktagbuf);
+				initStringInfo(&logbuf);
+				DescribeLockTag(&locktagbuf, &lock->tag);
+				appendStringInfo(&logbuf,
+					  _("Process %d waits for %s on %s"),
+						 MyProcPid,
+						 GetLockmodeName(lock->tag.locktag_lockmethodid,
+										 lockmode),
+						 locktagbuf.data);
 
-				/* don't hold the lock across the kill() syscall */
+				/* release lock as quickly as possible */
 				LWLockRelease(ProcArrayLock);
+
+				ereport(LOG,
+						(errmsg("sending cancel to blocking autovacuum PID %d",
+							pid),
+						 errdetail_log("%s", logbuf.data)));
+
+				pfree(logbuf.data);
+				pfree(locktagbuf.data);
 
 				/* send the autovacuum worker Back to Old Kent Road */
 				if (kill(pid, SIGINT) < 0)

@@ -17,6 +17,17 @@
     to handle the large object as OID is inconsistent among cluster nodes.
    </para>
 <!## end>
+<!## XL>
+<!-- NOTICE:
+     Need API improvement and unique OID throughout the cluster to support large objects
+-->
+&xlonly;
+   <para>
+    Large objects are not supported by <productname>Postgres-XL</>.
+    <productname>Postgres-XL</> does not provide consistent means
+    to handle the large object as OID is inconsistent among cluster nodes.
+   </para>
+<!## end>
 
 <!## PG>
    <para>

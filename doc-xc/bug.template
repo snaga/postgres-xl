@@ -1,19 +1,19 @@
 If PostgreSQL failed to compile on your computer or you found a bug,
-please fill out this form and e-mail it to postgres-xc-bugs@lists.sourceforge.net.
+please fill out this form and e-mail it to postgres-xl-bugs@lists.sourceforge.net.
 
 If your bug report has security implications and you'd prefer that it not
-become immediately visible in public archives, don't send it to postgres-xc-bugs.
+become immediately visible in public archives, don't send it to postgres-xl-bugs.
 Security issues can be reported privately to security@postgresql.org.
 
 If you not only found the problem but solved it and generated a patch
-then e-mail it to postgres-xc-bugs@lists.sourceforge.net instead.  Please use the
+then e-mail it to postgres-xl-bugs@lists.sourceforge.net instead.  Please use the
 command "diff -c" to generate the patch.
 
-You may also enter a bug report at http://sourceforge.net/projects/postgres-xc/
+You may also enter a bug report at http://sourceforge.net/projects/postgres-xl/
 instead of e-mailing this form.
 
 ============================================================================
-                        POSTGRES-XC BUG REPORT TEMPLATE
+                        POSTGRES-XL BUG REPORT TEMPLATE
 ============================================================================
 
 
@@ -27,7 +27,7 @@ System Configuration:
 
   Operating System (example: Linux 2.4.18)	:
 
-  Postgres-XC version (example: Postgres-XC 1.1devel):  Postgres-XC 1.1devel
+  Postgres-XL version (example: Postgres-XL 9.2):  Postgres-XL 9.2
 
   Compiler used (example: gcc 3.3.5)		:
 

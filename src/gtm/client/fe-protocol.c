@@ -3,6 +3,11 @@
  * fe-protocol3.c
  *	  functions that are specific to frontend/backend protocol version 3
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
@@ -366,6 +371,11 @@ gtmpqParseSuccess(GTM_Conn *conn, GTM_Result *result)
 		case END_BACKUP_RESULT:
 			break;
 
+#ifdef XCP
+		case REGISTER_SESSION_RESULT:
+			break;
+#endif
+
 		case TXN_BEGIN_RESULT:
 			if (gtmpqGetnchar((char *)&result->gr_resdata.grd_txnhandle,
 						   sizeof (GTM_TransactionHandle), conn))
@@ -549,6 +559,7 @@ gtmpqParseSuccess(GTM_Conn *conn, GTM_Result *result)
 				result->gr_status = GTM_RESULT_ERROR;
 			break;
 
+		case SEQUENCE_GET_CURRENT_RESULT:
 		case SEQUENCE_GET_NEXT_RESULT:
 		case SEQUENCE_GET_LAST_RESULT:
 			if (gtmpqReadSeqKey(&result->gr_resdata.grd_seq.seqkey, conn))
@@ -559,6 +570,12 @@ gtmpqParseSuccess(GTM_Conn *conn, GTM_Result *result)
 			if (gtmpqGetnchar((char *)&result->gr_resdata.grd_seq.seqval,
 						   sizeof (GTM_Sequence), conn))
 				result->gr_status = GTM_RESULT_ERROR;
+#ifdef XCP
+			if (result->gr_type == SEQUENCE_GET_NEXT_RESULT &&
+				 gtmpqGetnchar((char *)&result->gr_resdata.grd_seq.rangemax,
+						   sizeof (GTM_Sequence), conn))
+				result->gr_status = GTM_RESULT_ERROR;
+#endif
 			break;
 
 		case SEQUENCE_LIST_RESULT:
@@ -570,7 +587,7 @@ gtmpqParseSuccess(GTM_Conn *conn, GTM_Result *result)
 			}
 
 			result->gr_resdata.grd_seq_list.seq =
-						(GTM_SeqInfo **)malloc(sizeof(GTM_SeqInfo *) *
+						(GTM_SeqInfo **)malloc(sizeof(GTM_SeqInfo) *
 											   result->gr_resdata.grd_seq_list.seq_count);
 
 			for (i = 0 ; i < result->gr_resdata.grd_seq_list.seq_count; i++)
@@ -593,7 +610,8 @@ gtmpqParseSuccess(GTM_Conn *conn, GTM_Result *result)
 					break;
 				}
 
-				result->gr_resdata.grd_seq_list.seq[i] = gtm_deserialize_sequence(buf, buflen);
+				gtm_deserialize_sequence(result->gr_resdata.grd_seq_list.seq+i,
+										 buf, buflen);
 
 				free(buf);
 			}
@@ -733,7 +751,7 @@ gtmpqParseSuccess(GTM_Conn *conn, GTM_Result *result)
 			for (i = 0 ; i < result->gr_resdata.grd_node_list.num_node; i++)
 			{
 				int size;
-				char buf[1024];
+				char buf[8092];
 				GTM_PGXCNodeInfo *data = (GTM_PGXCNodeInfo *)malloc(sizeof(GTM_PGXCNodeInfo));
 
 				if (gtmpqGetInt(&size, sizeof(int32), conn))
@@ -741,19 +759,37 @@ gtmpqParseSuccess(GTM_Conn *conn, GTM_Result *result)
 					result->gr_status = GTM_RESULT_ERROR;
 					break;
 				}
+				if (size > 8092)
+				{
+					result->gr_status = GTM_RESULT_ERROR;
+					printfGTMPQExpBuffer(&conn->errorMessage, "buffer size not large enough for node list data");
+			result->gr_status = GTM_RESULT_ERROR;
+				}
 
 				if (gtmpqGetnchar((char *)&buf, size, conn))
 				{
 					result->gr_status = GTM_RESULT_ERROR;
 					break;
 				}
-				gtm_deserialize_pgxcnodeinfo(data, buf, size);
-
+#ifdef XCP
+				if (!gtm_deserialize_pgxcnodeinfo(data, buf, size, &conn->errorMessage))
+				{
+					result->gr_status = GTM_RESULT_ERROR;
+					break;
+				} 
+				else 
+				{
+					result->gr_resdata.grd_node_list.nodeinfo[i] = data;
+				} 
+#else
+				gtm_deserialize_pgxcnodeinfo(data, buf, size, &conn->errorMessage);
 				result->gr_resdata.grd_node_list.nodeinfo[i] = data;
+#endif
 			}
 
 			break;
 		}
+
 		default:
 			printfGTMPQExpBuffer(&conn->errorMessage,
 							  "unexpected result type from server; result typr was \"%d\"\n",
@@ -813,6 +849,7 @@ gtmpqFreeResultData(GTM_Result *result, GTM_PGXCNodeType remote_type)
 			result->gr_resdata.grd_seqkey.gsk_key = NULL;
 			break;
 
+		case SEQUENCE_GET_CURRENT_RESULT:
 		case SEQUENCE_GET_NEXT_RESULT:
 		case SEQUENCE_GET_LAST_RESULT:
 			if (result->gr_resdata.grd_seq.seqkey.gsk_key != NULL)

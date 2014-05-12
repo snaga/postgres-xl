@@ -269,7 +269,8 @@ SELECT '' AS "Two", *
 UPDATE CASE_TBL
   SET i = CASE WHEN i >= 3 THEN (- i)
                 ELSE (2 * i) END;
-ERROR:  Partition column can't be updated in current version
+ERROR:  could not plan this distributed update
+DETAIL:  correlated UPDATE or updating distribution column currently not supported in Postgres-XL.
 SELECT * FROM CASE_TBL ORDER BY i, f;
  i |   f   
 ---+-------
@@ -282,7 +283,8 @@ SELECT * FROM CASE_TBL ORDER BY i, f;
 UPDATE CASE_TBL
   SET i = CASE WHEN i >= 2 THEN (2 * i)
                 ELSE (3 * i) END;
-ERROR:  Partition column can't be updated in current version
+ERROR:  could not plan this distributed update
+DETAIL:  correlated UPDATE or updating distribution column currently not supported in Postgres-XL.
 SELECT * FROM CASE_TBL ORDER BY i, f;
  i |   f   
 ---+-------
@@ -297,7 +299,8 @@ UPDATE CASE_TBL
                 ELSE (3 * j) END
   FROM CASE2_TBL b
   WHERE j = -CASE_TBL.i;
-ERROR:  Partition column can't be updated in current version
+ERROR:  could not plan this distributed update
+DETAIL:  correlated UPDATE or updating distribution column currently not supported in Postgres-XL.
 SELECT * FROM CASE_TBL ORDER BY i, f;
  i |   f   
 ---+-------

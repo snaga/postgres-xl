@@ -26,6 +26,11 @@
  *	before ExecutorEnd.  This can be omitted only in case of EXPLAIN,
  *	which should also omit ExecutorRun.
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -58,6 +63,11 @@
 #ifdef PGXC
 #include "pgxc/pgxc.h"
 #include "commands/copy.h"
+#endif
+#ifdef XCP
+#include "access/gtm.h"
+#include "pgxc/execRemote.h"
+#include "pgxc/poolmgr.h"
 #endif
 
 /* Hooks for plugins to get control in ExecutorStart/Run/Finish/End */
@@ -153,8 +163,39 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	estate->es_param_list_info = queryDesc->params;
 
 	if (queryDesc->plannedstmt->nParamExec > 0)
+#ifdef XCP
+	{
 		estate->es_param_exec_vals = (ParamExecData *)
 			palloc0(queryDesc->plannedstmt->nParamExec * sizeof(ParamExecData));
+		if (queryDesc->plannedstmt->nParamRemote > 0)
+		{
+			ParamListInfo extparams = estate->es_param_list_info;
+			int i = queryDesc->plannedstmt->nParamRemote;
+			while (--i >= 0 &&
+				queryDesc->plannedstmt->remoteparams[i].paramkind == PARAM_EXEC)
+			{
+				int paramno = queryDesc->plannedstmt->remoteparams[i].paramid;
+				ParamExecData *prmdata;
+
+				Assert(paramno >= 0 &&
+					   paramno < queryDesc->plannedstmt->nParamExec);
+				prmdata = &(estate->es_param_exec_vals[paramno]);
+				prmdata->value = extparams->params[i].value;
+				prmdata->isnull = extparams->params[i].isnull;
+				prmdata->ptype = extparams->params[i].ptype;
+			}
+			/*
+			 * Truncate exec parameters from the list of received parameters
+			 * to avoid sending down duplicates if there are multiple levels
+			 * of RemoteSubplan statements
+			 */
+			extparams->numParams = i + 1;
+		}
+	}
+#else
+		estate->es_param_exec_vals = (ParamExecData *)
+			palloc0(queryDesc->plannedstmt->nParamExec * sizeof(ParamExecData));
+#endif
 
 	/*
 	 * If non-read-only query, set the command ID to mark output tuples with
@@ -229,7 +270,9 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
  *		we retrieve up to 'count' tuples in the specified direction.
  *
  *		Note: count = 0 is interpreted as no portal limit, i.e., run to
- *		completion.
+ *		completion.  Also note that the count limit is only applied to
+ *		retrieved tuples, not for instance to those inserted/updated/deleted
+ *		by a ModifyTable plan node.
  *
  *		There is no return value, but output tuples (if any) are sent to
  *		the destination receiver specified in the QueryDesc; and the number
@@ -766,7 +809,9 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		/* es_result_relation_info is NULL except when within ModifyTable */
 		estate->es_result_relation_info = NULL;
 #ifdef PGXC
+#ifndef XCP
 		estate->es_result_remoterel = NULL;
+#endif
 #endif
 	}
 	else
@@ -778,7 +823,9 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		estate->es_num_result_relations = 0;
 		estate->es_result_relation_info = NULL;
 #ifdef PGXC
-		estate->es_result_remoterel = NULL;
+#ifndef XCP
+estate->es_result_remoterel = NULL;
+#endif
 #endif
 	}
 
@@ -869,6 +916,16 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		sp_eflags = eflags & EXEC_FLAG_EXPLAIN_ONLY;
 		if (bms_is_member(i, plannedstmt->rewindPlanIDs))
 			sp_eflags |= EXEC_FLAG_REWIND;
+#ifdef XCP
+		/*
+		 * Distributed executor may never execute that plan because referencing
+		 * subplan is executed on remote node, so we may save some resources.
+		 * At the moment only RemoteSubplan is aware of this flag, it is
+		 * skipping sending down subplan.
+		 * ExecInitSubPlan takes care about finishing initialization.
+		 */
+		sp_eflags |= EXEC_FLAG_SUBPLAN;
+#endif
 
 		subplanstate = ExecInitNode(subplan, estate, sp_eflags);
 
@@ -894,7 +951,15 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	 * Initialize the junk filter if needed.  SELECT queries need a filter if
 	 * there are any junk attrs in the top-level tlist.
 	 */
+#ifdef XCP
+	/*
+ 	 * We need to keep junk attrs in intermediate results, they may be needed
+	 * in upper level plans on the receiving side
+	 */
+	if (!IS_PGXC_DATANODE && operation == CMD_SELECT)
+#else
 	if (operation == CMD_SELECT)
+#endif
 	{
 		bool		junk_filter_needed = false;
 		ListCell   *tlist;
@@ -1357,7 +1422,7 @@ ExecEndPlan(PlanState *planstate, EState *estate)
 /* ----------------------------------------------------------------
  *		ExecutePlan
  *
- *		Processes the query plan until we have processed 'numberTuples' tuples,
+ *		Processes the query plan until we have retrieved 'numberTuples' tuples,
  *		moving in the specified direction.
  *
  *		Runs to completion if numberTuples is 0
@@ -2244,8 +2309,10 @@ EvalPlanQualStart(EPQState *epqstate, EState *parentestate, Plan *planTree)
 	estate->es_result_relation_info = parentestate->es_result_relation_info;
 
 #ifdef PGXC
+#ifndef XCP
 	/* XXX Check if this is OK */
 	estate->es_result_remoterel = parentestate->es_result_remoterel;
+#endif
 #endif
 
 	/* es_trig_target_relations must NOT be copied */

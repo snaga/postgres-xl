@@ -1331,6 +1331,11 @@ if (!triggered)
       and the use of this entirely to users.
      </para>
 <!## end>
+<!## XL>
+&pgonly;
+     <para>
+     </para>
+<!## end>
 
    <para>
     It is also possible to implement record-based log shipping using this
@@ -1399,6 +1404,14 @@ if (!triggered)
    <para>
     Hot Standby is not supported by the current version
     of <productname>Postgres-XC</productname>.
+   </para>
+<!## end>
+<!## XL>
+&pgonly;
+
+   <para>
+    Hot Standby is not supported by the current version
+    of <productname>Postgres-XL</productname>.
    </para>
 <!## end>
 

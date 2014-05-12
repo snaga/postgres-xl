@@ -700,7 +700,10 @@ static const pgsql_thing_t words_after_create[] = {
 	{"TEMP", NULL, NULL, THING_NO_DROP},		/* for CREATE TEMP TABLE ... */
 	{"TEMPLATE", Query_for_list_of_ts_templates, NULL, THING_NO_SHOW},
 	{"TEXT SEARCH", NULL, NULL},
+#ifndef PGXC
+	/* PGXCTODO: This should be re-enabled once TRIGGER is supported */
 	{"TRIGGER", "SELECT pg_catalog.quote_ident(tgname) FROM pg_catalog.pg_trigger WHERE substring(pg_catalog.quote_ident(tgname),1,%d)='%s'"},
+#endif
 	{"TYPE", NULL, &Query_for_list_of_datatypes},
 	{"UNIQUE", NULL, NULL, THING_NO_DROP},		/* for CREATE UNIQUE INDEX ... */
 	{"UNLOGGED", NULL, NULL, THING_NO_DROP},	/* for CREATE UNLOGGED TABLE
@@ -787,7 +790,7 @@ psql_completion(char *text, int start, int end)
 
 	static const char *const sql_commands[] = {
 #ifdef PGXC
-		/*
+		/* 
 		 * Added "CLEAN" and "EXECUTE DIRECT"
 		 * Removed LISTEN, NOTIFY, RELEASE, SAVEPOINT and UNLISTEN
 		 */
@@ -886,13 +889,13 @@ psql_completion(char *text, int start, int end)
 		/*
 		 * Added: "NODE" (NODE NAME cannot be altered).
 		 * Removed: "FOREIGN DATA WRAPPER", "FOREIGN TABLE", "LARGE OBJECT",
-		 *          "SERVER", "USER MAPPING FOR".
+		 *          "SERVER", "TRIGGER", "USER MAPPING FOR".
 		 */
 		{"AGGREGATE", "COLLATION", "CONVERSION", "DATABASE", "DEFAULT PRIVILEGES", "DOMAIN",
 			"EXTENSION",                                          "FUNCTION",
 		 "GROUP", "INDEX", "LANGUAGE", "NODE", "NODE GROUP", "OPERATOR",
 			"ROLE", "SCHEMA",           "SEQUENCE",  "TABLE",
-			"TABLESPACE", "TEXT SEARCH", "TRIGGER", "TYPE",
+			"TABLESPACE", "TEXT SEARCH",           "TYPE",
 		"USER",                     "VIEW", NULL};
 #else
 		{"AGGREGATE", "COLLATION", "CONVERSION", "DATABASE", "DEFAULT PRIVILEGES", "DOMAIN",
@@ -1261,6 +1264,8 @@ psql_completion(char *text, int start, int end)
 
 		COMPLETE_WITH_LIST(list_ALTERVIEW);
 	}
+#ifndef PGXC
+	/* PGXCTODO: This should be re-enabled once TRIGGER is supported */
 	/* ALTER TRIGGER <name>, add ON */
 	else if (pg_strcasecmp(prev3_wd, "ALTER") == 0 &&
 			 pg_strcasecmp(prev2_wd, "TRIGGER") == 0)
@@ -1285,6 +1290,7 @@ psql_completion(char *text, int start, int end)
 	else if (pg_strcasecmp(prev4_wd, "TRIGGER") == 0 &&
 			 pg_strcasecmp(prev2_wd, "ON") == 0)
 		COMPLETE_WITH_CONST("RENAME TO");
+#endif
 
 	/*
 	 * If we detect ALTER TABLE <name>, suggest sub commands
@@ -2081,6 +2087,8 @@ psql_completion(char *text, int start, int end)
 			 pg_strcasecmp(prev2_wd, "CONFIGURATION") == 0)
 		COMPLETE_WITH_CONST("(");
 
+#ifndef PGXC
+	/* PGXCTODO: This should be re-enabled once TRIGGER is supported */
 /* CREATE TRIGGER */
 	/* complete CREATE TRIGGER <name> with BEFORE,AFTER */
 	else if (pg_strcasecmp(prev3_wd, "CREATE") == 0 &&
@@ -2147,6 +2155,7 @@ psql_completion(char *text, int start, int end)
 			 prev2_wd[0] != '\0')
 		COMPLETE_WITH_CONST("PROCEDURE");
 
+#endif
 /* CREATE ROLE,USER,GROUP <name> */
 	else if (pg_strcasecmp(prev3_wd, "CREATE") == 0 &&
 			 !(pg_strcasecmp(prev2_wd, "USER") == 0 && pg_strcasecmp(prev_wd, "MAPPING") == 0) &&

@@ -16,6 +16,11 @@
  * a quick copyObject() call before manipulating the query tree.
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
@@ -37,6 +42,9 @@
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
+#ifdef XCP
+#include "catalog/pgxc_node.h"
+#endif
 #include "commands/comment.h"
 #include "commands/defrem.h"
 #include "commands/tablecmds.h"
@@ -53,10 +61,9 @@
 #include "parser/parse_type.h"
 #include "parser/parse_utilcmd.h"
 #ifdef PGXC
-#include "optimizer/pgxcship.h"
 #include "pgxc/locator.h"
 #include "pgxc/pgxc.h"
-#include "optimizer/pgxcplan.h"
+#include "pgxc/planner.h"
 #include "pgxc/execRemote.h"
 #endif
 #include "parser/parser.h"
@@ -68,6 +75,19 @@
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 
+#ifdef XCP
+/*
+ * Sources to make decision about distribution column, in order of preceedence
+ */
+typedef enum
+{
+	FBS_NONE,		/* no fallback columns */
+	FBS_COLDEF, 	/* column definition, if no constraints defined */
+	FBS_UIDX,		/* unique key definition, if no PK defined */
+	FBS_PKEY,		/* primary key definition */
+	FBS_REPLICATE	/* constraint definitions require to replicate table */
+} FallbackSrc;
+#endif
 
 /* State shared by transformCreateStmt and its subroutines */
 typedef struct
@@ -90,7 +110,12 @@ typedef struct
 								 * the table */
 	IndexStmt  *pkey;			/* PRIMARY KEY index, if any */
 #ifdef PGXC
-	char	  *fallback_dist_col;	/* suggested column to distribute on */
+#ifdef XCP
+	FallbackSrc fallback_source;
+	List	   *fallback_dist_cols;
+#else
+	char	   *fallback_dist_col;	/* suggested column to distribute on */
+#endif
 	DistributeBy	*distributeby;		/* original distribute by column of CREATE TABLE */
 	PGXCSubCluster	*subcluster;		/* original subcluster option of CREATE TABLE */
 #endif
@@ -110,6 +135,9 @@ typedef struct
 	List	   *grants;			/* GRANT items */
 } CreateSchemaStmtContext;
 
+#ifdef XCP
+bool loose_constraints = false;
+#endif
 
 static void transformColumnDefinition(CreateStmtContext *cxt,
 						  ColumnDef *column);
@@ -119,9 +147,9 @@ static void transformTableLikeClause(CreateStmtContext *cxt,
 						 TableLikeClause *table_like_clause);
 static void transformOfType(CreateStmtContext *cxt,
 				TypeName *ofTypename);
-static char *chooseIndexName(const RangeVar *relation, IndexStmt *index_stmt);
 static IndexStmt *generateClonedIndexStmt(CreateStmtContext *cxt,
-						Relation parent_index, AttrNumber *attmap);
+						Relation source_idx,
+						const AttrNumber *attmap, int attmap_length);
 static List *get_collation(Oid collation, Oid actual_datatype);
 static List *get_opclass(Oid opclass, Oid actual_datatype);
 static void transformIndexConstraints(CreateStmtContext *cxt);
@@ -134,6 +162,13 @@ static void transformConstraintAttrs(CreateStmtContext *cxt,
 						 List *constraintList);
 static void transformColumnType(CreateStmtContext *cxt, ColumnDef *column);
 static void setSchemaName(char *context_schema, char **stmt_schema_name);
+#ifdef PGXC
+static void checkLocalFKConstraints(CreateStmtContext *cxt);
+#endif
+#ifdef XCP
+static List *transformSubclusterNodes(PGXCSubCluster *subcluster);
+static PGXCSubCluster *makeSubCluster(List *nodelist);
+#endif
 
 /*
  * transformCreateStmt -
@@ -149,8 +184,14 @@ static void setSchemaName(char *context_schema, char **stmt_schema_name);
  * then expand those into multiple IndexStmt blocks.
  *	  - thomas 1997-12-02
  */
+#ifdef XCP
+List *
+transformCreateStmt(CreateStmt *stmt, const char *queryString,
+					bool autodistribute)
+#else
 List *
 transformCreateStmt(CreateStmt *stmt, const char *queryString)
+#endif
 {
 	ParseState *pstate;
 	CreateStmtContext cxt;
@@ -223,8 +264,14 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	cxt.pkey = NULL;
 	cxt.hasoids = interpretOidsOption(stmt->options);
 #ifdef PGXC
+#ifdef XCP
+	cxt.fallback_source = FBS_NONE;
+	cxt.fallback_dist_cols = NIL;
+#else
 	cxt.fallback_dist_col = NULL;
+#endif
 	cxt.distributeby = stmt->distributeby;
+	cxt.subcluster = stmt->subcluster;
 #endif
 
 	Assert(!stmt->ofTypename || !stmt->inhRelations);	/* grammar enforces */
@@ -295,12 +342,97 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	 * If the user did not specify any distribution clause and there is no
 	 * inherits clause, try and use PK or unique index
 	 */
+#ifdef XCP
+	if (IS_PGXC_COORDINATOR && autodistribute && !stmt->distributeby)
+	{
+		/* always apply suggested subcluster */
+		stmt->subcluster = copyObject(cxt.subcluster);
+		if (cxt.distributeby)
+		{
+			stmt->distributeby = copyObject(cxt.distributeby);
+			return result;
+		}
+		/*
+		 * If constraints require replicated table set it replicated
+		 */
+		stmt->distributeby = makeNode(DistributeBy);
+		if (cxt.fallback_source == FBS_REPLICATE)
+		{
+			stmt->distributeby->disttype = DISTTYPE_REPLICATION;
+			stmt->distributeby->colname = NULL;
+		}
+		/*
+		 * If there are parent tables ingerit distribution of the first parent
+		 */
+		else if (cxt.fallback_source < FBS_UIDX && stmt->inhRelations)
+		{
+			RangeVar   *inh = (RangeVar *) linitial(stmt->inhRelations);
+			Relation	rel;
+
+			Assert(IsA(inh, RangeVar));
+			rel = heap_openrv(inh, AccessShareLock);
+			if (rel->rd_rel->relkind != RELKIND_RELATION)
+				ereport(ERROR,
+						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+						 errmsg("inherited relation \"%s\" is not a table",
+								inh->relname)));
+
+			if (rel->rd_locator_info)
+			{
+				switch (rel->rd_locator_info->locatorType)
+				{
+					case LOCATOR_TYPE_HASH:
+						stmt->distributeby->disttype = DISTTYPE_HASH;
+						stmt->distributeby->colname =
+								pstrdup(rel->rd_locator_info->partAttrName);
+						break;
+					case LOCATOR_TYPE_MODULO:
+						stmt->distributeby->disttype = DISTTYPE_MODULO;
+						stmt->distributeby->colname =
+								pstrdup(rel->rd_locator_info->partAttrName);
+						break;
+					case LOCATOR_TYPE_REPLICATED:
+						stmt->distributeby->disttype = DISTTYPE_REPLICATION;
+						break;
+					case LOCATOR_TYPE_RROBIN:
+					default:
+						stmt->distributeby->disttype = DISTTYPE_ROUNDROBIN;
+						break;
+				}
+				/*
+				 * Use defined node, if nothing defined get from the parent
+				 */
+				if (stmt->subcluster == NULL)
+					stmt->subcluster = makeSubCluster(rel->rd_locator_info->nodeList);
+			}
+			heap_close(rel, NoLock);
+		}
+		/*
+		 * If there are columns suitable for hash distribution distribute on
+		 * first of them.
+		 */
+		else if (cxt.fallback_dist_cols)
+		{
+			stmt->distributeby->disttype = DISTTYPE_HASH;
+			stmt->distributeby->colname = (char *) linitial(cxt.fallback_dist_cols);
+		}
+		/*
+		 * If none of above applies distribute by round robin
+		 */
+		else
+		{
+			stmt->distributeby->disttype = DISTTYPE_ROUNDROBIN;
+			stmt->distributeby->colname = NULL;
+		}
+	}
+#else
 	if (!stmt->distributeby && !stmt->inhRelations && cxt.fallback_dist_col)
 	{
 		stmt->distributeby = (DistributeBy *) palloc0(sizeof(DistributeBy));
 		stmt->distributeby->disttype = DISTTYPE_HASH;
 		stmt->distributeby->colname = cxt.fallback_dist_col;
 	}
+#endif
 #endif
 
 	return result;
@@ -669,6 +801,7 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 	Relation	relation;
 	TupleDesc	tupleDesc;
 	TupleConstr *constr;
+	AttrNumber *attmap;
 	AclResult	aclresult;
 	char	   *comment;
 	ParseCallbackState pcbstate;
@@ -677,18 +810,19 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 
 	relation = relation_openrv(table_like_clause->relation, AccessShareLock);
 
-	if (relation->rd_rel->relkind != RELKIND_RELATION
-		&& relation->rd_rel->relkind != RELKIND_VIEW
-		&& relation->rd_rel->relkind != RELKIND_FOREIGN_TABLE
-		&& relation->rd_rel->relkind != RELKIND_COMPOSITE_TYPE)
+	if (relation->rd_rel->relkind != RELKIND_RELATION &&
+		relation->rd_rel->relkind != RELKIND_VIEW &&
+		relation->rd_rel->relkind != RELKIND_COMPOSITE_TYPE &&
+		relation->rd_rel->relkind != RELKIND_FOREIGN_TABLE)
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("\"%s\" is not a table, view, composite type, or foreign table",
-						table_like_clause->relation->relname)));
+						RelationGetRelationName(relation))));
 
 	cancel_parser_errposition_callback(&pcbstate);
 
 #ifdef PGXC
+#ifndef XCP
 	/*
 	 * Check if relation is temporary and assign correct flag.
 	 * This will override transaction direct commit as no 2PC
@@ -696,6 +830,7 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 	 */
 	if (IsTempTable(RelationGetRelid(relation)))
 		ExecSetTempObjectIncluded();
+#endif
 
 	/*
 	 * Block the creation of tables using views in their LIKE clause.
@@ -710,7 +845,11 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 	if (relation->rd_rel->relkind == RELKIND_VIEW)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+#ifdef XCP
+				 errmsg("Postgres-XL does not support VIEW in LIKE clauses"),
+#else
 				 errmsg("Postgres-XC does not support VIEW in LIKE clauses"),
+#endif
 				 errdetail("The feature is not currently supported")));
 #endif
 
@@ -738,6 +877,13 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 	constr = tupleDesc->constr;
 
 	/*
+	 * Initialize column number map for map_variable_attnos().  We need this
+	 * since dropped columns in the source table aren't copied, so the new
+	 * table can have different column numbers.
+	 */
+	attmap = (AttrNumber *) palloc0(sizeof(AttrNumber) * tupleDesc->natts);
+
+	/*
 	 * Insert the copied attributes into the cxt for the new table definition.
 	 */
 	for (parent_attno = 1; parent_attno <= tupleDesc->natts;
@@ -748,7 +894,7 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 		ColumnDef  *def;
 
 		/*
-		 * Ignore dropped columns in the parent.
+		 * Ignore dropped columns in the parent.  attmap entry is left zero.
 		 */
 		if (attribute->attisdropped)
 			continue;
@@ -778,6 +924,23 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 		 * Add to column list
 		 */
 		cxt->columns = lappend(cxt->columns, def);
+
+#ifdef XCP
+		/*
+		 * If the distribution is not defined yet by a priority source add it
+		 * to the list of possible fallbacks
+		 */
+		if (IS_PGXC_COORDINATOR && cxt->distributeby == NULL && !cxt->isalter &&
+				cxt->fallback_source <= FBS_COLDEF &&
+				IsTypeHashDistributable(attribute->atttypid))
+		{
+			cxt->fallback_dist_cols = lappend(cxt->fallback_dist_cols,
+											  pstrdup(attributeName));
+			cxt->fallback_source = FBS_COLDEF;
+		}
+#endif
+
+		attmap[parent_attno - 1] = list_length(cxt->columns);
 
 		/*
 		 * Copy default, if present and the default has been requested
@@ -837,22 +1000,39 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 
 	/*
 	 * Copy CHECK constraints if requested, being careful to adjust attribute
-	 * numbers
+	 * numbers so they match the child.
 	 */
 	if ((table_like_clause->options & CREATE_TABLE_LIKE_CONSTRAINTS) &&
 		tupleDesc->constr)
 	{
-		AttrNumber *attmap = varattnos_map_schema(tupleDesc, cxt->columns);
 		int			ccnum;
 
 		for (ccnum = 0; ccnum < tupleDesc->constr->num_check; ccnum++)
 		{
 			char	   *ccname = tupleDesc->constr->check[ccnum].ccname;
 			char	   *ccbin = tupleDesc->constr->check[ccnum].ccbin;
-			Node	   *ccbin_node = stringToNode(ccbin);
 			Constraint *n = makeNode(Constraint);
+			Node	   *ccbin_node;
+			bool		found_whole_row;
 
-			change_varattnos_of_a_node(ccbin_node, attmap);
+			ccbin_node = map_variable_attnos(stringToNode(ccbin),
+											 1, 0,
+											 attmap, tupleDesc->natts,
+											 &found_whole_row);
+
+			/*
+			 * We reject whole-row variables because the whole point of LIKE
+			 * is that the new table's rowtype might later diverge from the
+			 * parent's.  So, while translation might be possible right now,
+			 * it wouldn't be possible to guarantee it would work in future.
+			 */
+			if (found_whole_row)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("cannot convert whole-row table reference"),
+						 errdetail("Constraint \"%s\" contains a whole-row reference to table \"%s\".",
+								   ccname,
+								   RelationGetRelationName(relation))));
 
 			n->contype = CONSTR_CHECK;
 			n->location = -1;
@@ -888,7 +1068,6 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 	if ((table_like_clause->options & CREATE_TABLE_LIKE_INDEXES) &&
 		relation->rd_rel->relhasindex)
 	{
-		AttrNumber *attmap = varattnos_map_schema(tupleDesc, cxt->columns);
 		List	   *parent_indexes;
 		ListCell   *l;
 
@@ -903,35 +1082,19 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 			parent_index = index_open(parent_index_oid, AccessShareLock);
 
 			/* Build CREATE INDEX statement to recreate the parent_index */
-			index_stmt = generateClonedIndexStmt(cxt, parent_index, attmap);
+			index_stmt = generateClonedIndexStmt(cxt, parent_index,
+												 attmap, tupleDesc->natts);
 
-			/* Copy comment on index */
+			/* Copy comment on index, if requested */
 			if (table_like_clause->options & CREATE_TABLE_LIKE_COMMENTS)
 			{
 				comment = GetComment(parent_index_oid, RelationRelationId, 0);
 
-				if (comment != NULL)
-				{
-					CommentStmt *stmt;
-
-					/*
-					 * We have to assign the index a name now, so that we can
-					 * reference it in CommentStmt.
-					 */
-					if (index_stmt->idxname == NULL)
-						index_stmt->idxname = chooseIndexName(cxt->relation,
-															  index_stmt);
-
-					stmt = makeNode(CommentStmt);
-					stmt->objtype = OBJECT_INDEX;
-					stmt->objname =
-						list_make2(makeString(cxt->relation->schemaname),
-								   makeString(index_stmt->idxname));
-					stmt->objargs = NIL;
-					stmt->comment = comment;
-
-					cxt->alist = lappend(cxt->alist, stmt);
-				}
+				/*
+				 * We make use of IndexStmt's idxcomment option, so as not to
+				 * need to know now what name the index will have.
+				 */
+				index_stmt->idxcomment = comment;
 			}
 
 			/* Save it in the inh_indexes list for the time being */
@@ -994,35 +1157,12 @@ transformOfType(CreateStmtContext *cxt, TypeName *ofTypename)
 }
 
 /*
- * chooseIndexName
- *
- * Compute name for an index.  This must match code in indexcmds.c.
- *
- * XXX this is inherently broken because the indexes aren't created
- * immediately, so we fail to resolve conflicts when the same name is
- * derived for multiple indexes.  However, that's a reasonably uncommon
- * situation, so we'll live with it for now.
- */
-static char *
-chooseIndexName(const RangeVar *relation, IndexStmt *index_stmt)
-{
-	Oid			namespaceId;
-	List	   *colnames;
-
-	namespaceId = RangeVarGetCreationNamespace(relation);
-	colnames = ChooseIndexColumnNames(index_stmt->indexParams);
-	return ChooseIndexName(relation->relname, namespaceId,
-						   colnames, index_stmt->excludeOpNames,
-						   index_stmt->primary, index_stmt->isconstraint);
-}
-
-/*
  * Generate an IndexStmt node using information from an already existing index
  * "source_idx".  Attribute numbers should be adjusted according to attmap.
  */
 static IndexStmt *
 generateClonedIndexStmt(CreateStmtContext *cxt, Relation source_idx,
-						AttrNumber *attmap)
+						const AttrNumber *attmap, int attmap_length)
 {
 	Oid			source_relid = RelationGetRelid(source_idx);
 	Form_pg_attribute *attrs = RelationGetDescr(source_idx)->attrs;
@@ -1079,7 +1219,10 @@ generateClonedIndexStmt(CreateStmtContext *cxt, Relation source_idx,
 		index->tableSpace = get_tablespace_name(idxrelrec->reltablespace);
 	else
 		index->tableSpace = NULL;
+	index->excludeOpNames = NIL;
+	index->idxcomment = NULL;
 	index->indexOid = InvalidOid;
+	index->oldNode = InvalidOid;
 	index->unique = idxrec->indisunique;
 	index->primary = idxrec->indisprimary;
 	index->concurrent = false;
@@ -1210,14 +1353,26 @@ generateClonedIndexStmt(CreateStmtContext *cxt, Relation source_idx,
 		{
 			/* Expressional index */
 			Node	   *indexkey;
+			bool		found_whole_row;
 
 			if (indexpr_item == NULL)
 				elog(ERROR, "too few entries in indexprs list");
 			indexkey = (Node *) lfirst(indexpr_item);
 			indexpr_item = lnext(indexpr_item);
 
-			/* OK to modify indexkey since we are working on a private copy */
-			change_varattnos_of_a_node(indexkey, attmap);
+			/* Adjust Vars to match new table's column numbering */
+			indexkey = map_variable_attnos(indexkey,
+										   1, 0,
+										   attmap, attmap_length,
+										   &found_whole_row);
+
+			/* As in transformTableLikeClause, reject whole-row variables */
+			if (found_whole_row)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("cannot convert whole-row table reference"),
+						 errdetail("Index \"%s\" contains a whole-row table reference.",
+								   RelationGetRelationName(source_idx))));
 
 			iparam->name = NULL;
 			iparam->expr = indexkey;
@@ -1274,12 +1429,28 @@ generateClonedIndexStmt(CreateStmtContext *cxt, Relation source_idx,
 	if (!isnull)
 	{
 		char	   *pred_str;
+		Node	   *pred_tree;
+		bool		found_whole_row;
 
 		/* Convert text string to node tree */
 		pred_str = TextDatumGetCString(datum);
-		index->whereClause = (Node *) stringToNode(pred_str);
-		/* Adjust attribute numbers */
-		change_varattnos_of_a_node(index->whereClause, attmap);
+		pred_tree = (Node *) stringToNode(pred_str);
+
+		/* Adjust Vars to match new table's column numbering */
+		pred_tree = map_variable_attnos(pred_tree,
+										1, 0,
+										attmap, attmap_length,
+										&found_whole_row);
+
+		/* As in transformTableLikeClause, reject whole-row variables */
+		if (found_whole_row)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("cannot convert whole-row table reference"),
+					 errdetail("Index \"%s\" contains a whole-row table reference.",
+							   RelationGetRelationName(source_idx))));
+
+		index->whereClause = pred_tree;
 	}
 
 	/* Clean up */
@@ -1473,6 +1644,12 @@ static IndexStmt *
 transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 {
 	IndexStmt  *index;
+#ifdef PGXC
+	bool		isLocalSafe = false;
+#endif
+#ifdef XCP
+	List	   *fallback_cols = NIL;
+#endif
 	ListCell   *lc;
 
 	index = makeNode(IndexStmt);
@@ -1510,7 +1687,9 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 	index->whereClause = constraint->where_clause;
 	index->indexParams = NIL;
 	index->excludeOpNames = NIL;
+	index->idxcomment = NULL;
 	index->indexOid = InvalidOid;
+	index->oldNode = InvalidOid;
 	index->concurrent = false;
 
 	/*
@@ -1574,16 +1753,10 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 							index_name, RelationGetRelationName(heap_rel)),
 					 parser_errposition(cxt->pstate, constraint->location)));
 
-		if (!index_form->indisvalid)
+		if (!IndexIsValid(index_form))
 			ereport(ERROR,
 					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 					 errmsg("index \"%s\" is not valid", index_name),
-					 parser_errposition(cxt->pstate, constraint->location)));
-
-		if (!index_form->indisready)
-			ereport(ERROR,
-					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-					 errmsg("index \"%s\" is not ready", index_name),
 					 parser_errposition(cxt->pstate, constraint->location)));
 
 		if (!index_form->indisunique)
@@ -1735,6 +1908,24 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 			if (strcmp(column->colname, key) == 0)
 			{
 				found = true;
+
+#ifdef PGXC
+#ifndef XCP
+				/*
+			 	 * Only allow locally enforceable constraints.
+				 * See if it is a distribution column
+				 * If not set, set it to first column in index.
+				 * If primary key, we prefer that over a unique constraint.
+				 */
+				if (IS_PGXC_COORDINATOR && !isLocalSafe)
+				{
+					if (cxt->distributeby)
+						isLocalSafe = CheckLocalIndexColumn (
+								ConvertToLocatorType(cxt->distributeby->disttype),
+								cxt->distributeby->colname, key);
+				}
+#endif
+#endif
 				break;
 			}
 		}
@@ -1781,6 +1972,25 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 					if (strcmp(key, inhname) == 0)
 					{
 						found = true;
+#ifdef XCP
+						/*
+						 * We should add the column to the fallback list now,
+						 * so it could be found there, because inherited
+						 * columns are not normally added.
+						 * Do not modify the list if it is set from a priority
+						 * source.
+						 */
+						if (IS_PGXC_COORDINATOR &&
+								cxt->distributeby == NULL && !cxt->isalter &&
+								cxt->fallback_source <= FBS_COLDEF &&
+								IsTypeHashDistributable(inhattr->atttypid))
+						{
+							cxt->fallback_dist_cols =
+									lappend(cxt->fallback_dist_cols,
+											pstrdup(inhname));
+							cxt->fallback_source = FBS_COLDEF;
+						}
+#endif
 
 						/*
 						 * We currently have no easy way to force an inherited
@@ -1833,14 +2043,64 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 #ifdef PGXC
 		if (IS_PGXC_COORDINATOR)
 		{
+#ifdef XCP
+			/*
+			 * Check if index can be enforced locally
+			 */
+			if (!isLocalSafe)
+			{
+				ListCell *lc;
+				/*
+				 * If distribution is defined check current column against
+				 * the distribution.
+				 */
+				if (cxt->distributeby)
+					isLocalSafe = CheckLocalIndexColumn (
+							ConvertToLocatorType(cxt->distributeby->disttype),
+							cxt->distributeby->colname, key);
+				/*
+				 * Similar, if altering existing table check against target
+				 * table distribution
+				 */
+				if (cxt->isalter)
+					isLocalSafe = cxt->rel->rd_locator_info == NULL ||
+							CheckLocalIndexColumn (
+									cxt->rel->rd_locator_info->locatorType,
+									cxt->rel->rd_locator_info->partAttrName,
+									key);
+
+				/*
+				 * Check if it is possible to distribute table by this column
+				 * If yes, save it, and replace the fallback list when done
+				 */
+				foreach (lc, cxt->fallback_dist_cols)
+				{
+					char *col = (char *) lfirst(lc);
+
+					if (strcmp(key, col) == 0)
+					{
+						fallback_cols = lappend(fallback_cols, pstrdup(key));
+						break;
+					}
+				}
+			}
+#else
 			/*
 			 * Set fallback distribution column.
 			 * If not set, set it to first column in index.
 			 * If primary key, we prefer that over a unique constraint.
 			 */
-			if (index->indexParams == NIL &&
-				(index->primary || !cxt->fallback_dist_col))
+			if (index->indexParams == NIL
+					&& (index->primary || !cxt->fallback_dist_col))
+			{
 				cxt->fallback_dist_col = pstrdup(key);
+			}
+
+			/* Existing table, check if it is safe */
+			if (cxt->isalter && !cxt->distributeby && !isLocalSafe)
+				isLocalSafe = CheckLocalIndexColumn (
+						cxt->rel->rd_locator_info->locatorType, cxt->rel->rd_locator_info->partAttrName, key);
+#endif
 		}
 #endif
 
@@ -1855,6 +2115,61 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 		iparam->nulls_ordering = SORTBY_NULLS_DEFAULT;
 		index->indexParams = lappend(index->indexParams, iparam);
 	}
+#ifdef PGXC
+#ifdef XCP
+	if (IS_PGXC_COORDINATOR && !isLocalSafe)
+	{
+		if (cxt->distributeby || cxt->isalter)
+		{
+			/*
+			 * Index is not safe for defined distribution; since for replicated
+			 * distribution any index is safe and for round robin none, but
+			 * this case bombs out immediately, so that is incompatible
+			 * HASH or MODULO. Report the problem.
+			 */
+			if (loose_constraints && cxt->isalter && index->unique)
+				ereport(WARNING,
+					(errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
+					 errmsg("Unique index of partitioned table must contain the"
+							" hash distribution column.")));
+			else
+				ereport(ERROR,
+					(errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
+					 errmsg("Unique index of partitioned table must contain the"
+							" hash distribution column.")));
+		}
+		else
+		{
+			if (fallback_cols)
+			{
+				list_free_deep(cxt->fallback_dist_cols);
+				cxt->fallback_dist_cols = fallback_cols;
+				if (index->primary)
+					cxt->fallback_source = FBS_PKEY;
+				else if (cxt->fallback_source < FBS_PKEY)
+					cxt->fallback_source = FBS_UIDX;
+			}
+			else
+			{
+				if (cxt->fallback_dist_cols)
+				{
+					list_free_deep(cxt->fallback_dist_cols);
+					cxt->fallback_dist_cols = NIL;
+				}
+				cxt->fallback_source = FBS_REPLICATE;
+			}
+		}
+	}
+#else
+		if (IS_PGXC_COORDINATOR && cxt->distributeby
+				&& (cxt->distributeby->disttype == DISTTYPE_HASH ||
+					cxt->distributeby->disttype == DISTTYPE_MODULO)
+				&& !isLocalSafe)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
+					errmsg("Unique index of partitioned table must contain the hash distribution column.")));
+#endif
+#endif
 
 	return index;
 }
@@ -1872,6 +2187,25 @@ transformFKConstraints(CreateStmtContext *cxt,
 	if (cxt->fkconstraints == NIL)
 		return;
 
+#ifdef XCP
+	/*
+	 * If the "loose_constraints" GUC is set, we wholesale avoid creating
+	 * Foreign Keys. Another way is to identify only those unenforceable
+	 * FK constraints and skip over those. However the query string sent to
+	 * the datanodes still contains those FKs and messes up things later.
+	 * This can be handled by re-generating the query string that should be
+	 * passed onto the datanodes, but that's quite a lot of work.
+	 *
+	 * Also supporting some FKs and not some others is also debatable..
+	 * So we go in for an all-or-nothing approach here
+	 */
+	if (loose_constraints)
+	{
+		list_free_deep(cxt->fkconstraints);
+		cxt->fkconstraints = NIL;
+		return;
+	}
+#endif
 	/*
 	 * If CREATE TABLE or adding a column with NULL default, we can safely
 	 * skip validation of FK constraints, and nonetheless mark them valid.
@@ -1886,21 +2220,19 @@ transformFKConstraints(CreateStmtContext *cxt,
 			constraint->skip_validation = true;
 			constraint->initially_valid = true;
 #ifdef PGXC
+#ifndef XCP
 			/*
 			 * Set fallback distribution column.
 			 * If not yet set, set it to first column in FK constraint
 			 * if it references a partitioned table
 			 */
-			if (IS_PGXC_COORDINATOR &&
-				!cxt->fallback_dist_col &&
-				list_length(constraint->pk_attrs) != 0)
+			if (IS_PGXC_COORDINATOR && !cxt->fallback_dist_col)
 			{
 				Oid pk_rel_id = RangeVarGetRelid(constraint->pktable, NoLock, false);
-				AttrNumber attnum = get_attnum(pk_rel_id,
-											   strVal(list_nth(constraint->fk_attrs, 0)));
 
-				/* Make sure key is done on a partitioned column */
-				if (IsDistribColumn(pk_rel_id, attnum))
+				/* make sure it is a partitioned column */
+				if (list_length(constraint->pk_attrs) != 0
+					&& IsHashColumnForRelId(pk_rel_id, strVal(list_nth(constraint->pk_attrs,0))))
 				{
 					/* take first column */
 					char *colstr = strdup(strVal(list_nth(constraint->fk_attrs,0)));
@@ -1908,8 +2240,15 @@ transformFKConstraints(CreateStmtContext *cxt,
 				}
 			}
 #endif
+#endif
 		}
 	}
+
+#ifdef PGXC
+	/* Only allow constraints that are locally enforceable - no distributed ones */
+	if (IS_PGXC_COORDINATOR)
+		checkLocalFKConstraints(cxt);
+#endif
 
 	/*
 	 * For CREATE TABLE or ALTER TABLE ADD COLUMN, gin up an ALTER TABLE ADD
@@ -2434,7 +2773,12 @@ transformAlterTableStmt(AlterTableStmt *stmt, const char *queryString)
 	cxt.alist = NIL;
 	cxt.pkey = NULL;
 #ifdef PGXC
+#ifdef XCP
+	cxt.fallback_source = FBS_NONE;
+	cxt.fallback_dist_cols = NIL;
+#else
 	cxt.fallback_dist_col = NULL;
+#endif
 	cxt.distributeby = NULL;
 	cxt.subcluster = NULL;
 #endif
@@ -2721,6 +3065,20 @@ transformColumnType(CreateStmtContext *cxt, ColumnDef *column)
 					 parser_errposition(cxt->pstate,
 										column->collClause->location)));
 	}
+#ifdef XCP
+	/*
+	 * If the distribution is not defined yet by a priority source add it to the
+	 * list of possible fallbacks
+	 */
+	if (IS_PGXC_COORDINATOR && cxt->distributeby == NULL && !cxt->isalter &&
+			cxt->fallback_source <= FBS_COLDEF &&
+			IsTypeHashDistributable(HeapTupleGetOid(ctype)))
+	{
+		cxt->fallback_dist_cols = lappend(cxt->fallback_dist_cols,
+										  pstrdup(column->colname));
+		cxt->fallback_source = FBS_COLDEF;
+	}
+#endif
 
 	ReleaseSysCache(ctype);
 }
@@ -2866,3 +3224,600 @@ setSchemaName(char *context_schema, char **stmt_schema_name)
 						"different from the one being created (%s)",
 						*stmt_schema_name, context_schema)));
 }
+
+#ifdef PGXC
+/*
+ * CheckLocalIndexColumn
+ *
+ * Checks whether or not the index can be safely enforced locally
+ */
+bool
+CheckLocalIndexColumn (char loctype, char *partcolname, char *indexcolname)
+{
+#ifdef XCP
+	if (IsLocatorReplicated(loctype))
+#else
+	if (loctype == LOCATOR_TYPE_REPLICATED)
+#endif
+		/* always safe */
+		return true;
+	if (loctype == LOCATOR_TYPE_RROBIN)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
+					errmsg("Cannot locally enforce a unique index on round robin distributed table.")));
+	else if (loctype == LOCATOR_TYPE_HASH || loctype == LOCATOR_TYPE_MODULO)
+	{
+		if (partcolname && indexcolname && strcmp(partcolname, indexcolname) == 0)
+			return true;
+	}
+	return false;
+}
+
+
+#ifdef XCP
+/*
+ * Given relation, find the index of the attribute in the primary key,
+ * which is the distribution key. Returns -1 if table is not a Hash/Modulo
+ * distributed, does not have a primary key or distribution key is not in the
+ * primary key (last should not happen).
+ */
+static int
+find_relation_pk_dist_index(Relation rel)
+{
+	int 		result = -1;
+	List	   *indexoidlist;
+	ListCell   *indexoidscan;
+	int			partAttNum = InvalidAttrNumber;
+	bool 		pk_found = false;
+
+	if (rel->rd_locator_info)
+		partAttNum = rel->rd_locator_info->partAttrNum;
+
+	if (partAttNum == InvalidAttrNumber)
+		return -1;
+
+	/*
+	 * Look up the primary key
+	 */
+	indexoidlist = RelationGetIndexList(rel);
+
+	foreach(indexoidscan, indexoidlist)
+	{
+		Oid			indexoid = lfirst_oid(indexoidscan);
+		HeapTuple	indexTuple;
+		Form_pg_index indexForm;
+
+		indexTuple = SearchSysCache1(INDEXRELID,
+								 ObjectIdGetDatum(indexoid));
+		if (!HeapTupleIsValid(indexTuple)) /* should not happen */
+			elog(ERROR, "cache lookup failed for index %u", indexoid);
+		indexForm = ((Form_pg_index) GETSTRUCT(indexTuple));
+		if (indexForm->indisprimary)
+		{
+			int i;
+
+			pk_found = true;
+
+			/*
+			 * Loop over index attributes to find
+			 * the distribution key
+			 */
+			for (i = 0; i < indexForm->indnatts; i++)
+			{
+				if (indexForm->indkey.values[i] == partAttNum)
+				{
+					result = i;
+					break;
+				}
+			}
+		}
+		ReleaseSysCache(indexTuple);
+		if (pk_found)
+			break;
+	}
+
+	list_free(indexoidlist);
+
+	return result;
+}
+#endif
+
+
+/*
+ * check to see if the constraint can be enforced locally
+ * if not, an error will be thrown
+ */
+static void
+checkLocalFKConstraints(CreateStmtContext *cxt)
+{
+	ListCell   *fkclist;
+#ifdef XCP
+	List 	   *nodelist = NIL;
+
+	if (cxt->subcluster)
+		nodelist = transformSubclusterNodes(cxt->subcluster);
+#endif
+	foreach(fkclist, cxt->fkconstraints)
+	{
+		Constraint *constraint;
+		Oid pk_rel_id;
+#ifdef XCP
+		RelationLocInfo *rel_loc_info;
+#else
+		char refloctype;
+		char *checkcolname = NULL;
+#endif
+		constraint = (Constraint *) lfirst(fkclist);
+
+		/*
+		 * If constraint references to the table itself, it is safe
+		 * Check if relation name is the same
+		 * XCTODO: NO! It is only safe if table is replicated
+		 * or distributed on primary key
+		 */
+		if (constraint->pktable &&
+			strcmp(constraint->pktable->relname,cxt->relation->relname) == 0)
+		{
+			/* Is namespace also the same ? */
+			char *fkcon_schemaname = NULL;
+
+			if (!cxt->relation->schemaname &&
+				!constraint->pktable->schemaname)
+				continue;
+
+			if (!constraint->pktable->schemaname)
+			{
+				/* Schema name is not defined, look for current one */
+				List   *search_path = fetch_search_path(false);
+				fkcon_schemaname = get_namespace_name(linitial_oid(search_path));
+				list_free(search_path);
+			}
+			else
+				fkcon_schemaname = constraint->pktable->schemaname;
+
+			/*
+			 * If schema name and relation name are the same, table
+			 * references to itself, so constraint is safe
+			 */
+			if (fkcon_schemaname &&
+				strcmp(fkcon_schemaname,
+					   cxt->relation->schemaname) == 0)
+#ifdef XCP
+			{
+				/* check if bad distribution is already defined */
+				if ((cxt->distributeby && cxt->distributeby->disttype != DISTTYPE_REPLICATION) ||
+						(cxt->isalter && cxt->rel->rd_locator_info != NULL && !IsLocatorReplicated(cxt->rel->rd_locator_info->locatorType)))
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("only replicated table can reference itself")));
+				/* Record that replication is required */
+				cxt->fallback_source = FBS_REPLICATE;
+				if (cxt->fallback_dist_cols)
+				{
+					list_free_deep(cxt->fallback_dist_cols);
+					cxt->fallback_dist_cols = NULL;
+				}
+				continue;
+			}
+#else
+				continue;
+#endif
+		}
+
+		pk_rel_id = RangeVarGetRelid(constraint->pktable, NoLock, false);
+#ifdef XCP
+		rel_loc_info = GetRelationLocInfo(pk_rel_id);
+		/* If referenced table is replicated, the constraint is safe */
+		if (rel_loc_info == NULL || IsLocatorReplicated(rel_loc_info->locatorType))
+		{
+			List *common;
+
+			if (cxt->subcluster)
+			{
+				/*
+				 * Distribution nodes are defined, they must be a subset of
+				 * the referenced relation's nodes
+				 */
+				common = list_intersection_int(nodelist, rel_loc_info->nodeList);
+				if (list_length(common) < list_length(nodelist))
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("referenced table is not defined on all target nodes")));
+				list_free(common);
+			}
+			else
+			{
+				/* suggest distribution */
+				if (nodelist)
+				{
+					common = list_intersection_int(nodelist, rel_loc_info->nodeList);
+					if (list_length(common) == 0)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("referenced tables is defined on different nodes")));
+					list_free(nodelist);
+					nodelist = common;
+				}
+				else
+					nodelist = rel_loc_info? list_copy(rel_loc_info->nodeList):NIL;
+			}
+		}
+		else if (rel_loc_info->locatorType == LOCATOR_TYPE_RROBIN)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("Cannot reference a round robin table in a foreign key constraint")));
+		}
+		else if (IsLocatorDistributedByValue(rel_loc_info->locatorType))
+		{
+			ListCell   *fklc;
+			ListCell   *pklc;
+			char 	  	ltype;
+			char	   *lattr;
+			bool		found = false;
+			List 	   *common;
+
+			/*
+			 * First check nodes, they must be the same as in
+			 * the referenced relation
+			 */
+			if (cxt->subcluster)
+			{
+				common = list_intersection_int(nodelist, rel_loc_info->nodeList);
+				if (list_length(common) != list_length(rel_loc_info->nodeList) ||
+						list_length(common) != list_length(nodelist))
+				{
+					if (list_length(common) == 0)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("referenced HASH/MODULO table must be defined on same nodes")));
+				}
+				list_free(common);
+			}
+			else
+			{
+				if (nodelist)
+				{
+					common = list_intersection_int(nodelist, rel_loc_info->nodeList);
+					if (list_length(common) != list_length(rel_loc_info->nodeList))
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("referenced HASH/MODULO table must be defined on same nodes")));
+					list_free(nodelist);
+					nodelist = common;
+				}
+				else
+					nodelist = list_copy(rel_loc_info->nodeList);
+				/* Now define the subcluster */
+				cxt->subcluster = makeSubCluster(nodelist);
+			}
+
+			if (cxt->distributeby)
+			{
+				ltype = ConvertToLocatorType(cxt->distributeby->disttype);
+				lattr = cxt->distributeby->colname;
+			}
+			else if (cxt->isalter)
+			{
+				if (cxt->rel->rd_locator_info == NULL)
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("Hash/Modulo distribution column does not refer"
+									" to hash/modulo distribution column in referenced table.")));
+				ltype = cxt->rel->rd_locator_info->locatorType;
+				lattr = cxt->rel->rd_locator_info->partAttrName;
+			}
+			else
+			{
+				/*
+				 * Not defined distribution, but we can define now.
+				 * The distribution must be the same as in referenced table,
+				 * distribution keys must be matching fk/pk
+				 */
+				/*
+				 * Can not define distribution by value already
+				 */
+				if (cxt->fallback_source == FBS_REPLICATE)
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("Hash/Modulo distribution column does not refer"
+									" to hash/modulo distribution column in referenced table.")));
+				/* find the fk attribute matching the distribution column */
+				lattr = NULL;
+				if (list_length(constraint->pk_attrs) == 0)
+				{
+					/*
+					 * PK attribute list may be missing, so FK must reference
+					 * the primary table's primary key. The primary key may
+					 * consist of multiple attributes, one of them is a
+					 * distribution key. We should find the foreign attribute
+					 * referencing that primary attribute and set it as the
+					 * distribution key of the table.
+					 */
+					int 		pk_attr_idx;
+					Relation	rel;
+
+					rel = relation_open(pk_rel_id, AccessShareLock);
+					pk_attr_idx = find_relation_pk_dist_index(rel);
+					relation_close(rel, AccessShareLock);
+
+					if (pk_attr_idx >= 0 &&
+							pk_attr_idx < list_length(constraint->fk_attrs))
+					{
+						lattr = strVal(list_nth(constraint->fk_attrs, pk_attr_idx));
+					}
+				}
+				else
+				{
+					/*
+					 * One of the primary attributes must be the primary
+					 * tabble's distribution key. We should find the foreign
+					 * attribute referencing that primary attribute and set it
+					 * as the distribution key of the table.
+					 */
+					forboth(fklc, constraint->fk_attrs,
+							pklc, constraint->pk_attrs)
+					{
+						if (strcmp(rel_loc_info->partAttrName,
+								   strVal(lfirst(pklc))) == 0)
+						{
+							lattr = strVal(lfirst(fklc));
+							break;
+						}
+					}
+				}
+				/* distribution column is not referenced? */
+				if (lattr == NULL)
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("Hash/Modulo distribution column does not refer"
+									" to hash/modulo distribution column in referenced table.")));
+				foreach(fklc, cxt->fallback_dist_cols)
+				{
+					if (strcmp(lattr, (char *) lfirst(fklc)) == 0)
+					{
+						found = true;
+						break;
+					}
+				}
+				if (found)
+				{
+					list_free_deep(cxt->fallback_dist_cols);
+					cxt->fallback_dist_cols = NIL;
+					cxt->fallback_source = FBS_NONE;
+					cxt->distributeby = makeNode(DistributeBy);
+					switch (rel_loc_info->locatorType)
+					{
+						case LOCATOR_TYPE_HASH:
+							cxt->distributeby->disttype = DISTTYPE_HASH;
+							cxt->distributeby->colname = pstrdup(lattr);
+							break;
+						case LOCATOR_TYPE_MODULO:
+							cxt->distributeby->disttype = DISTTYPE_MODULO;
+							cxt->distributeby->colname = pstrdup(lattr);
+							break;
+						default:
+							/* can not happen ?*/
+							ereport(ERROR,
+									(errcode(ERRCODE_SYNTAX_ERROR),
+									 errmsg("Hash/Modulo distribution column does not refer"
+											" to hash/modulo distribution column in referenced table.")));
+					}
+				}
+				else /* dist attr is not found */
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("Hash/Modulo distribution column does not refer"
+									" to hash/modulo distribution column in referenced table.")));
+				continue;
+			}
+			/*
+			 * Here determine if already defined distribution is matching
+			 * to distribution of primary table.
+			 */
+			if (ltype != rel_loc_info->locatorType || lattr == NULL)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("Hash/Modulo distribution column does not refer"
+								" to hash/modulo distribution column in referenced table.")));
+			if (list_length(constraint->pk_attrs) == 0)
+			{
+				/*
+				 * PK attribute list may be missing, so FK must reference
+				 * the primary table's primary key. The primary key may
+				 * consist of multiple attributes, one of them is a
+				 * distribution key. We should find the foreign attribute
+				 * referencing that primary attribute and make sure it is a
+				 * distribution key of the table.
+				 */
+				int 		pk_attr_idx;
+				Relation	rel;
+
+				rel = relation_open(pk_rel_id, AccessShareLock);
+				pk_attr_idx = find_relation_pk_dist_index(rel);
+				relation_close(rel, AccessShareLock);
+
+				/*
+				 * Two first conditions are just avoid assertion failure in
+				 * list_nth. First should never happen, because the primary key
+				 * of hash/modulo distributed table must contain distribution
+				 * key. Second may only happen if list of foreign columns is
+				 * shorter then the primary key. In that case statement would
+				 * probably fail later, but no harm if it fails here.
+				 */
+				if (pk_attr_idx >= 0 &&
+						pk_attr_idx < list_length(constraint->fk_attrs) &&
+						strcmp(lattr, strVal(list_nth(constraint->fk_attrs,
+													  pk_attr_idx))) == 0)
+				{
+					found = true;
+				}
+			}
+			else
+			{
+				forboth(fklc, constraint->fk_attrs, pklc, constraint->pk_attrs)
+				{
+					if (strcmp(lattr, strVal(lfirst(fklc))) == 0)
+					{
+						found = true;
+						if (strcmp(rel_loc_info->partAttrName,
+								   strVal(lfirst(pklc))) == 0)
+							break;
+						else
+							ereport(ERROR,
+									(errcode(ERRCODE_SYNTAX_ERROR),
+									 errmsg("Hash/Modulo distribution column does not refer"
+											" to hash/modulo distribution column in referenced table.")));
+					}
+				}
+			}
+			if (!found)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("Hash/Modulo distribution column does not refer"
+								" to hash/modulo distribution column in referenced table.")));
+		}
+		else /* Unsupported distribution */
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("Cannot reference a table with distribution type \"%c\"",
+					 rel_loc_info->locatorType)));
+		}
+#else
+		refloctype = GetLocatorType(pk_rel_id);
+		/* If referenced table is replicated, the constraint is safe */
+		if (refloctype == LOCATOR_TYPE_REPLICATED)
+			continue;
+		else if (refloctype == LOCATOR_TYPE_RROBIN)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					errmsg("Cannot reference a round robin table in a foreign key constraint")));
+		}
+		/*
+		 * See if we are hash or modulo partitioned and the column appears in the
+		 * constraint, and it corresponds to the position in the referenced table.
+		 */
+		if (cxt->isalter)
+		{
+			if (cxt->rel->rd_locator_info->locatorType == LOCATOR_TYPE_HASH ||
+				cxt->rel->rd_locator_info->locatorType == LOCATOR_TYPE_MODULO)
+			{
+				checkcolname = cxt->rel->rd_locator_info->partAttrName;
+			}
+		}
+		else
+		{
+			if (cxt->distributeby)
+			{
+				if (cxt->distributeby->disttype == DISTTYPE_HASH ||
+					cxt->distributeby->disttype == DISTTYPE_MODULO)
+					checkcolname = cxt->distributeby->colname;
+			}
+			else
+			{
+				if (cxt->fallback_dist_col)
+					checkcolname = cxt->fallback_dist_col;
+			}
+		}
+		if (checkcolname)
+		{
+			int pos = 0;
+
+			ListCell *attritem;
+
+			foreach(attritem, constraint->fk_attrs)
+			{
+				char *attrname = (char *) strVal(lfirst(attritem));
+
+				if (strcmp(checkcolname, attrname) == 0)
+				{
+					/* Found the ordinal position in constraint */
+					break;
+				}
+				pos++;
+			}
+
+			if (pos >= list_length(constraint->fk_attrs))
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("Hash/Modulo distributed table must include distribution column in index")));
+
+			/*
+			 * The check to make sure that the referenced column in pk table is the same
+			 * as the one used to distribute it makes sense only when the user
+			 * supplies the name of the referenced colum while adding the constraint
+			 * because if the user did not specify it the system will choose the pk column
+			 * which will obviously be the one used to distribute it knowing the
+			 * existing constraints in XC
+			 * This is required to make sure that both
+			 * alter table dtab add foreign key (b) references rtab(a);
+			 * and
+			 * alter table dtab add foreign key (b) references rtab;
+			 * behave similarly
+			 */
+			if (constraint->pk_attrs != NULL)
+			{
+				/* Verify that the referenced table is partitioned at the same position in the index */
+				if (!IsDistColumnForRelId(pk_rel_id, strVal(list_nth(constraint->pk_attrs,pos))))
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							errmsg("Hash/Modulo distribution column does not refer to hash/modulo distribution column in referenced table.")));
+			}
+		}
+#endif
+	}
+#ifdef XCP
+	/*
+	 * If presence of a foreign constraint suggested a set of nodes, fix it here
+	 */
+	if (nodelist && cxt->subcluster == NULL)
+		cxt->subcluster = makeSubCluster(nodelist);
+#endif
+}
+#endif
+
+
+#ifdef XCP
+/*
+ * Convert SubCluster definition to a list of Datanode indexes, to compare to
+ * relation nodes
+ */
+static List *
+transformSubclusterNodes(PGXCSubCluster *subcluster)
+{
+	List   *result = NIL;
+	Oid	   *nodeoids;
+	int		numnodes;
+	int 	i;
+	char	nodetype = PGXC_NODE_DATANODE;
+
+	nodeoids = GetRelationDistributionNodes(subcluster, &numnodes);
+	for (i = 0; i < numnodes; i++)
+		result = lappend_int(result, PGXCNodeGetNodeId(nodeoids[i], &nodetype));
+
+	return result;
+}
+
+
+/*
+ * Create a SubCluster definition from a list of node indexes.
+ */
+static PGXCSubCluster *
+makeSubCluster(List *nodelist)
+{
+	PGXCSubCluster *result;
+	ListCell 	   *lc;
+	result = makeNode(PGXCSubCluster);
+	result->clustertype = SUBCLUSTER_NODE;
+	foreach (lc, nodelist)
+	{
+		int 	nodeidx = lfirst_int(lc);
+		char   *nodename = get_pgxc_nodename(
+							PGXCNodeGetNodeOid(nodeidx, PGXC_NODE_DATANODE));
+		result->members = lappend(result->members, makeString(nodename));
+	}
+	return result;
+}
+#endif

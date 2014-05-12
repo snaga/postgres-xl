@@ -11,6 +11,11 @@
  * we do better?)
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -26,7 +31,12 @@
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/rangetypes.h"
-
+#ifdef XCP
+#include "access/htup.h"
+#include "catalog/pg_type.h"
+#include "utils/lsyscache.h"
+#include "utils/syscache.h"
+#endif
 
 /*
  * cstring_in		- input routine for pseudo-type CSTRING.
@@ -117,22 +127,80 @@ any_out(PG_FUNCTION_ARGS)
 Datum
 anyarray_in(PG_FUNCTION_ARGS)
 {
+#ifdef XCP
+	/*
+	 * XCP version of array_in() understands prefix describing element type
+	 */
+	return array_in(fcinfo);
+#else
 	ereport(ERROR,
 			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 			 errmsg("cannot accept a value of type anyarray")));
 
 	PG_RETURN_VOID();			/* keep compiler quiet */
+#endif
 }
 
 /*
  * anyarray_out		- output routine for pseudo-type ANYARRAY.
  *
  * We may as well allow this, since array_out will in fact work.
+ * XCP needs to send from data nodes to coordinator values of that type.
+ * To be able to restore values at the destination node we need to know
+ * actual element type.
  */
 Datum
 anyarray_out(PG_FUNCTION_ARGS)
 {
+#ifdef XCP
+	/*
+	 * Output prefix: (type_namespace_name.typename) to look up actual element
+	 * type at the destination node then output in usual format for array
+	 */
+	ArrayType  *v = PG_GETARG_ARRAYTYPE_P(0);
+	Oid			element_type = ARR_ELEMTYPE(v);
+	Form_pg_type typeForm;
+	HeapTuple	typeTuple;
+	char	   *typname,
+			   *typnspname;
+	/* two identifiers, parenthesis, dot and trailing \0 */
+	char		prefix[2*NAMEDATALEN+4],
+			   *retval,
+			   *newval;
+	int 		prefixlen, retvallen;
+	Datum		array_out_result;
+	MemoryContext save_context;
+
+	save_context = MemoryContextSwitchTo(fcinfo->flinfo->fn_mcxt);
+	/* Figure out type name and type namespace */
+	typeTuple = SearchSysCache(TYPEOID,
+							   ObjectIdGetDatum(element_type),
+							   0, 0, 0);
+	if (!HeapTupleIsValid(typeTuple))
+		elog(ERROR, "cache lookup failed for type %u", element_type);
+	typeForm = (Form_pg_type) GETSTRUCT(typeTuple);
+	typname = NameStr(typeForm->typname);
+	typnspname = get_namespace_name(typeForm->typnamespace);
+
+	sprintf(prefix, "(%s.%s)", typnspname, typname);
+	ReleaseSysCache(typeTuple);
+	MemoryContextSwitchTo(save_context);
+
+	/* Get standard output and make up prefixed result */
+	array_out_result = array_out(fcinfo);
+	retval = DatumGetCString(array_out_result);
+	prefixlen = strlen(prefix);
+	retvallen = strlen(retval);
+	newval = (char *) palloc(prefixlen + retvallen + 1);
+	strcpy(newval, prefix);
+	strcpy(newval + prefixlen, retval);
+
+	pfree(retval);
+
+	PG_RETURN_CSTRING(newval);
+#else
 	return array_out(fcinfo);
+#endif
 }
 
 /*

@@ -21,6 +21,10 @@
     You should be aware that some <productname>Postgres-XC</productname>
     language features are extensions to the standard.
 <!## end>
+<!## XL>
+    You should be aware that some <productname>Postgres-XL</productname>
+    language features are extensions to the standard.
+<!## end>
    </para>
 
    <para>
@@ -43,6 +47,14 @@
     <productname>Postgres-XC</productname> source distribution
     in the directory <filename>src/tutorial/</filename>.  (Binary
     distributions of <productname>Postgres-XC</productname> might not
+    compile these files.)  To use those
+    files, first change to that directory and run <application>make</>:
+<!## end>
+<!## XL>
+    Examples in this manual can also be found in the
+    <productname>Postgres-XL</productname> source distribution
+    in the directory <filename>src/tutorial/</filename>.  (Binary
+    distributions of <productname>Postgres-XL</productname> might not
     compile these files.)  To use those
     files, first change to that directory and run <application>make</>:
 <!## end>
@@ -96,6 +108,9 @@
 <!## XC>
     <productname>Postgres-XC</productname> is a <firstterm>relational
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> is a <firstterm>relational
+<!## end>
     database management system</firstterm> (<acronym>RDBMS</acronym>).
     That means it is a system for managing data stored in
     <firstterm>relations</firstterm>.  Relation is essentially a
@@ -139,6 +154,23 @@
 &xconly;
     In <productname>Postgres-XC</> these databases can be distributed into more than one Datanodes.
     This will not affect how tables and rows are seen from applications point of view, but will be
+    important for Database Administrator (DBA).
+    Table distribution will be described later.
+<!--
+    TODO:
+    Add reference point of the above.
+-->
+   </para>
+<!## end>
+<!## XL>
+    Tables are grouped into databases, and a collection of databases
+    managed by a single <productname>Postgres-XL</productname> 
+    <firstterm>cluster</firstterm>.
+   </para>
+   <para>
+&xlonly;
+    In <productname>Postgres-XL</> these databases can be distributed onto more than one Datanodes.
+    This will not affect how tables and rows are seen from applications' point of view, but will be
     important for Database Administrator (DBA).
     Table distribution will be described later.
 <!--
@@ -205,6 +237,9 @@ CREATE TABLE weather (
 <!## XC>
     <productname>Postgres-XC</productname> supports the standard
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> supports the standard
+<!## end>
     <acronym>SQL</acronym> types <type>int</type>,
     <type>smallint</type>, <type>real</type>, <type>double
     precision</type>, <type>char(<replaceable>N</>)</type>,
@@ -217,6 +252,9 @@ CREATE TABLE weather (
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname> can be customized with an
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> can be customized with an
 <!## end>
     arbitrary number of user-defined data types.  Consequently, type
     names are not key words in the syntax, except where required to
@@ -238,6 +276,9 @@ CREATE TABLE cities (
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname>-specific data type.
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname>-specific data type.
 <!## end>
    </para>
 
@@ -481,6 +522,9 @@ SELECT DISTINCT city
 <!## XC>
        <productname>Postgres-XC</productname>, the implementation of
 <!## end>
+<!## XL>
+       <productname>Postgres-XL</productname>, the implementation of
+<!## end>
        <literal>DISTINCT</literal> automatically orders the rows and
        so <literal>ORDER BY</literal> is unnecessary.  But this is not
        required by the SQL standard, and current
@@ -489,6 +533,9 @@ SELECT DISTINCT city
 <!## end>
 <!## XC>
        <productname>Postgres-XC</productname> does not guarantee that
+<!## end>
+<!## XL>
+       <productname>Postgres-XL</productname> does not guarantee that
 <!## end>
        <literal>DISTINCT</literal> causes the rows to be ordered.
       </para>
@@ -720,6 +767,9 @@ SELECT *
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname> supports
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> supports
 <!## end>
     <firstterm>aggregate functions</>.
     An aggregate function computes a single result from multiple input rows.

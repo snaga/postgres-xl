@@ -141,6 +141,66 @@ CREATE TABLE <replaceable class="PARAMETER">table_name</replaceable>
 
 </synopsis>
 <!## end>
+<!## XL>
+<synopsis>
+CREATE [ [ GLOBAL | LOCAL ] { TEMPORARY | TEMP } | UNLOGGED ] TABLE [ IF NOT EXISTS ] <replaceable class="PARAMETER">table_name</replaceable> ( [
+  { <replaceable class="PARAMETER">column_name</replaceable> <replaceable class="PARAMETER">data_type</replaceable> [ DEFAULT <replaceable>default_expr</replaceable> ] [ <replaceable class="PARAMETER">column_constraint</replaceable> [ ... ] ]
+    | <replaceable>table_constraint</replaceable>
+    | LIKE <replaceable>parent_table</replaceable> [ <replaceable>like_option</replaceable> ... ] }
+    [, ... ]
+] )
+[ INHERITS ( <replaceable>parent_table</replaceable> [, ... ] ) ]
+[ WITH ( <replaceable class="PARAMETER">storage_parameter</replaceable> [= <replaceable class="PARAMETER">value</replaceable>] [, ... ] ) | WITH OIDS | WITHOUT OIDS ]
+[ ON COMMIT { PRESERVE ROWS | DELETE ROWS | DROP } ]
+[ TABLESPACE <replaceable class="PARAMETER">tablespace</replaceable> ]
+[ DISTRIBUTE BY { REPLICATION | ROUNDROBIN | { [HASH | MODULO ] ( <replaceable class="PARAMETER">column_name</replaceable> ) } } ]
+[ TO { GROUP <replaceable class="PARAMETER">groupname</replaceable> | NODE ( <replaceable class="PARAMETER">nodename</replaceable> [, ... ] ) } ]
+
+CREATE TABLE <replaceable class="PARAMETER">table_name</replaceable>
+    OF <replaceable class="PARAMETER">type_name</replaceable> [ (
+  { <replaceable class="PARAMETER">column_name</replaceable> WITH OPTIONS [ DEFAULT <replaceable>default_expr</replaceable> ] [ <replaceable class="PARAMETER">column_constraint</replaceable> [ ... ] ]
+    | <replaceable>table_constraint</replaceable> }
+    [, ... ]
+) ]
+[ WITH ( <replaceable class="PARAMETER">storage_parameter</replaceable> [= <replaceable class="PARAMETER">value</replaceable>] [, ... ] ) | WITH OIDS | WITHOUT OIDS ]
+[ ON COMMIT { PRESERVE ROWS | DELETE ROWS | DROP } ]
+[ TABLESPACE <replaceable class="PARAMETER">tablespace</replaceable> ]
+[ DISTRIBUTE BY { REPLICATION | ROUNDROBIN | { [HASH | MODULO ] ( <replaceable class="PARAMETER">column_name</replaceable> ) } } ]
+[ TO { GROUP <replaceable class="PARAMETER">groupname</replaceable> | NODE ( <replaceable class="PARAMETER">nodename</replaceable> [, ... ] ) } ]
+
+<phrase>where <replaceable class="PARAMETER">column_constraint</replaceable> is:</phrase>
+
+[ CONSTRAINT <replaceable class="PARAMETER">constraint_name</replaceable> ]
+{ NOT NULL |
+  NULL |
+  CHECK ( <replaceable class="PARAMETER">expression</replaceable> ) |
+  UNIQUE <replaceable class="PARAMETER">index_parameters</replaceable> |
+  PRIMARY KEY <replaceable class="PARAMETER">index_parameters</replaceable> |
+  REFERENCES <replaceable class="PARAMETER">reftable</replaceable> [ ( <replaceable class="PARAMETER">refcolumn</replaceable> ) ] [ MATCH FULL | MATCH PARTIAL | MATCH SIMPLE ]
+    [ ON DELETE <replaceable class="parameter">action</replaceable> ] [ ON UPDATE <replaceable class="parameter">action</replaceable> ] }
+[ DEFERRABLE | NOT DEFERRABLE ] [ INITIALLY DEFERRED | INITIALLY IMMEDIATE ]
+
+<phrase>and <replaceable class="PARAMETER">table_constraint</replaceable> is:</phrase>
+
+[ CONSTRAINT <replaceable class="PARAMETER">constraint_name</replaceable> ]
+{ CHECK ( <replaceable class="PARAMETER">expression</replaceable> ) |
+  UNIQUE ( <replaceable class="PARAMETER">column_name</replaceable> [, ... ] ) <replaceable class="PARAMETER">index_parameters</replaceable> |
+  PRIMARY KEY ( <replaceable class="PARAMETER">column_name</replaceable> [, ... ] ) <replaceable class="PARAMETER">index_parameters</replaceable> |
+  FOREIGN KEY ( <replaceable class="PARAMETER">column_name</replaceable> [, ... ] ) REFERENCES <replaceable class="PARAMETER">reftable</replaceable> [ ( <replaceable class="PARAMETER">refcolumn</replaceable> [, ... ] ) ]
+    [ MATCH FULL | MATCH PARTIAL | MATCH SIMPLE ] [ ON DELETE <replaceable class="parameter">action</replaceable> ] [ ON UPDATE <replaceable class="parameter">action</replaceable> ] }
+[ DEFERRABLE | NOT DEFERRABLE ] [ INITIALLY DEFERRED | INITIALLY IMMEDIATE ]
+
+<phrase>and <replaceable class="PARAMETER">like_option</replaceable> is:</phrase>
+
+{ INCLUDING | EXLLUDING } { DEFAULTS | CONSTRAINTS | INDEXES | STORAGE | COMMENTS | ALL }
+
+<phrase><replaceable class="PARAMETER">index_parameters</replaceable> in <literal>UNIQUE</literal> and <literal>PRIMARY KEY</literal> constraints are:</phrase>
+
+[ WITH ( <replaceable class="PARAMETER">storage_parameter</replaceable> [= <replaceable class="PARAMETER">value</replaceable>] [, ... ] ) ]
+[ USING INDEX TABLESPACE <replaceable class="PARAMETER">tablespace</replaceable> ]
+
+</synopsis>
+<!## end>
 
  </refsynopsisdiv>
 
@@ -151,6 +211,13 @@ CREATE TABLE <replaceable class="PARAMETER">table_name</replaceable>
   <note>
    <para>
     The syntax of <command>CREATE TABLE</> applies only to <productname>Postgres-XC</>.
+   </para>
+  </note>
+<!## end>
+<!## XL>
+  <note>
+   <para>
+    The syntax of <command>CREATE TABLE</> applies only to <productname>Postgres-XL</>.
    </para>
   </note>
 <!## end>
@@ -315,6 +382,9 @@ CREATE TABLE <replaceable class="PARAMETER">table_name</replaceable>
 <!## XC>
       <productname>Postgres-XC</productname>, refer to <xref
 <!## end>
+<!## XL>
+      <productname>Postgres-XL</productname>, refer to <xref
+<!## end>
       linkend="datatype">.
      </para>
     </listitem>
@@ -366,6 +436,13 @@ CREATE TABLE <replaceable class="PARAMETER">table_name</replaceable>
 
 <!## XC>
 &xconly;
+     <para>
+      It is currently not possible to distribute a table with more than one parent.
+     </para>
+&common;
+<!## end>
+<!## XL>
+&xlonly;
      <para>
       It is currently not possible to distribute a table with more than one parent.
      </para>
@@ -562,6 +639,16 @@ CREATE TABLE <replaceable class="PARAMETER">table_name</replaceable>
 
 &common;
 <!## end>
+<!## XL>
+&xlonly;
+     <para>
+      In <productname>Postgres-XL</>, if <command>DISTRIBUTE BY
+      REPLICATION</> is not specified, only the distribution key is
+      allowed to have this constraint.
+     </para>
+
+&common;
+<!## end>
 
      <para>
       Each unique table constraint must name a set of columns that is
@@ -600,6 +687,19 @@ CREATE TABLE <replaceable class="PARAMETER">table_name</replaceable>
      </para>
 <!## end>
 <!## XC>
+     <para>
+      The primary key constraint should name a set of columns that is
+      different from other sets of columns named by any unique
+      constraint defined for the same table.
+     </para>
+
+     <para>
+      If <command>DISTRIBUTE BY REPLICATION</> is not specified, the
+      distribution key must be included in the set of primary key
+      columns.
+     </para>
+<!## end>
+<!## XL>
      <para>
       The primary key constraint should name a set of columns that is
       different from other sets of columns named by any unique
@@ -879,6 +979,14 @@ CREATE TABLE <replaceable class="PARAMETER">table_name</replaceable>
       rows stored in different Datanodes.
      </para>
 <!## end>
+<!## XL>
+&xlonly;
+     <para>
+      In <productname>Postgres-XL</>, OID is managed locally in each
+      Datanode and Coordinator.  The OID value may be inconsistent for
+      rows stored in different Datanodes.
+     </para>
+<!## end>
     </listitem>
    </varlistentry>
 
@@ -1062,6 +1170,118 @@ CREATE TABLE <replaceable class="PARAMETER">table_name</replaceable>
        <para>
         Associated with <literal>TO GROUP</literal>, it defines a <productname>
         Postgres-XC</productname> node group in catalog pgxc_group.
+       </para>
+      </listitem>
+   </varlistentry>
+<!## end>
+<!## XL>
+   <varlistentry>
+    <term><literal>DISTRIBUTE BY</literal></term>
+    <listitem>
+&xlonly;
+     <para>
+      This clause specifies how the table is distributed or replicated among Datanodes.
+     </para>
+
+      <variablelist>
+
+       <varlistentry>
+        <term><literal>REPLICATION</literal></term>
+        <listitem>
+         <para>
+          Each row of the table will be replicated to all the
+          Datanode of the <productname>Postgres-XL</> database
+          cluster.
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry>
+        <term><literal>ROUNDROBIN</literal></term>
+        <listitem>
+         <para>
+          Each row of the table will be placed in one of the Datanodes
+          in a round-robin manner.  The value of the row will not be
+          needed to determine what Datanode to go.
+         </para>
+        </listitem>
+       </varlistentry>
+
+      <varlistentry>
+       <term><literal>HASH ( <replaceable class="PARAMETER">column_name</> )</literal></term>
+       <listitem>
+        <para>
+         Each row of the table will be placed based on the hash value
+         of the specified column.  Following type is allowed as
+         distribution column: INT8, INT2, OID, INT4, BOOL, INT2VECTOR,
+         OIDVECTOR, CHAR, NAME, TEXT, BPCHAR, BYTEA, VARCHAR, FLOAT4,
+         FLOAT8, NUMERIC, CASH, ABSTIME, RELTIME, DATE, TIME,
+         TIMESTAMP, TIMESTAMPTZ, INTERVAL, and TIMETZ.
+        </para>
+        <para>
+         Please note that floating point is not allowed as a basis of
+         the distribution column.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry>
+       <term><literal>MODULO ( <replaceable class="PARAMETER">column_name</> )</literal></term>
+       <listitem>
+        <para>
+         Each row of the table will be placed based on the modulo
+         of the specified column.  Following type is allowed as
+         distribution column: INT8, INT2, OID, INT4, BOOL, INT2VECTOR,
+         OIDVECTOR, CHAR, NAME, TEXT, BPCHAR, BYTEA, VARCHAR, FLOAT4,
+         FLOAT8, NUMERIC, CASH, ABSTIME, RELTIME, DATE, TIME,
+         TIMESTAMP, TIMESTAMPTZ, INTERVAL, and TIMETZ.
+        </para>
+        <para>
+         Please note that floating point is not allowed as a basis of
+         the distribution column.
+        </para>
+       </listitem>
+      </varlistentry>
+
+     </variablelist>
+    <para>
+     If <literal>DISTRIBUTE BY</> is not specified, columns with
+     UNIQUE constraint will be chosen as the distribution key.  If no
+     such column is specified, distribution column is the first
+     eligible column in the definition.  If no such column is found,
+     then the table will be distributed by <literal>ROUNDROBIN</>.
+    </para>
+
+   </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>TO GROUP</literal></term>
+    <term><literal>TO NODE</literal></term>
+      <listitem>
+       <para>
+        This defines on the list of nodes on which table data exists.
+        If this is not specified table data is present on all Datanodes.
+       </para>
+      </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="PARAMETER">nodename</replaceable></term>
+      <listitem>
+       <para>
+        Associated with <literal>TO NODE</literal>, it defines a <productname>
+        Postgres-XL</productname> node of catalog pgxc_node.
+       </para>
+      </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="PARAMETER">groupname</replaceable></term>
+      <listitem>
+       <para>
+        Associated with <literal>TO GROUP</literal>, it defines a <productname>
+        Postgres-XL</productname> node group in catalog pgxc_group.
        </para>
       </listitem>
    </varlistentry>
@@ -1259,6 +1479,12 @@ CREATE TABLE <replaceable class="PARAMETER">table_name</replaceable>
      possible.
     </para>
 <!## end>
+<!## XL>
+    <para>
+     Using OIDs in new applications is not recommended: where
+     possible.
+    </para>
+<!## end>
 
     <tip>
      <para>
@@ -1274,6 +1500,9 @@ CREATE TABLE <replaceable class="PARAMETER">table_name</replaceable>
 <!## end>
 <!## XC>
      <productname>Postgres-XC</productname> automatically creates an
+<!## end>
+<!## XL>
+     <productname>Postgres-XL</productname> automatically creates an
 <!## end>
      index for each unique constraint and primary key constraint to
      enforce uniqueness.  Thus, it is not necessary to create an
@@ -1324,6 +1553,17 @@ CREATE TABLE distributors (
 <!## XC>
 <!-- NOTICE:
      XC does not support immutable function here.
+-->
+<programlisting>
+CREATE TABLE distributors (
+     did    integer PRIMARY KEY,
+     name   varchar(40) NOT NULL CHECK (name &lt;&gt; '')
+);
+</programlisting>
+<!## end>
+<!## XL>
+<!-- NOTICE:
+     XL does not support immutable function here.
 -->
 <programlisting>
 CREATE TABLE distributors (
@@ -1527,6 +1767,15 @@ CREATE TABLE cinemas (
 ) TABLESPACE diskvol1;
 </programlisting>
 <!## end>
+<!## XL>
+<programlisting>
+CREATE TABLE cinemas (
+        id integer,
+        name text,
+        location text
+) TABLESPACE diskvol1;
+</programlisting>
+<!## end>
   </para>
 
   <para>
@@ -1564,6 +1813,9 @@ CREATE TABLE employees OF employee_type (
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname> instead
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> instead
 <!## end>
     requires each session to issue its own <literal>CREATE TEMPORARY
     TABLE</literal> command for each temporary table to be used.  This allows
@@ -1615,6 +1867,9 @@ CREATE TABLE employees OF employee_type (
 <!## XC>
     not deferrable, <productname>Postgres-XC</productname> checks for
 <!## end>
+<!## XL>
+    not deferrable, <productname>Postgres-XL</productname> checks for
+<!## end>
     uniqueness immediately whenever a row is inserted or modified.
     The SQL standard says that uniqueness should be enforced only at
     the end of the statement; this makes a difference when, for example,
@@ -1639,6 +1894,9 @@ CREATE TABLE employees OF employee_type (
 <!## XC>
     <productname>Postgres-XC</productname> does not enforce this
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> does not enforce this
+<!## end>
     restriction; it treats column and table check constraints alike.
    </para>
   </refsect2>
@@ -1654,6 +1912,9 @@ CREATE TABLE employees OF employee_type (
 <!## XC>
     <productname>Postgres-XC</productname> extension.
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> extension.
+<!## end>
    </para>
   </refsect2>
 
@@ -1667,6 +1928,9 @@ CREATE TABLE employees OF employee_type (
 <!## end>
 <!## XC>
     non-constraint) is a <productname>Postgres-XC</productname>
+<!## end>
+<!## XL>
+    non-constraint) is a <productname>Postgres-XL</productname>
 <!## end>
     extension to the SQL standard that is included for compatibility with some
     other database systems (and for symmetry with the <literal>NOT
@@ -1686,6 +1950,9 @@ CREATE TABLE employees OF employee_type (
 <!## XC>
     a <productname>Postgres-XC</productname> language extension.
 <!## end>
+<!## XL>
+    a <productname>Postgres-XL</productname> language extension.
+<!## end>
     SQL:1999 and later define single inheritance using a
     different syntax and different semantics.  SQL:1999-style
     inheritance is not yet supported by
@@ -1694,6 +1961,9 @@ CREATE TABLE employees OF employee_type (
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname>.
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname>.
 <!## end>
    </para>
   </refsect2>
@@ -1707,6 +1977,9 @@ CREATE TABLE employees OF employee_type (
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname> allows a table of no columns
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> allows a table of no columns
 <!## end>
     to be created (for example, <literal>CREATE TABLE foo();</>).  This
     is an extension from the SQL standard, which does not allow zero-column
@@ -1726,6 +1999,9 @@ CREATE TABLE employees OF employee_type (
 <!## XC>
     The <literal>WITH</> clause is a <productname>Postgres-XC</productname>
 <!## end>
+<!## XL>
+    The <literal>WITH</> clause is a <productname>Postgres-XL</productname>
+<!## end>
     extension; neither storage parameters nor OIDs are in the standard.
    </para>
   </refsect2>
@@ -1739,6 +2015,9 @@ CREATE TABLE employees OF employee_type (
 <!## end>
 <!## XC>
     The <productname>Postgres-XC</productname> concept of tablespaces is not
+<!## end>
+<!## XL>
+    The <productname>Postgres-XL</productname> concept of tablespaces is not
 <!## end>
     part of the standard.  Hence, the clauses <literal>TABLESPACE</literal>
     and <literal>USING INDEX TABLESPACE</literal> are extensions.
@@ -1757,6 +2036,9 @@ CREATE TABLE employees OF employee_type (
 <!## end>
 <!## XC>
     the <quote>self-referencing column</quote>.  Postgres-XC does not
+<!## end>
+<!## XL>
+    the <quote>self-referencing column</quote>.  Postgres-XL does not
 <!## end>
     support these self-referencing columns explicitly, but the same
     effect can be had using the OID feature.
@@ -1785,6 +2067,34 @@ CREATE TABLE employees OF employee_type (
    <para>
     In <productname>Postgres-XC</>, OID is kept locally in each
     Datanode and Coordinator.  The OID value may inconsistent for rows
+    stored in different Datanodes.
+   </para>
+
+  </refsect2>
+    
+<!## end>
+<!## XL>
+  <refsect2>
+   <title><productname>Postgres-XL</> Specifics</title>
+
+&xlonly;
+   <para>
+    Currently, non-immutable functions are not allowed
+    as <literal>DEFAULT</> values.
+   </para>
+   <para>
+    <literal>PRIMARY KEY</> and foreign key must include the
+    distribution column.
+   </para>
+   <para>
+    <literal>TEMP</> tables and exclusion constraint are not supported
+    yet.
+   </para>
+   <para>
+   </para>
+   <para>
+    In <productname>Postgres-XL</>, OID is maintained locally in each
+    Datanode and Coordinator.  The OID value may be inconsistent for rows
     stored in different Datanodes.
    </para>
 

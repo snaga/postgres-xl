@@ -36,6 +36,11 @@
  * to look like NO SCROLL cursors.
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -91,6 +96,10 @@ typedef enum PortalStrategy
 	PORTAL_ONE_MOD_WITH,
 	PORTAL_UTIL_SELECT,
 	PORTAL_MULTI_QUERY
+#ifdef XCP
+	,
+	PORTAL_DISTRIBUTED
+#endif
 } PortalStrategy;
 
 /*
@@ -156,6 +165,9 @@ typedef struct PortalData
 	 */
 	Tuplestorestate *holdStore; /* store for holdable cursors */
 	MemoryContext holdContext;	/* memory containing holdStore */
+#ifdef XCP
+	MemoryContext tmpContext;	/* temporary memory */
+#endif
 
 	/*
 	 * atStart, atEnd and portalPos indicate the current cursor position.
@@ -219,5 +231,12 @@ extern void PortalDefineQuery(Portal portal,
 extern Node *PortalListGetPrimaryStmt(List *stmts);
 extern void PortalCreateHoldStore(Portal portal);
 extern void PortalHashTableDeleteAll(void);
+#ifdef XCP
+extern void PortalCreateProducerStore(Portal portal);
+extern List *getProducingPortals(void);
+extern void addProducingPortal(Portal portal);
+extern void removeProducingPortal(Portal portal);
+extern bool portalIsProducing(Portal portal);
+#endif
 
 #endif   /* PORTAL_H */

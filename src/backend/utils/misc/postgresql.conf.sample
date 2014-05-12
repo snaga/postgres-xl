@@ -152,6 +152,10 @@
 
 #effective_io_concurrency = 1		# 1-1000; 0 disables prefetching
 
+# - Shared queues -
+
+#shared_queues = 64 			# min 16   
+#shared_queue_size = 64KB		# min 16KB
 
 #------------------------------------------------------------------------------
 # WRITE AHEAD LOG
@@ -263,6 +267,8 @@
 #cpu_tuple_cost = 0.01			# same scale as above
 #cpu_index_tuple_cost = 0.005		# same scale as above
 #cpu_operator_cost = 0.0025		# same scale as above
+#network_byte_cost = 0.001		# same scale as above
+#remote_query_cost = 100.0		# same scale as above
 #effective_cache_size = 128MB
 
 # - Genetic Query Optimizer -
@@ -570,10 +576,13 @@
 
 #pooler_port = 6667			# Pool Manager TCP port
 					# (change requires restart)
-#min_pool_size = 1			# Initial pool size
-					# (change requires restart)
 #max_pool_size = 100			# Maximum pool size
-					# (change requires restart)
+#pool_conn_keepalive = 600		# Close connections if they are idle
+					# in the pool for that time
+					# A value of -1 turns autoclose off
+#pool_maintenance_timeout = 30		# Launch maintenance routine if pooler
+					# is idle for that time
+					# A value of -1 turns feature off
 #persistent_datanode_connections = off	# Set persistent connection mode for pooler
 					# if set at on, connections taken for session
 					# are not put back to pool
@@ -598,19 +607,13 @@
 ##------------------------------------------------------------------------------
 # OTHER PG-XC OPTIONS
 #------------------------------------------------------------------------------
+#strict_statement_checking = on		# Forbid PG-XC-unsafe SQL
+					# Enabling is useful for development
 #enforce_two_phase_commit = on		# Enforce the usage of two-phase commit on transactions
 					# where temporary objects are used or ON COMMIT actions
 					# are pending.
 					# Usage of commit instead of two-phase commit may break
 					# data consistency so use at your own risk.
-
-# - Postgres-XC specific Planner Method Configuration
-
-#enable_fast_query_shipping = on
-#enable_remotejoin = on
-#enable_remotegroup = on
-#enable_remotelimit = on
-#enable_remotesort = on
 
 #------------------------------------------------------------------------------
 # CUSTOMIZED OPTIONS

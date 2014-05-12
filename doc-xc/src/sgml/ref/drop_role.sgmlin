@@ -90,6 +90,9 @@ DROP ROLE [ IF EXISTS ] <replaceable class="PARAMETER">name</replaceable> [, ...
 <!## XC>
    <productname>Postgres-XC</productname> includes a program <xref
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> includes a program <xref
+<!## end>
    linkend="APP-DROPUSER"> that has the
    same functionality as this command (in fact, it calls this command)
    but can be run from the command shell.
@@ -118,6 +121,9 @@ DROP ROLE jonathan;
 <!## end>
 <!## XC>
    privilege requirements than <productname>Postgres-XC</productname> uses.
+<!## end>
+<!## XL>
+   privilege requirements than <productname>Postgres-XL</productname> uses.
 <!## end>
   </para>
  </refsect1>

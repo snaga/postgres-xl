@@ -18,6 +18,9 @@
 <!## XC>
  <title>Postgres-XC &version; Documentation</title>
 <!## end>
+<!## XL>
+ <title>Postgres-XL &version; Documentation</title>
+<!## end>
 
  <bookinfo>
 <!## PG>
@@ -28,6 +31,11 @@
 <!## XC>
   <corpauthor>The Postgres-XC Development Group</corpauthor>
   <productname>Postgres-XC</productname>
+  <productnumber>&version;</productnumber>
+<!## end>
+<!## XL>
+  <corpauthor>The Postgres-XL Development Group</corpauthor>
+  <productname>Postgres-XL</productname>
   <productnumber>&version;</productnumber>
 <!## end>
   &legal;
@@ -67,6 +75,19 @@
     <productname>Postgres-XC</productname> system.  It makes no attempt
     to be a complete or thorough treatment of the topics it covers.
 <!## end>
+<!## XL>
+&common;
+    Welcome to the <productname>Postgres-XL</productname> Tutorial.  The
+    following few chapters are intended to give a simple introduction
+    to <productname>Postgres-XL</productname>, relational database
+    concepts, and the SQL language to those who are new to any one of
+    these aspects.  We only assume some general knowledge about how to
+    use computers.  No particular Unix or programming experience is
+    required.  This part is mainly intended to give you some hands-on
+    experience with important aspects of the
+    <productname>Postgres-XL</productname> system.  It makes no attempt
+    to be a complete or thorough treatment of the topics it covers.
+<!## end>
    </para>
 
    <para>
@@ -84,6 +105,14 @@
     of the SQL language, or <xref linkend="client-interfaces"> for
     information about developing applications for
     <productname>Postgres-XC</productname>.  Those who set up and
+    manage their own server should also read <xref linkend="admin">.
+<!## end>
+<!## XL>
+    After you have worked through this tutorial you might want to move
+    on to reading <xref linkend="sql"> to gain a more formal knowledge
+    of the SQL language, or <xref linkend="client-interfaces"> for
+    information about developing applications for
+    <productname>Postgres-XL</productname>.  Those who set up and
     manage their own server should also read <xref linkend="admin">.
 <!## end>
    </para>
@@ -116,6 +145,17 @@
 <!## XC>
     This part describes the use of the <acronym>SQL</acronym> language
     in <productname>Postgres-XC</productname>, inherited from <productname>PostgreSQL</>.  We start with
+    describing the general syntax of <acronym>SQL</acronym>, then
+    explain how to create the structures to hold data, how to populate
+    the database, and how to query it.  The middle part lists the
+    available data types and functions for use in
+    <acronym>SQL</acronym> commands.  The rest treats several
+    aspects that are important for tuning a database for optimal
+    performance.
+<!## end>
+<!## XL>
+    This part describes the use of the <acronym>SQL</acronym> language
+    in <productname>Postgres-XL</productname>, inherited from <productname>PostgreSQL</>.  We start with
     describing the general syntax of <acronym>SQL</acronym>, then
     explain how to create the structures to hold data, how to populate
     the database, and how to query it.  The middle part lists the
@@ -158,6 +198,16 @@
     <application>psql</application>, but other programs that have
     similar functionality can be used as well.
 <!## end>
+<!## XL>
+    Readers of this part should know how to connect to a
+    <productname>Postgres-XL</> database and issue
+    <acronym>SQL</acronym> commands.  Readers that are unfamiliar with
+    these issues are encouraged to read <xref linkend="tutorial">
+    first.  <acronym>SQL</acronym> commands are typically entered
+    using the <productname>Postgres-XL</> interactive terminal
+    <application>psql</application>, but other programs that have
+    similar functionality can be used as well.
+<!## end>
    </para>
   </partintro>
 
@@ -179,7 +229,6 @@
   <title>Server Administration</title>
 
   <partintro>
-&xconly;
 
 <!## PG>
    <para>
@@ -193,12 +242,24 @@
    </para>
 <!## end>
 <!## XC>
+&xconly;
    <para>
     This part covers topics that are of interest to a
     <productname>Postgres-XC</> database administrator.  This includes
     installation of the software, set up and configuration of the
     servers, management of users and databases, and maintenance tasks.
     Anyone who runs a <productname>Postgres-XC</> servers, even for
+    personal use, but especially in production, should be familiar
+    with the topics covered in this part.
+   </para>
+<!## end>
+<!## XL>
+   <para>
+    This part covers topics that are of interest to a
+    <productname>Postgres-XL</> database administrator.  This includes
+    installation of the software, set up and configuration of the
+    servers, management of users and databases, and maintenance tasks.
+    Anyone who runs a <productname>Postgres-XL</> servers, even for
     personal use, but especially in production, should be familiar
     with the topics covered in this part.
    </para>
@@ -243,7 +304,8 @@
   &diskusage;
   &wal;
   &regress;
-
+  &add-node;
+  &remove-node;
  </part>
 
  <part id="client-interfaces">

@@ -4,6 +4,11 @@
  *	  definitions for query plan nodes
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -67,6 +72,19 @@ typedef struct PlannedStmt
 	List	   *invalItems;		/* other dependencies, as PlanInvalItems */
 
 	int			nParamExec;		/* number of PARAM_EXEC Params used */
+#ifdef XCP
+	int			nParamRemote;	/* number of params sent from the master mode */
+
+	struct RemoteParam *remoteparams;/* parameter descriptors */
+
+	const char *pname;			/* the portal name */
+
+	/* Parameters to filter out result rows */
+	char		distributionType;
+	AttrNumber  distributionKey;
+	List	   *distributionNodes;
+	List	   *distributionRestrict;
+#endif
 } PlannedStmt;
 
 /* macro for fetching the Plan associated with a SubPlan node */
@@ -175,9 +193,11 @@ typedef struct ModifyTable
 	List	   *returningLists; /* per-target-table RETURNING tlists */
 	List	   *rowMarks;		/* PlanRowMarks (non-locking only) */
 	int			epqParam;		/* ID of Param for EvalPlanQual re-eval */
-#ifdef PGXC	
+#ifdef PGXC
+#ifndef XCP
 	List	   *remote_plans;	/* per-target-table remote node */
-#endif	
+#endif
+#endif
 } ModifyTable;
 
 /* ----------------
@@ -590,12 +610,6 @@ typedef struct Sort
 	Oid		   *sortOperators;	/* OIDs of operators to sort them by */
 	Oid		   *collations;		/* OIDs of collations */
 	bool	   *nullsFirst;		/* NULLS FIRST/LAST directions */
-#ifdef PGXC
-	bool		srt_start_merge;/* No need to create the sorted runs. The
-								 * underlying plan provides those runs. Merge
-								 * them.
-								 */
-#endif /* PGXC */
 } Sort;
 
 /* ---------------
@@ -633,18 +647,33 @@ typedef enum AggStrategy
 	AGG_HASHED					/* grouped agg, use internal hashtable */
 } AggStrategy;
 
+#ifdef XCP
+typedef enum AggDistribution
+{
+	AGG_ONENODE,				/* not distributed aggregation */
+	AGG_SLAVE,					/* execute only transient function */
+	AGG_MASTER					/* execute collection function as transient
+								 * and final finction */
+} AggDistribution;
+#endif
+
 typedef struct Agg
 {
 	Plan		plan;
 	AggStrategy aggstrategy;
+#ifdef XCP
+	AggDistribution aggdistribution;
+#endif
 	int			numCols;		/* number of grouping columns */
 	AttrNumber *grpColIdx;		/* their indexes in the target list */
 	Oid		   *grpOperators;	/* equality operators to compare with */
 	long		numGroups;		/* estimated number of groups in input */
 #ifdef PGXC
+#ifndef XCP
 	bool		skip_trans;		/* apply collection directly on the data received
 								 * from remote Datanodes
 								 */
+#endif /* XCP */
 #endif /* PGXC */
 } Agg;
 

@@ -12,6 +12,9 @@
 <!## XC>
   <productname>Postgres-XC</productname> has four primary documentation
 <!## end>
+<!## XL>
+  <productname>Postgres-XL</productname> has four primary documentation
+<!## end>
   formats:
 
   <itemizedlist>
@@ -43,6 +46,9 @@
 <!## end>
 <!## XC>
   be found throughout the <productname>Postgres-XC</productname> source tree,
+<!## end>
+<!## XL>
+  be found throughout the <productname>Postgres-XL</productname> source tree,
 <!## end>
   documenting various implementation issues.
  </para>
@@ -101,7 +107,26 @@
    generate target <literal>sgml</> files.
   </para>
   <para>
-   <literal>Makefile</> has been modified to accomodate these changes.
+   <literal>Makefile</> has been modified to accommodate these changes.
+  </para>
+<!## end>
+<!## XL>
+&xlonly;
+  <para>
+   To make it simpler to compare original <productname>PostgreSQL</>
+   documentation with <productname>Postgres-XL</>, we decided to
+   generate <productname>DocBook</> file from new file prefixed
+   as <literal>sgmlin</>.  <literal>sgmlin</> file is
+   essentially <productname>DocBook</> file with additional
+   tags <literal>&lt;!## tag&gt;</> and <literal>&lt!## end&gt;</>.
+   The former is a start tag and the latter is the stop tag.  These
+   tags should occupy whole line.  No other tags or CCDATA should
+   appear in the same line.  The tool <command>makesgml</> takes these
+   file, filter only <productname>Postgres-XL</> specific contents and
+   generate target <literal>sgml</> files.
+  </para>
+  <para>
+   <literal>Makefile</> has been modified to accommodate these changes.
   </para>
 <!## end>
  </sect1>
@@ -162,6 +187,9 @@
 <!## end>
 <!## XC>
        produce HTML or PDF output, but official Postgres-XC releases
+<!## end>
+<!## XL>
+       produce HTML or PDF output, but official Postgres-XL releases
 <!## end>
        use the DSSSL stylesheets for that.
       </para>
@@ -227,6 +255,29 @@
        tool to generate <literal>sgml</> file from <literal>sgmlin</>
        file.  As described above, <literal>sgmlin</> file contains
        both <productname>PostgreSQL</> and <productname>Postgres-XC</>
+       documentation source to make it simpler to deal with future
+       revision of original <productname>PostgreSQL</> documentation.
+      </para>
+      <para>
+       <command>makesgml</> source is included in the document source.
+       Build the binary and place this to appropriate path.
+      </para>
+
+     </listitem>
+    </varlistentry>
+
+<!## end>
+<!## XL>
+    <varlistentry>
+     <term>makesgml</term>
+
+     <listitem>
+&xlonly;
+      <para>
+       <command>makesgml</> is <productname>Postgres-XL</> specific
+       tool to generate <literal>sgml</> file from <literal>sgmlin</>
+       file.  As described above, <literal>sgmlin</> file contains
+       both <productname>PostgreSQL</> and <productname>Postgres-XL</>
        documentation source to make it simpler to deal with future
        revision of original <productname>PostgreSQL</> documentation.
       </para>
@@ -531,6 +582,9 @@ CATALOG "docbook-dsssl-1.<replaceable>xx</>/catalog"
 <!## XC>
      <productname>Postgres-XC</productname> doesn't use this catalog
 <!## end>
+<!## XL>
+     <productname>Postgres-XL</productname> doesn't use this catalog
+<!## end>
      entry.  See <xref linkend="docguide-toolsets-configure"> for
      information about how to select the stylesheets instead.
     </para>
@@ -574,6 +628,9 @@ CATALOG "docbook-dsssl-1.<replaceable>xx</>/catalog"
 <!## XC>
      <productname>Postgres-XC</productname> documentation sources, you
 <!## end>
+<!## XL>
+     <productname>Postgres-XL</productname> documentation sources, you
+<!## end>
      will need to increase the size of
      <application>TeX</application>'s internal data structures.
      Details on this can be found in the <application>JadeTeX</application>
@@ -608,6 +665,9 @@ CATALOG "docbook-dsssl-1.<replaceable>xx</>/catalog"
 <!## end>
 <!## XC>
    the <productname>Postgres-XC</productname> programs themselves.
+<!## end>
+<!## XL>
+   the <productname>Postgres-XL</productname> programs themselves.
 <!## end>
    Check the output near the end of the run, it should look something
    like this:
@@ -748,6 +808,9 @@ gmake man
 <!## XC>
     When using JadeTeX to build the Postgres-XC documentation, you will
 <!## end>
+<!## XL>
+    When using JadeTeX to build the Postgres-XL documentation, you will
+<!## end>
     probably need to increase some of TeX's internal parameters.  These
     can be set in the file <filename>texmf.cnf</filename>.  The following
     settings worked at the time of this writing:
@@ -799,6 +862,9 @@ save_size.pdfjadetex = 15000
 <!## XC>
     You can also create a printable version of the <productname>Postgres-XC</productname>
 <!## end>
+<!## XL>
+    You can also create a printable version of the <productname>Postgres-XL</productname>
+<!## end>
     documentation by converting it to <acronym>RTF</acronym> and
     applying minor formatting corrections using an office suite.
     Depending on the capabilities of the particular office suite, you
@@ -814,6 +880,9 @@ save_size.pdfjadetex = 15000
 <!## end>
 <!## XC>
      It appears that current versions of the <productname>Postgres-XC</productname> documentation
+<!## end>
+<!## XL>
+     It appears that current versions of the <productname>Postgres-XL</productname> documentation
 <!## end>
      trigger some bug in or exceed the size limit of OpenJade.  If the
      build process of the <acronym>RTF</acronym> version hangs for a
@@ -1216,6 +1285,9 @@ save_size.pdfjadetex = 15000
 <!## XC>
     <productname>Postgres-XC</productname> reference pages, but also
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> reference pages, but also
+<!## end>
     with reference pages provided by the operating system and other
     packages.  Hence the following guidelines have been developed.
     They are for the most part consistent with similar guidelines
@@ -1374,6 +1446,11 @@ save_size.pdfjadetex = 15000
         <productname>Postgres-XC</productname> command reference pages,
         <productname>Postgres-XC</productname> SQL command reference
         pages, citation of <productname>Postgres-XC</productname>
+<!## end>
+<!## XL>
+        <productname>Postgres-XL</productname> command reference pages,
+        <productname>Postgres-XL</productname> SQL command reference
+        pages, citation of <productname>Postgres-XL</productname>
 <!## end>
         manuals, other reference pages (e.g., operating system, other
         packages), other documentation.  Items in the same group are

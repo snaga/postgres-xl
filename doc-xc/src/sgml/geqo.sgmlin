@@ -48,6 +48,15 @@
    planner will be given elsewhere.
   </para>
 <!## end>
+<!## XL>
+&xlonly;
+  <para>
+   This chapter describes internals about <productname>PostgreSQL</>'s
+   planner. <productname>Postgres-XL</>'s planner inherited and
+   extended it.  Detailed description of <productname>Postgres-XL</>'s
+   planner will be given elsewhere.
+  </para>
+<!## end>
 
   <sect1 id="geqo-intro">
    <title>Query Handling as a Complex Optimization Problem</title>

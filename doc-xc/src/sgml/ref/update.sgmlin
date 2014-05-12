@@ -40,6 +40,15 @@ UPDATE [ ONLY ] <replaceable class="PARAMETER">table</replaceable> [ [ AS ] <rep
     [ RETURNING * | <replaceable class="parameter">output_expression</replaceable> [ [ AS ] <replaceable class="parameter">output_name</replaceable> ] [, ...] ]
 </synopsis>
 <!## end>
+<!## XL>
+<synopsis>
+UPDATE [ ONLY ] <replaceable class="PARAMETER">table</replaceable> [ [ AS ] <replaceable class="parameter">alias</replaceable> ]
+    SET { <replaceable class="PARAMETER">column</replaceable> = { <replaceable class="PARAMETER">expression</replaceable> | DEFAULT } |
+          ( <replaceable class="PARAMETER">column</replaceable> [, ...] ) = ( { <replaceable class="PARAMETER">expression</replaceable> | DEFAULT } [, ...] ) } [, ...]
+    [ WHERE <replaceable class="PARAMETER">condition</replaceable> ]
+    [ RETURNING * | <replaceable class="parameter">output_expression</replaceable> [ [ AS ] <replaceable class="parameter">output_name</replaceable> ] [, ...] ]
+</synopsis>
+<!## end>
  </refsynopsisdiv>
 
  <refsect1>
@@ -210,6 +219,14 @@ UPDATE [ ONLY ] <replaceable class="PARAMETER">table</replaceable> [ [ AS ] <rep
        </para>
       </footnote>
 <!## end>
+<!## XL>
+      <footnote>
+       <para>
+        <literal>WHERE CURRENT OF</literal> clause is not supported by
+        the current release of <productname>Postgres-XL</productname>.
+       </para>
+      </footnote>
+<!## end>
      </para>
     </listitem>
    </varlistentry>
@@ -226,6 +243,12 @@ UPDATE [ ONLY ] <replaceable class="PARAMETER">table</replaceable> [ [ AS ] <rep
       Write <literal>*</> to return all columns.
 <!## end>
 <!## XC>
+      An expression to be computed and returned by the <command>UPDATE</>
+      command after each row is updated.  The expression can use any
+      column names of the <replaceable class="PARAMETER">table</replaceable>.
+      Write <literal>*</> to return all columns.
+<!## end>
+<!## XL>
       An expression to be computed and returned by the <command>UPDATE</>
       command after each row is updated.  The expression can use any
       column names of the <replaceable class="PARAMETER">table</replaceable>.

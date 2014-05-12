@@ -13,6 +13,9 @@
 <!## XC>
   <productname>Postgres-XC</productname> extension functions written in
 <!## end>
+<!## XL>
+  <productname>Postgres-XL</productname> extension functions written in
+<!## end>
   C, they must be compiled and linked in a special way to produce a
   file that can be dynamically loaded by the server.  To be precise, a
   <firstterm>shared library</firstterm> needs to be
@@ -31,6 +34,9 @@
 <!## XC>
   In addition, the <productname>Postgres-XC</productname> source code
 <!## end>
+<!## XL>
+  In addition, the <productname>Postgres-XL</productname> source code
+<!## end>
   contains several working examples in the
   <filename>contrib</filename> directory.  If you rely on these
   examples you will make your modules dependent on the availability
@@ -39,6 +45,9 @@
 <!## end>
 <!## XC>
   of the <productname>Postgres-XC</productname> source code, however.
+<!## end>
+<!## XL>
+  of the <productname>Postgres-XL</productname> source code, however.
 <!## end>
  </para>
 
@@ -320,6 +329,9 @@ gcc -shared -o foo.so foo.o
 <!## end>
 <!## XC>
   <productname>Postgres-XC</productname>.  When specifying the file name
+<!## end>
+<!## XL>
+  <productname>Postgres-XL</productname>.  When specifying the file name
 <!## end>
   to the <command>CREATE FUNCTION</command> command, one must give it
   the name of the shared library file, not the intermediate object file.

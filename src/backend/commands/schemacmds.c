@@ -3,6 +3,11 @@
  * schemacmds.c
  *	  schema creation/manipulation commands
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -32,7 +37,7 @@
 
 #ifdef PGXC
 #include "pgxc/pgxc.h"
-#include "optimizer/pgxcplan.h"
+#include "pgxc/planner.h"
 #endif
 
 static void AlterSchemaOwner_internal(HeapTuple tup, Relation rel, Oid newOwnerId);
@@ -132,8 +137,13 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString)
 	 * if not done already.
 	 */
 	if (!sentToRemote)
+#ifdef XCP
+		parsetree_list = AddRemoteQueryNode(parsetree_list, queryString,
+											EXEC_ON_ALL_NODES);
+#else
 		parsetree_list = AddRemoteQueryNode(parsetree_list, queryString,
 											EXEC_ON_ALL_NODES, false);
+#endif
 #endif
 
 	/*

@@ -146,6 +146,13 @@ SHOW ALL
    restriction may be solved in the future releases.
   </para>
 <!## end>
+<!## XL>
+&xlonly;
+  <para>
+   <productname>Postgres-XL</> only shows local settings.  This
+   restriction may be changed in the future releases.
+  </para>
+<!## end>
  </refsect1>
 
  <refsect1>
@@ -201,6 +208,9 @@ SHOW ALL;
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname> extension.
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> extension.
 <!## end>
   </para>
  </refsect1>

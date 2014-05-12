@@ -17,6 +17,9 @@
 <!## XC>
    <productname>Postgres-XC</productname>, in narrative, tutorial, or
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname>, in narrative, tutorial, or
+<!## end>
    example form, can be found in other parts of this book.  See the
    cross-references listed on each reference page.
   </para>
@@ -40,6 +43,9 @@
 <!## XC>
     <productname>Postgres-XC</productname>.  By <quote>SQL</quote> the
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</productname>.  By <quote>SQL</quote> the
+<!## end>
     language in general is meant; information about the standards
     conformance and compatibility of each command can be found on the
     respective reference page.
@@ -62,6 +68,9 @@
    &alterLanguage;
    &alterLargeObject;
 <!## XC>
+   &alterNode;
+<!## end>
+<!## XL>
    &alterNode;
 <!## end>
    &alterOperator;
@@ -88,6 +97,9 @@
 <!## XC>
    &cleanConnection;
 <!## end>
+<!## XL>
+   &cleanConnection;
+<!## end>
    &close;
    &cluster;
    &commentOn;
@@ -96,6 +108,9 @@
    &copyTable;
    &createAggregate;
 <!## XC>
+   &createBarrier;
+<!## end>
+<!## XL>
    &createBarrier;
 <!## end>
    &createCast;
@@ -111,6 +126,10 @@
    &createIndex;
    &createLanguage;
 <!## XC>
+   &createNode;
+   &createNodeGroup;
+<!## end>
+<!## XL>
    &createNode;
    &createNodeGroup;
 <!## end>
@@ -156,6 +175,10 @@
    &dropNode;
    &dropNodeGroup;
 <!## end>
+<!## XL>
+   &dropNode;
+   &dropNodeGroup;
+<!## end>
    &dropOperator;
    &dropOperatorClass;
    &dropOperatorFamily;
@@ -181,6 +204,9 @@
 <!## XC>
    &executeDirect;
 <!## end>
+<!## XL>
+   &executeDirect;
+<!## end>
    &explain;
    &fetch;
    &grant;
@@ -190,6 +216,9 @@
    &lock;
    &move;
    &notify;
+<!## XL>
+   &pauseCluster;
+<!## end>
    &prepare;
    &prepareTransaction;
    &reassignOwned;
@@ -213,6 +242,9 @@
    &startTransaction;
    &truncate;
    &unlisten;
+<!## XL>
+   &unpauseCluster;
+<!## end>
    &update;
    &vacuum;
    &values;
@@ -226,6 +258,9 @@
 <!## XC>
   <title>Postgres-XC Client Applications</title>
 <!## end>
+<!## XL>
+  <title>Postgres-XL Client Applications</title>
+<!## end>
 
   <partintro>
    <para>
@@ -235,6 +270,9 @@
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname> client applications and
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> client applications and
 <!## end>
     utilities.  Not all of these commands are of general utility; some
     might require special privileges.  The common feature of these
@@ -269,6 +307,9 @@
 <!## XC>
   <title>Postgres-XC Server Applications</title>
 <!## end>
+<!## XL>
+  <title>Postgres-XL Server Applications</title>
+<!## end>
 
   <partintro>
    <para>
@@ -278,6 +319,9 @@
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname> server applications and
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> server applications and
 <!## end>
     support utilities.  These commands can only be run usefully on the
     host where the database server resides.  Other utility programs
@@ -290,8 +334,16 @@
    &gtmPxy;
    &gtmCtl;
 <!## end>
+<!## XL>
+   &gtm;
+   &gtmPxy;
+   &gtmCtl;
+<!## end>
    &initdb;
 <!## XC>
+   &initgtm;
+<!## end>
+<!## XL>
    &initgtm;
 <!## end>
    &pgControldata;

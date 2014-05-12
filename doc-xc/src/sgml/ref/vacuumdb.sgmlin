@@ -63,6 +63,11 @@ PostgreSQL documentation
    <application>vacuumdb</application> will also generate internal statistics
    used by the <productname>Postgres-XC</productname> query optimizer.
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> database.
+   <application>vacuumdb</application> will also generate internal statistics
+   used by the <productname>Postgres-XL</productname> query optimizer.
+<!## end>
   </para>
 
   <para>
@@ -77,6 +82,13 @@ PostgreSQL documentation
 &xconly;
   <para>
    In <productname>Postgres-XC</>, <command>VACUUM</> will be
+   performed in all the Datanodes as well.
+  </para>
+<!## end>
+<!## XL>
+&xlonly;
+  <para>
+   In <productname>Postgres-XL</>, <command>VACUUM</> will be
    performed in all the Datanodes as well.
   </para>
 <!## end>
@@ -331,6 +343,9 @@ PostgreSQL documentation
 <!## XC>
    This utility, like most other <productname>Postgres-XC</> utilities,
 <!## end>
+<!## XL>
+   This utility, like most other <productname>Postgres-XL</> utilities,
+<!## end>
    also uses the environment variables supported by <application>libpq</>
    (see <xref linkend="libpq-envars">).
   </para>
@@ -364,6 +379,9 @@ PostgreSQL documentation
 <!## end>
 <!## XC>
    times to the <productname>Postgres-XC</productname> server, asking
+<!## end>
+<!## XL>
+   times to the <productname>Postgres-XL</productname> server, asking
 <!## end>
    for a password each time. It is convenient to have a
    <filename>~/.pgpass</> file in such cases. See <xref

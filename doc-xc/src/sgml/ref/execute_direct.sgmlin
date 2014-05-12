@@ -29,19 +29,18 @@ EXECUTE DIRECT ON ( <replaceable class="parameter">nodename</replaceable> [, ...
  <refsect1>
   <title>Description</title>
 
-&xconly;
+&xlonly;
   <para>
-   <command>EXECUTE DIRECT</command> is a SQL query specially created
-   for Postgres-XC to allow to launch queries directly to dedicated
+   <command>EXECUTE DIRECT</command> is a SQL command specially created
+   for <productname>Postgres-XL</productname> to allow to launch queries directly to dedicated
    nodes determined by a list of nodes <replaceable class="parameter">
    nodelist</replaceable>. 
   </para>
 
   <para>
-   Since Postgres-XC 0.9.3, EXECUTE DIRECT is limited to used on 1 node
-   only. Besides, the query sent to remote nodes designed by a list of
-   <replaceable class="parameter">nodename</replaceable> is limited to
-   <literal>SELECT</literal> queries. The usage of transaction queries
+   EXECUTE DIRECT is currenlty limited to be used on 1 node at a time
+   only. 
+   The usage of transaction queries
    (<literal>BEGIN</literal>, <literal>COMMIT</literal>...), DDL, and DML
    (<literal>INSERT</literal>, <literal>UPDATE</literal>, <literal>DELETE
    </literal>) is forbidden to avoid data inconsistency among nodes
@@ -49,7 +48,7 @@ EXECUTE DIRECT ON ( <replaceable class="parameter">nodename</replaceable> [, ...
   </para>
 
   <para>
-    Either Coordinator or Datanode can be selected by its node name.
+    Either a Coordinator or Datanode can be selected by its node name.
   </para>
 
   <para>
@@ -115,7 +114,7 @@ EXECUTE DIRECT ON dn50 'select tablename from pg_tables';
   <title>Compatibility</title>
   <para>
    <command>EXECUTE DIRECT</command> does not conform to the <acronym>
-   SQL</acronym> standards, it is a Postgres-XC specific command.
+   SQL</acronym> standards, it is a Postgres-XL specific command.
   </para>
  </refsect1>
 

@@ -97,6 +97,9 @@ DROP CONVERSION myname;
 <!## XC>
    statement in Postgres-XC.
 <!## end>
+<!## XL>
+   statement in Postgres-XL.
+<!## end>
   </para>
  </refsect1>
 

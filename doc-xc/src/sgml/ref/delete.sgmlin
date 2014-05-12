@@ -36,6 +36,13 @@ DELETE FROM [ ONLY ] <replaceable class="PARAMETER">table</replaceable> [ [ AS ]
     [ RETURNING * | <replaceable class="parameter">output_expression</replaceable> [ [ AS ] <replaceable class="parameter">output_name</replaceable> ] [, ...] ]
 </synopsis>
 <!## end>
+<!## XL>
+<synopsis>
+DELETE FROM [ ONLY ] <replaceable class="PARAMETER">table</replaceable> [ [ AS ] <replaceable class="parameter">alias</replaceable> ]
+    [ WHERE <replaceable class="PARAMETER">condition</replaceable> ]
+    [ RETURNING * | <replaceable class="parameter">output_expression</replaceable> [ [ AS ] <replaceable class="parameter">output_name</replaceable> ] [, ...] ]
+</synopsis>
+<!## end>
  </refsynopsisdiv>
 
  <refsect1>
@@ -57,6 +64,9 @@ DELETE FROM [ ONLY ] <replaceable class="PARAMETER">table</replaceable> [ [ AS ]
 <!## end>
 <!## XC>
      <productname>Postgres-XC</productname> extension that provides a
+<!## end>
+<!## XL>
+     <productname>Postgres-XL</productname> extension that provides a
 <!## end>
      faster mechanism to remove all rows from a table.
     </para>
@@ -106,6 +116,12 @@ DELETE FROM [ ONLY ] <replaceable class="PARAMETER">table</replaceable> [ [ AS ]
      <para>
       <replaceable class="parameter">with_query</replaceable> is not
       supported by current release of <productname>Postgres-XC</>.
+     </para>
+<!## end>
+<!## XL>
+     <para>
+      <replaceable class="parameter">with_query</replaceable> is not
+      supported by current release of <productname>Postgres-XL</>.
      </para>
 <!## end>
 <!## PG>
@@ -200,6 +216,14 @@ DELETE FROM [ ONLY ] <replaceable class="PARAMETER">table</replaceable> [ [ AS ]
        </para>
       </footnote>
 <!## end>
+<!## XL>
+      <footnote>
+       <para>
+        <literal>WHERE CURRENT OF</literal> is not supported in the
+        current version of <productname>Postgres-XL</productname>.
+       </para>
+      </footnote>
+<!## end>
      </para>
     </listitem>
    </varlistentry>
@@ -262,6 +286,9 @@ DELETE <replaceable class="parameter">count</replaceable>
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname> lets you reference columns of
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> lets you reference columns of
 <!## end>
    other tables in the <literal>WHERE</> condition by specifying the
    other tables in the <literal>USING</literal> clause.  For example,

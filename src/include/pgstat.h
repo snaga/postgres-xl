@@ -3,6 +3,11 @@
  *
  *	Definitions for the PostgreSQL statistics collector daemon.
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  *	Copyright (c) 2001-2012, PostgreSQL Global Development Group
  *
  *	src/include/pgstat.h
@@ -839,6 +844,11 @@ extern void pgstat_count_heap_insert(Relation rel, int n);
 extern void pgstat_count_heap_update(Relation rel, bool hot);
 extern void pgstat_count_heap_delete(Relation rel);
 extern void pgstat_update_heap_dead_tuples(Relation rel, int delta);
+#ifdef XCP
+extern void pgstat_count_remote_insert(Relation rel, int n);
+extern void pgstat_count_remote_update(Relation rel, int n);
+extern void pgstat_count_remote_delete(Relation rel, int n);
+#endif
 
 extern void pgstat_init_function_usage(FunctionCallInfoData *fcinfo,
 						   PgStat_FunctionCallUsage *fcu);

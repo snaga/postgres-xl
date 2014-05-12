@@ -103,7 +103,7 @@ end;
 ' language plpgsql;
 create trigger tg_room_au after update
     on Room for each row execute procedure tg_room_au();
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 -- ************************************************************
 -- * AFTER DELETE on Room
@@ -117,7 +117,7 @@ end;
 ' language plpgsql;
 create trigger tg_room_ad after delete
     on Room for each row execute procedure tg_room_ad();
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 -- ************************************************************
 -- * BEFORE INSERT or UPDATE on WSlot
@@ -133,7 +133,7 @@ end;
 $$ language plpgsql;
 create trigger tg_wslot_biu before insert or update
     on WSlot for each row execute procedure tg_wslot_biu();
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 -- ************************************************************
 -- * AFTER UPDATE on PField
@@ -149,7 +149,7 @@ end;
 ' language plpgsql;
 create trigger tg_pfield_au after update
     on PField for each row execute procedure tg_pfield_au();
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 -- ************************************************************
 -- * AFTER DELETE on PField
@@ -163,7 +163,7 @@ end;
 ' language plpgsql;
 create trigger tg_pfield_ad after delete
     on PField for each row execute procedure tg_pfield_ad();
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 -- ************************************************************
 -- * BEFORE INSERT or UPDATE on PSlot
@@ -183,7 +183,7 @@ end;
 $proc$ language plpgsql;
 create trigger tg_pslot_biu before insert or update
     on PSlot for each row execute procedure tg_pslot_biu();
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 -- ************************************************************
 -- * AFTER UPDATE on System
@@ -199,7 +199,7 @@ end;
 ' language plpgsql;
 create trigger tg_system_au after update
     on System for each row execute procedure tg_system_au();
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 -- ************************************************************
 -- * BEFORE INSERT or UPDATE on IFace
@@ -226,7 +226,7 @@ end;
 $$ language plpgsql;
 create trigger tg_iface_biu before insert or update
     on IFace for each row execute procedure tg_iface_biu();
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 -- ************************************************************
 -- * AFTER INSERT or UPDATE or DELETE on Hub
@@ -256,7 +256,7 @@ end;
 ' language plpgsql;
 create trigger tg_hub_a after insert or update or delete
     on Hub for each row execute procedure tg_hub_a();
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 -- ************************************************************
 -- * Support function to add/remove slots of Hub
@@ -320,7 +320,7 @@ end;
 ' language plpgsql;
 create trigger tg_hslot_biu before insert or update
     on HSlot for each row execute procedure tg_hslot_biu();
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 -- ************************************************************
 -- * BEFORE DELETE on HSlot
@@ -342,7 +342,7 @@ end;
 ' language plpgsql;
 create trigger tg_hslot_bd before delete
     on HSlot for each row execute procedure tg_hslot_bd();
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 -- ************************************************************
 -- * BEFORE INSERT on all slots
@@ -358,23 +358,23 @@ end;
 ' language plpgsql;
 create trigger tg_chkslotname before insert
     on PSlot for each row execute procedure tg_chkslotname('PS');
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 create trigger tg_chkslotname before insert
     on WSlot for each row execute procedure tg_chkslotname('WS');
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 create trigger tg_chkslotname before insert
     on PLine for each row execute procedure tg_chkslotname('PL');
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 create trigger tg_chkslotname before insert
     on IFace for each row execute procedure tg_chkslotname('IF');
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 create trigger tg_chkslotname before insert
     on PHone for each row execute procedure tg_chkslotname('PH');
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 -- ************************************************************
 -- * BEFORE INSERT or UPDATE on all slots with slotlink
@@ -390,23 +390,23 @@ end;
 ' language plpgsql;
 create trigger tg_chkslotlink before insert or update
     on PSlot for each row execute procedure tg_chkslotlink();
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 create trigger tg_chkslotlink before insert or update
     on WSlot for each row execute procedure tg_chkslotlink();
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 create trigger tg_chkslotlink before insert or update
     on IFace for each row execute procedure tg_chkslotlink();
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 create trigger tg_chkslotlink before insert or update
     on HSlot for each row execute procedure tg_chkslotlink();
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 create trigger tg_chkslotlink before insert or update
     on PHone for each row execute procedure tg_chkslotlink();
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 -- ************************************************************
 -- * BEFORE INSERT or UPDATE on all slots with backlink
@@ -422,15 +422,15 @@ end;
 ' language plpgsql;
 create trigger tg_chkbacklink before insert or update
     on PSlot for each row execute procedure tg_chkbacklink();
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 create trigger tg_chkbacklink before insert or update
     on WSlot for each row execute procedure tg_chkbacklink();
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 create trigger tg_chkbacklink before insert or update
     on PLine for each row execute procedure tg_chkbacklink();
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 -- ************************************************************
 -- * BEFORE UPDATE on PSlot
@@ -458,7 +458,7 @@ end;
 ' language plpgsql;
 create trigger tg_pslot_bu before update
     on PSlot for each row execute procedure tg_pslot_bu();
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 -- ************************************************************
 -- * BEFORE UPDATE on WSlot
@@ -486,7 +486,7 @@ end;
 ' language plpgsql;
 create trigger tg_wslot_bu before update
     on WSlot for each row execute procedure tg_Wslot_bu();
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 -- ************************************************************
 -- * BEFORE UPDATE on PLine
@@ -514,7 +514,7 @@ end;
 ' language plpgsql;
 create trigger tg_pline_bu before update
     on PLine for each row execute procedure tg_pline_bu();
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 -- ************************************************************
 -- * BEFORE UPDATE on IFace
@@ -542,7 +542,7 @@ end;
 ' language plpgsql;
 create trigger tg_iface_bu before update
     on IFace for each row execute procedure tg_iface_bu();
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 -- ************************************************************
 -- * BEFORE UPDATE on HSlot
@@ -570,7 +570,7 @@ end;
 ' language plpgsql;
 create trigger tg_hslot_bu before update
     on HSlot for each row execute procedure tg_hslot_bu();
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 -- ************************************************************
 -- * BEFORE UPDATE on PHone
@@ -596,7 +596,7 @@ end;
 ' language plpgsql;
 create trigger tg_phone_bu before update
     on PHone for each row execute procedure tg_phone_bu();
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 -- ************************************************************
 -- * AFTER INSERT or UPDATE or DELETE on slot with backlink
@@ -637,15 +637,15 @@ end;
 ' language plpgsql;
 create trigger tg_backlink_a after insert or update or delete
     on PSlot for each row execute procedure tg_backlink_a('PS');
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 create trigger tg_backlink_a after insert or update or delete
     on WSlot for each row execute procedure tg_backlink_a('WS');
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 create trigger tg_backlink_a after insert or update or delete
     on PLine for each row execute procedure tg_backlink_a('PL');
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 -- ************************************************************
 -- * Support function to set the opponents backlink field
@@ -785,23 +785,23 @@ end;
 ' language plpgsql;
 create trigger tg_slotlink_a after insert or update or delete
     on PSlot for each row execute procedure tg_slotlink_a('PS');
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 create trigger tg_slotlink_a after insert or update or delete
     on WSlot for each row execute procedure tg_slotlink_a('WS');
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 create trigger tg_slotlink_a after insert or update or delete
     on IFace for each row execute procedure tg_slotlink_a('IF');
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 create trigger tg_slotlink_a after insert or update or delete
     on HSlot for each row execute procedure tg_slotlink_a('HS');
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 create trigger tg_slotlink_a after insert or update or delete
     on PHone for each row execute procedure tg_slotlink_a('PH');
-ERROR:  Postgres-XC does not support ROW TRIGGER yet
+ERROR:  Postgres-XL does not support TRIGGER yet
 DETAIL:  The feature is not currently supported
 -- ************************************************************
 -- * Support function to set the opponents slotlink field
@@ -1548,28 +1548,9 @@ update PSlot set slotlink = 'HS.base.hub1.1' where slotname = 'PS.base.b2';
 --
 -- PGXCTODO: This is failing due to issue 3522907, complicated SELECT queries in plpgsql functions
 select * from PField_v1 where pfname = 'PF0_1' order by slotname;
- pfname |       slotname       |          backside          |      patch       
---------+----------------------+----------------------------+------------------
- PF0_1  | PS.base.a1           | WS.001.1a in room 001 -> - | PS.base.ta1 -> -
- PF0_1  | PS.base.a2           | WS.001.1b in room 001 -> - | -
- PF0_1  | PS.base.a3           | WS.001.2a in room 001 -> - | PS.base.ta2 -> -
- PF0_1  | PS.base.a4           | -                          | -
- PF0_1  | PS.base.a5           | -                          | -
- PF0_1  | PS.base.a6           | -                          | -
- PF0_1  | PS.base.b1           | WS.002.1a in room 002 -> - | PS.base.ta5 -> -
- PF0_1  | PS.base.b2           | WS.002.1b in room 002 -> - | 
- PF0_1  | PS.base.b3           | WS.002.2a in room 002 -> - | PS.base.tb2 -> -
- PF0_1  | PS.base.b4           | WS.002.2b in room 002 -> - | -
- PF0_1  | PS.base.b5           | WS.002.3a in room 002 -> - | -
- PF0_1  | PS.base.b6           | WS.002.3b in room 002 -> - | -
- PF0_1  | PS.base.c1           | WS.003.1a in room 003 -> - | -
- PF0_1  | PS.base.c2           | WS.003.1b in room 003 -> - | -
- PF0_1  | PS.base.c3           | WS.003.2a in room 003 -> - | -
- PF0_1  | PS.base.c4           | WS.003.2b in room 003 -> - | -
- PF0_1  | PS.base.c5           | WS.003.3a in room 003 -> - | -
- PF0_1  | PS.base.c6           | WS.003.3b in room 003 -> - | -
-(18 rows)
-
+ERROR:  could not determine data type of parameter $1
+CONTEXT:  SQL statement "select          * from WSlot where slotname = rec.backlink"
+PL/pgSQL function pslot_backlink_view(character) line 31 at SQL statement
 select * from PField_v1 where pfname = 'PF0_2' order by slotname;
  pfname | slotname | backside | patch 
 --------+----------+----------+-------
@@ -2040,12 +2021,12 @@ begin
 	end;
 	return x;
 end$$ language plpgsql;
+-- PGXCTODO: This is failing due to issue 3522907, complicated SELECT queries in plpgsql functions
 select trap_matching_test(50);
- trap_matching_test 
---------------------
-                  2
-(1 row)
-
+ERROR:  bind message supplies 1 parameters, but prepared statement "" requires 0
+CONTEXT:  SQL statement "select        unique1 from tenk1 where unique2 =
+			(select unique2 from tenk1 b where ten = $1)"
+PL/pgSQL function trap_matching_test(integer) line 9 at SQL statement
 select trap_matching_test(0);
 NOTICE:  caught data_exception
  trap_matching_test 
@@ -2060,13 +2041,12 @@ NOTICE:  caught data_exception
                  -1
 (1 row)
 
+-- PGXCTODO: This is failing due to issue 3522907, complicated SELECT queries in plpgsql functions
 select trap_matching_test(1);
-NOTICE:  caught numeric_value_out_of_range or cardinality_violation
- trap_matching_test 
---------------------
-                 -2
-(1 row)
-
+ERROR:  bind message supplies 1 parameters, but prepared statement "" requires 0
+CONTEXT:  SQL statement "select        unique1 from tenk1 where unique2 =
+			(select unique2 from tenk1 b where ten = $1)"
+PL/pgSQL function trap_matching_test(integer) line 9 at SQL statement
 -- Enforce use of COMMIT instead of 2PC for temporary objects
 SET enforce_two_phase_commit TO off;
 create temp table foo (f1 int);
@@ -3039,12 +3019,9 @@ begin
   raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
 end$$ language plpgsql;
 select footest();
-NOTICE:  x.f1 = 5, x.f2 = 6
- footest 
----------
- 
-(1 row)
-
+ERROR:  RETURNING clause not yet supported
+CONTEXT:  SQL statement "insert into foo values(5,6) returning *"
+PL/pgSQL function footest() line 5 at SQL statement
 create or replace function footest() returns void as $$
 declare x record;
 begin
@@ -3053,8 +3030,9 @@ begin
   raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
 end$$ language plpgsql;
 select footest();
-ERROR:  query returned more than one row
-CONTEXT:  PL/pgSQL function footest() line 5 at SQL statement
+ERROR:  RETURNING clause not yet supported
+CONTEXT:  SQL statement "insert into foo values(7,8),(9,10) returning *"
+PL/pgSQL function footest() line 5 at SQL statement
 create or replace function footest() returns void as $$
 declare x record;
 begin
@@ -3063,12 +3041,9 @@ begin
   raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
 end$$ language plpgsql;
 select footest();
-NOTICE:  x.f1 = 5, x.f2 = 6
- footest 
----------
- 
-(1 row)
-
+ERROR:  RETURNING clause not yet supported
+CONTEXT:  SQL statement "insert into foo values(5,6) returning *"
+PL/pgSQL function footest() line 5 at EXECUTE statement
 create or replace function footest() returns void as $$
 declare x record;
 begin
@@ -3077,22 +3052,15 @@ begin
   raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
 end$$ language plpgsql;
 select footest();
-NOTICE:  x.f1 = 7, x.f2 = 8
- footest 
----------
- 
-(1 row)
-
+ERROR:  RETURNING clause not yet supported
+CONTEXT:  SQL statement "insert into foo values(7,8),(9,10) returning *"
+PL/pgSQL function footest() line 5 at EXECUTE statement
 select * from foo order by 1, 2;
  f1 | f2 
 ----+----
   1 |  2
   3 |  4
-  5 |  6
-  5 |  6
-  7 |  8
-  9 | 10
-(6 rows)
+(2 rows)
 
 create or replace function footest() returns void as $$
 declare x record;
@@ -3126,7 +3094,7 @@ begin
   raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
 end$$ language plpgsql;
 select footest();
-ERROR:  query returned more than one row
+ERROR:  query returned no rows
 CONTEXT:  PL/pgSQL function footest() line 5 at SQL statement
 create or replace function footest() returns void as $$
 declare x record;
@@ -3160,7 +3128,7 @@ begin
   raise notice 'x.f1 = %, x.f2 = %', x.f1, x.f2;
 end$$ language plpgsql;
 select footest();
-ERROR:  query returned more than one row
+ERROR:  query returned no rows
 CONTEXT:  PL/pgSQL function footest() line 5 at EXECUTE statement
 drop function footest();
 -- test scrollable cursor support

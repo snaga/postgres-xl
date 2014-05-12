@@ -15,6 +15,9 @@
 <!## XC>
   <refpurpose>retrieve information about the installed version of <productname>Postgres-XC</></refpurpose>
 <!## end>
+<!## XL>
+  <refpurpose>retrieve information about the installed version of <productname>Postgres-XL</></refpurpose>
+<!## end>
  </refnamediv>
 
  <indexterm zone="app-pgconfig">
@@ -41,12 +44,18 @@
 <!## XC>
    of the currently installed version of <productname>Postgres-XC</>. It is
 <!## end>
+<!## XL>
+   of the currently installed version of <productname>Postgres-XL</>. It is
+<!## end>
    intended, for example, to be used by software packages that want to interface
 <!## PG>
    to <productname>PostgreSQL</> to facilitate finding the required header files
 <!## end>
 <!## XC>
    to <productname>Postgres-XC</> to facilitate finding the required header files
+<!## end>
+<!## XL>
+   to <productname>Postgres-XL</> to facilitate finding the required header files
 <!## end>
    and libraries.
   </para>
@@ -149,6 +158,9 @@
 <!## XC>
        <productname>Postgres-XC</> was built.)
 <!## end>
+<!## XL>
+       <productname>Postgres-XL</> was built.)
+<!## end>
       </para>
      </listitem>
     </varlistentry>
@@ -200,6 +212,9 @@
 <!## XC>
        script when <productname>Postgres-XC</> was configured for building.
 <!## end>
+<!## XL>
+       script when <productname>Postgres-XL</> was configured for building.
+<!## end>
        This can be used to reproduce the identical configuration, or
        to find out with what options a binary package was built. (Note
        however that binary packages often contain vendor-specific custom
@@ -219,6 +234,9 @@
 <!## XC>
        <productname>Postgres-XC</>.  This shows the C compiler used.
 <!## end>
+<!## XL>
+       <productname>Postgres-XL</>.  This shows the C compiler used.
+<!## end>
       </para>
      </listitem>
     </varlistentry>
@@ -233,6 +251,9 @@
 <!## end>
 <!## XC>
        <productname>Postgres-XC</>.  This shows C compiler switches needed
+<!## end>
+<!## XL>
+       <productname>Postgres-XL</>.  This shows C compiler switches needed
 <!## end>
        at preprocessing time (typically, <literal>-I</> switches).
       </para>
@@ -250,6 +271,9 @@
 <!## XC>
        <productname>Postgres-XC</>.  This shows C compiler switches.
 <!## end>
+<!## XL>
+       <productname>Postgres-XL</>.  This shows C compiler switches.
+<!## end>
       </para>
      </listitem>
     </varlistentry>
@@ -264,6 +288,9 @@
 <!## end>
 <!## XC>
        <productname>Postgres-XC</>.  This shows extra C compiler switches
+<!## end>
+<!## XL>
+       <productname>Postgres-XL</>.  This shows extra C compiler switches
 <!## end>
        used for building shared libraries.
       </para>
@@ -281,6 +308,9 @@
 <!## XC>
        <productname>Postgres-XC</>.  This shows linker switches.
 <!## end>
+<!## XL>
+       <productname>Postgres-XL</>.  This shows linker switches.
+<!## end>
       </para>
      </listitem>
     </varlistentry>
@@ -295,6 +325,9 @@
 <!## end>
 <!## XC>
        <productname>Postgres-XC</>.  This shows linker switches
+<!## end>
+<!## XL>
+       <productname>Postgres-XL</>.  This shows linker switches
 <!## end>
        used for building executables only.
       </para>
@@ -311,6 +344,9 @@
 <!## end>
 <!## XC>
        <productname>Postgres-XC</>.  This shows linker switches
+<!## end>
+<!## XL>
+       <productname>Postgres-XL</>.  This shows linker switches
 <!## end>
        used for building shared libraries only.
       </para>
@@ -330,6 +366,10 @@
        <productname>Postgres-XC</>.  This normally contains <literal>-l</>
        switches for external libraries linked into <productname>Postgres-XC</>.
 <!## end>
+<!## XL>
+       <productname>Postgres-XL</>.  This normally contains <literal>-l</>
+       switches for external libraries linked into <productname>Postgres-XL</>.
+<!## end>
       </para>
      </listitem>
     </varlistentry>
@@ -343,6 +383,9 @@
 <!## end>
 <!## XC>
        Print the version of <productname>Postgres-XC</>.
+<!## end>
+<!## XL>
+       Print the version of <productname>Postgres-XL</>.
 <!## end>
       </para>
      </listitem>
@@ -397,6 +440,9 @@
 <!## end>
 <!## XC>
    To reproduce the build configuration of the current Postgres-XC
+<!## end>
+<!## XL>
+   To reproduce the build configuration of the current Postgres-XL
 <!## end>
    installation, run the following command:
 <programlisting>

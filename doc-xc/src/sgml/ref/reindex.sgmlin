@@ -56,6 +56,9 @@ REINDEX { INDEX | TABLE | DATABASE | SYSTEM } <replaceable class="PARAMETER">nam
 <!## XC>
       <productname>Postgres-XC</productname> under certain uncommon access
 <!## end>
+<!## XL>
+      <productname>Postgres-XL</productname> under certain uncommon access
+<!## end>
       patterns. <command>REINDEX</command> provides a way to reduce
       the space consumption of the index by writing a new version of
       the index without the dead pages. See <xref
@@ -184,6 +187,9 @@ REINDEX { INDEX | TABLE | DATABASE | SYSTEM } <replaceable class="PARAMETER">nam
 <!## end>
 <!## XC>
    <productname>Postgres-XC</productname> servers
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> servers
 <!## end>
    with the <option>-P</option> option included on its command line.
    Then, <command>REINDEX DATABASE</>, <command>REINDEX SYSTEM</>,

@@ -11,20 +11,22 @@ top_builddir=../../..
 include $(top_builddir)/src/Makefile.global
 subdir=src/gtm/client
 
-override CPPFLAGS := -I$(libpq_srcdir) $(CPPFLAGS)
-LIBS += $(PTHREAD_LIBS)
+NAME=gtmclient
+SO_MAJOR_VERSION= 1
+SO_MINOR_VERSION= 0
 
-include $(top_srcdir)/src/backend/common.mk
+OBJS=fe-misc.o fe-connect.o pqexpbuffer.o ip.o strlcpy.o gtm_client.o fe-protocol.o
+LDFLAGS=-L$(top_build_dir)/common -L$(top_build_dir)/libpq
 
-OBJS = fe-misc.o fe-connect.o gtm_client.o fe-protocol.o ip.o pqexpbuffer.o
+LIBS=-lpthread
 
-all: libgtmclient.a
+all:all-lib
 
-libgtmclient.a: $(OBJS)
-	$(AR) $(AROPT) $@ $^
+include $(top_srcdir)/src/Makefile.shlib
 
 clean:
-	rm -f $(OBJS) libgtmclient.a
+	rm -f $(OBJS)
+	rm -f libgtmclient.a libgtmclient.so libgtmclient.so.1 libgtmclient.so.1.0
 
 distclean: clean
 

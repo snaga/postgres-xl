@@ -186,13 +186,10 @@ CREATE TABLE hash_txt_heap (
 	random 		text
 );
 
--- PGXC: Here replication is used to ensure correct index creation
--- when a non-shippable expression is used.
--- PGXCTODO: this should be removed once global constraints are supported
 CREATE TABLE hash_f8_heap (
 	seqno		int4,
 	random 		float8
-) DISTRIBUTE BY REPLICATION;
+);
 
 -- don't include the hash_ovfl_heap stuff in the distribution
 -- the data set is too large for what it's worth
@@ -246,7 +243,6 @@ CREATE TABLE IF NOT EXISTS test_tsvector(
 CREATE UNLOGGED TABLE unlogged1 (a int primary key);			-- OK
 INSERT INTO unlogged1 VALUES (42);
 CREATE UNLOGGED TABLE public.unlogged2 (a int primary key);		-- also OK
-SET enforce_two_phase_commit TO off;
 CREATE UNLOGGED TABLE pg_temp.unlogged3 (a int primary key);	-- not OK
 CREATE TABLE pg_temp.implicitly_temp (a int primary key);		-- OK
 CREATE TEMP TABLE explicitly_temp (a int primary key);			-- also OK

@@ -4,22 +4,25 @@
 
 -- Simple cases
 
--- Enforce use of COMMIT instead of 2PC for temporary objects
-SET enforce_two_phase_commit TO off;
+--CREATE TEMP TABLE foo (f1 serial, f2 text, f3 int default 42);
+-- XL: Make this a real table
+CREATE TABLE foo (f1 serial, f2 text, f3 int default 42) DISTRIBUTE BY REPLICATION;
 
-CREATE TEMP TABLE foo (f1 serial, f2 text, f3 int default 42);
-
+-- XL: temporarily change to 3 inserts
+--INSERT INTO foo (f2,f3)
+--  VALUES ('test', DEFAULT), ('More', 11), (upper('more'), 7+9)
+--  RETURNING *, f1+f3 AS sum;
 INSERT INTO foo (f2,f3)
-  VALUES ('test', DEFAULT), ('More', 11), (upper('more'), 7+9)
+  VALUES ('test', DEFAULT);
+INSERT INTO foo (f2,f3)
+  VALUES ('More', 11);
+INSERT INTO foo (f2,f3)
+  VALUES (upper('more'), 7+9)
   RETURNING *, f1+f3 AS sum;
 
 SELECT * FROM foo ORDER BY f1;
 
-with t as
-(
-UPDATE foo SET f2 = lower(f2), f3 = DEFAULT RETURNING foo.*, f1+f3 AS sum13
-)
-select * from t order by 1,2,3;
+UPDATE foo SET f2 = lower(f2), f3 = DEFAULT RETURNING foo.*, f1+f3 AS sum13;
 
 SELECT * FROM foo ORDER BY f1;
 
@@ -33,23 +36,15 @@ INSERT INTO foo SELECT f1+10, f2, f3+99 FROM foo
   RETURNING *, f1+112 IN (SELECT q1 FROM int8_tbl) AS subplan,
     EXISTS(SELECT * FROM int4_tbl) AS initplan;
 
-with t as
-(
 UPDATE foo SET f3 = f3 * 2
   WHERE f1 > 10
   RETURNING *, f1+112 IN (SELECT q1 FROM int8_tbl) AS subplan,
-    EXISTS(SELECT * FROM int4_tbl) AS initplan
-)
-select * from t order by 1,2,3,4;
+    EXISTS(SELECT * FROM int4_tbl) AS initplan;
 
-with t as
-(
 DELETE FROM foo
   WHERE f1 > 10
   RETURNING *, f1+112 IN (SELECT q1 FROM int8_tbl) AS subplan,
-    EXISTS(SELECT * FROM int4_tbl) AS initplan
-)
-select * from t order by 1,2,3,4;
+    EXISTS(SELECT * FROM int4_tbl) AS initplan;
 
 -- Joins
 

@@ -18,6 +18,11 @@
  * "x" to be considered equal() to another reference to "x" in the query.
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
@@ -82,6 +87,10 @@
 
 /* Compare a parse location field (this is a no-op, per note above) */
 #define COMPARE_LOCATION_FIELD(fldname) \
+	((void) 0)
+
+/* Compare a CoercionForm field (also a no-op, per comment in primnodes.h) */
+#define COMPARE_COERCIONFORM_FIELD(fldname) \
 	((void) 0)
 
 
@@ -186,11 +195,17 @@ static bool
 _equalAggref(const Aggref *a, const Aggref *b)
 {
 	COMPARE_SCALAR_FIELD(aggfnoid);
+#ifndef XCP
+	/*
+	 * In XCP ignore aggtype difference because Phase 1 of aggregate have
+	 * aggtype set to aggtrantype
+	 */
 	COMPARE_SCALAR_FIELD(aggtype);
 #ifdef PGXC
 	COMPARE_SCALAR_FIELD(aggtrantype);
 	COMPARE_SCALAR_FIELD(agghas_collectfn);
 #endif /* PGXC */
+#endif /* XCP */
 	COMPARE_SCALAR_FIELD(aggcollid);
 	COMPARE_SCALAR_FIELD(inputcollid);
 	COMPARE_NODE_FIELD(args);
@@ -240,16 +255,7 @@ _equalFuncExpr(const FuncExpr *a, const FuncExpr *b)
 	COMPARE_SCALAR_FIELD(funcid);
 	COMPARE_SCALAR_FIELD(funcresulttype);
 	COMPARE_SCALAR_FIELD(funcretset);
-
-	/*
-	 * Special-case COERCE_DONTCARE, so that planner can build coercion nodes
-	 * that are equal() to both explicit and implicit coercions.
-	 */
-	if (a->funcformat != b->funcformat &&
-		a->funcformat != COERCE_DONTCARE &&
-		b->funcformat != COERCE_DONTCARE)
-		return false;
-
+	COMPARE_COERCIONFORM_FIELD(funcformat);
 	COMPARE_SCALAR_FIELD(funccollid);
 	COMPARE_SCALAR_FIELD(inputcollid);
 	COMPARE_NODE_FIELD(args);
@@ -453,16 +459,7 @@ _equalRelabelType(const RelabelType *a, const RelabelType *b)
 	COMPARE_SCALAR_FIELD(resulttype);
 	COMPARE_SCALAR_FIELD(resulttypmod);
 	COMPARE_SCALAR_FIELD(resultcollid);
-
-	/*
-	 * Special-case COERCE_DONTCARE, so that planner can build coercion nodes
-	 * that are equal() to both explicit and implicit coercions.
-	 */
-	if (a->relabelformat != b->relabelformat &&
-		a->relabelformat != COERCE_DONTCARE &&
-		b->relabelformat != COERCE_DONTCARE)
-		return false;
-
+	COMPARE_COERCIONFORM_FIELD(relabelformat);
 	COMPARE_LOCATION_FIELD(location);
 
 	return true;
@@ -474,16 +471,7 @@ _equalCoerceViaIO(const CoerceViaIO *a, const CoerceViaIO *b)
 	COMPARE_NODE_FIELD(arg);
 	COMPARE_SCALAR_FIELD(resulttype);
 	COMPARE_SCALAR_FIELD(resultcollid);
-
-	/*
-	 * Special-case COERCE_DONTCARE, so that planner can build coercion nodes
-	 * that are equal() to both explicit and implicit coercions.
-	 */
-	if (a->coerceformat != b->coerceformat &&
-		a->coerceformat != COERCE_DONTCARE &&
-		b->coerceformat != COERCE_DONTCARE)
-		return false;
-
+	COMPARE_COERCIONFORM_FIELD(coerceformat);
 	COMPARE_LOCATION_FIELD(location);
 
 	return true;
@@ -498,16 +486,7 @@ _equalArrayCoerceExpr(const ArrayCoerceExpr *a, const ArrayCoerceExpr *b)
 	COMPARE_SCALAR_FIELD(resulttypmod);
 	COMPARE_SCALAR_FIELD(resultcollid);
 	COMPARE_SCALAR_FIELD(isExplicit);
-
-	/*
-	 * Special-case COERCE_DONTCARE, so that planner can build coercion nodes
-	 * that are equal() to both explicit and implicit coercions.
-	 */
-	if (a->coerceformat != b->coerceformat &&
-		a->coerceformat != COERCE_DONTCARE &&
-		b->coerceformat != COERCE_DONTCARE)
-		return false;
-
+	COMPARE_COERCIONFORM_FIELD(coerceformat);
 	COMPARE_LOCATION_FIELD(location);
 
 	return true;
@@ -518,16 +497,7 @@ _equalConvertRowtypeExpr(const ConvertRowtypeExpr *a, const ConvertRowtypeExpr *
 {
 	COMPARE_NODE_FIELD(arg);
 	COMPARE_SCALAR_FIELD(resulttype);
-
-	/*
-	 * Special-case COERCE_DONTCARE, so that planner can build coercion nodes
-	 * that are equal() to both explicit and implicit coercions.
-	 */
-	if (a->convertformat != b->convertformat &&
-		a->convertformat != COERCE_DONTCARE &&
-		b->convertformat != COERCE_DONTCARE)
-		return false;
-
+	COMPARE_COERCIONFORM_FIELD(convertformat);
 	COMPARE_LOCATION_FIELD(location);
 
 	return true;
@@ -594,16 +564,7 @@ _equalRowExpr(const RowExpr *a, const RowExpr *b)
 {
 	COMPARE_NODE_FIELD(args);
 	COMPARE_SCALAR_FIELD(row_typeid);
-
-	/*
-	 * Special-case COERCE_DONTCARE, so that planner can build coercion nodes
-	 * that are equal() to both explicit and implicit coercions.
-	 */
-	if (a->row_format != b->row_format &&
-		a->row_format != COERCE_DONTCARE &&
-		b->row_format != COERCE_DONTCARE)
-		return false;
-
+	COMPARE_COERCIONFORM_FIELD(row_format);
 	COMPARE_NODE_FIELD(colnames);
 	COMPARE_LOCATION_FIELD(location);
 
@@ -689,16 +650,7 @@ _equalCoerceToDomain(const CoerceToDomain *a, const CoerceToDomain *b)
 	COMPARE_SCALAR_FIELD(resulttype);
 	COMPARE_SCALAR_FIELD(resulttypmod);
 	COMPARE_SCALAR_FIELD(resultcollid);
-
-	/*
-	 * Special-case COERCE_DONTCARE, so that planner can build coercion nodes
-	 * that are equal() to both explicit and implicit coercions.
-	 */
-	if (a->coercionformat != b->coercionformat &&
-		a->coercionformat != COERCE_DONTCARE &&
-		b->coercionformat != COERCE_DONTCARE)
-		return false;
-
+	COMPARE_COERCIONFORM_FIELD(coercionformat);
 	COMPARE_LOCATION_FIELD(location);
 
 	return true;
@@ -931,7 +883,9 @@ _equalQuery(const Query *a, const Query *b)
 	COMPARE_NODE_FIELD(constraintDeps);
 
 #ifdef PGXC
+#ifndef XCP
 	COMPARE_SCALAR_FIELD(is_ins_child_sel_parent);
+#endif
 #endif
 
 	return true;
@@ -1263,6 +1217,7 @@ _equalIndexStmt(const IndexStmt *a, const IndexStmt *b)
 	COMPARE_NODE_FIELD(options);
 	COMPARE_NODE_FIELD(whereClause);
 	COMPARE_NODE_FIELD(excludeOpNames);
+	COMPARE_STRING_FIELD(idxcomment);
 	COMPARE_SCALAR_FIELD(indexOid);
 	COMPARE_SCALAR_FIELD(oldNode);
 	COMPARE_SCALAR_FIELD(unique);
@@ -2366,6 +2321,18 @@ _equalXmlSerialize(const XmlSerialize *a, const XmlSerialize *b)
 	return true;
 }
 
+#ifdef XCP
+static bool
+_equalDistribution(Distribution *a, Distribution *b)
+{
+	COMPARE_SCALAR_FIELD(distributionType);
+	COMPARE_NODE_FIELD(distributionExpr);
+	COMPARE_BITMAPSET_FIELD(nodes);
+
+	return true;
+}
+#endif
+
 /*
  * Stuff from pg_list.h
  */
@@ -2467,6 +2434,17 @@ _equalBarrierStmt(const BarrierStmt *a, const BarrierStmt *b)
 	return true;
 }
 
+#ifdef XCP
+/*
+ * Lock Cluster stuff
+ */
+static bool
+_equalPauseClusterStmt(PauseClusterStmt *a, PauseClusterStmt *b)
+{
+	COMPARE_SCALAR_FIELD(pause);
+	return true;
+}
+#endif
 /*
  * stuff from nodemgr.h
  */
@@ -2989,6 +2967,11 @@ equal(const void *a, const void *b)
 		case T_BarrierStmt:
 			retval = _equalBarrierStmt(a, b);
 			break;
+#ifdef XCP
+		case T_PauseClusterStmt:
+			retval = _equalPauseClusterStmt(a, b);
+			break;
+#endif
 		case T_AlterNodeStmt:
 			retval = _equalAlterNodeStmt(a, b);
 			break;
@@ -3135,6 +3118,11 @@ equal(const void *a, const void *b)
 		case T_XmlSerialize:
 			retval = _equalXmlSerialize(a, b);
 			break;
+#ifdef XCP
+		case T_Distribution:
+			retval = _equalDistribution(a, b);
+			break;
+#endif
 
 		default:
 			elog(ERROR, "unrecognized node type: %d",

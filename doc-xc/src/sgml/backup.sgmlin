@@ -114,6 +114,19 @@ pg_dump <replaceable class="parameter">dbname</replaceable> &gt; <replaceable cl
    </para>
   </important>
 <!## end>
+<!## XL>
+&xlonly;
+  <important>
+   <para>
+    In <productname>Postgres-XL</>, <application>pg_dump</>
+    and <application>pg_dumpall</> backs up all the information stored
+    both in Coordinators and Datanodes.
+    That is, it dumps the entire database just like in regular PostgreSQL
+    and outputs similarly.  The output will contain additional table
+    distribution information.
+   </para>
+  </important>
+<!## end>
 
 
   <sect2 id="backup-dump-restore">
@@ -335,6 +348,14 @@ pg_restore -d <replaceable class="parameter">dbname</replaceable> <replaceable c
 
 <!## XC>
 &xconly;
+  <para>
+   File system level backup covers only each Coordinator or Datanode.
+   To make file system level backup, you should backup each
+   Coordinator and Datanode manually.
+  </para>
+<!## end>
+<!## XL>
+&xlonly;
   <para>
    File system level backup covers only each Coordinator or Datanode.
    To make file system level backup, you should backup each

@@ -268,6 +268,9 @@ U&amp;"d!0061t!+000061" UESCAPE '!'
 <!## XC>
     <productname>Postgres-XC</productname>, but
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</productname>, but
+<!## end>
     <literal>"Foo"</literal> and <literal>"FOO"</literal> are
     different from these three and each other.  (The folding of
 <!## PG>
@@ -275,6 +278,9 @@ U&amp;"d!0061t!+000061" UESCAPE '!'
 <!## end>
 <!## XC>
     unquoted names to lower case in <productname>Postgres-XC</> is
+<!## end>
+<!## XL>
+    unquoted names to lower case in <productname>Postgres-XL</> is
 <!## end>
     incompatible with the SQL standard, which says that unquoted names
     should be folded to upper case.  Thus, <literal>foo</literal>
@@ -300,6 +306,9 @@ U&amp;"d!0061t!+000061" UESCAPE '!'
 <!## end>
 <!## XC>
     constants</firstterm> in <productname>Postgres-XC</productname>:
+<!## end>
+<!## XL>
+    constants</firstterm> in <productname>Postgres-XL</productname>:
 <!## end>
     strings, bit strings, and numbers.
     Constants can also be specified with explicit types, which can
@@ -355,6 +364,9 @@ SELECT 'foo'      'bar';
 <!## XC>
      by <acronym>SQL</acronym>; <productname>Postgres-XC</productname> is
 <!## end>
+<!## XL>
+     by <acronym>SQL</acronym>; <productname>Postgres-XL</productname> is
+<!## end>
      following the standard.)
     </para>
    </sect3>
@@ -375,6 +387,9 @@ SELECT 'foo'      'bar';
 <!## end>
 <!## XC>
      <productname>Postgres-XC</productname> also accepts <quote>escape</>
+<!## end>
+<!## XL>
+     <productname>Postgres-XL</productname> also accepts <quote>escape</>
 <!## end>
      string constants, which are an extension to the SQL standard.
      An escape string constant is specified by writing the letter
@@ -490,6 +505,9 @@ SELECT 'foo'      'bar';
 <!## XC>
      then <productname>Postgres-XC</productname> recognizes backslash escapes
 <!## end>
+<!## XL>
+     then <productname>Postgres-XL</productname> recognizes backslash escapes
+<!## end>
      in both regular and escape string constants.  However, as of
      <productname>PostgreSQL</> 9.1, the default is <literal>on</>, meaning
      that backslash escapes are recognized only in escape string constants.
@@ -528,6 +546,9 @@ SELECT 'foo'      'bar';
 <!## end>
 <!## XC>
      <productname>Postgres-XC</productname> also supports another type
+<!## end>
+<!## XL>
+     <productname>Postgres-XL</productname> also supports another type
 <!## end>
      of escape syntax for strings that allows specifying arbitrary
      Unicode characters by code point.  A Unicode escape string
@@ -613,6 +634,9 @@ U&amp;'d!0061t!+000061' UESCAPE '!'
 <!## XC>
      <productname>Postgres-XC</productname> provides another way, called
 <!## end>
+<!## XL>
+     <productname>Postgres-XL</productname> provides another way, called
+<!## end>
      <quote>dollar quoting</quote>, to write string constants.
      A dollar-quoted string constant
      consists of a dollar sign (<literal>$</literal>), an optional
@@ -653,6 +677,9 @@ $function$
 <!## end>
 <!## XC>
      <productname>Postgres-XC</>.  But since the sequence does not match
+<!## end>
+<!## XL>
+     <productname>Postgres-XL</>.  But since the sequence does not match
 <!## end>
      the outer dollar quoting delimiter <literal>$function$</>, it is
      just some more characters within the constant so far as the outer
@@ -853,12 +880,18 @@ CAST ( '<replaceable>string</replaceable>' AS <replaceable>type</replaceable> )
 <!## XC>
      for a few data types, but <productname>Postgres-XC</productname> allows it
 <!## end>
+<!## XL>
+     for a few data types, but <productname>Postgres-XL</productname> allows it
+<!## end>
      for all types.  The syntax with
 <!## PG>
      <literal>::</literal> is historical <productname>PostgreSQL</productname>
 <!## end>
 <!## XC>
      <literal>::</literal> is historical <productname>Postgres-XC</productname>
+<!## end>
+<!## XL>
+     <literal>::</literal> is historical <productname>Postgres-XL</productname>
 <!## end>
      usage, as is the function-call syntax.
     </para>
@@ -906,6 +939,9 @@ CAST ( '<replaceable>string</replaceable>' AS <replaceable>type</replaceable> )
 <!## XC>
        <productname>Postgres-XC</productname> to parse SQL-compliant
 <!## end>
+<!## XL>
+       <productname>Postgres-XL</productname> to parse SQL-compliant
+<!## end>
        queries without requiring spaces between tokens.
       </para>
      </listitem>
@@ -923,6 +959,9 @@ CAST ( '<replaceable>string</replaceable>' AS <replaceable>type</replaceable> )
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname> reads it as two operator names
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> reads it as two operator names
 <!## end>
     not one.
    </para>
@@ -1066,6 +1105,9 @@ CAST ( '<replaceable>string</replaceable>' AS <replaceable>type</replaceable> )
 <!## XC>
     associativity of the operators in <productname>Postgres-XC</>.
 <!## end>
+<!## XL>
+    associativity of the operators in <productname>Postgres-XL</>.
+<!## end>
     Most operators have the same precedence and are left-associative.
     The precedence and associativity of the operators is hard-wired
     into the parser.  This can lead to non-intuitive behavior; for
@@ -1118,6 +1160,9 @@ SELECT (5 !) - 6;
 <!## end>
 <!## XC>
        <entry><productname>Postgres-XC</productname>-style typecast</entry>
+<!## end>
+<!## XL>
+       <entry><productname>Postgres-XL</productname>-style typecast</entry>
 <!## end>
       </row>
 
@@ -1754,6 +1799,9 @@ SELECT string_agg(a ORDER BY a, ',') FROM table;  -- incorrect
 <!## XC>
      in an aggregate function is a <productname>Postgres-XC</> extension.
 <!## end>
+<!## XL>
+     in an aggregate function is a <productname>Postgres-XL</> extension.
+<!## end>
     </para>
    </note>
 
@@ -1952,6 +2000,9 @@ UNBOUNDED FOLLOWING
 <!## XC>
     <productname>Postgres-XC</productname> accepts two equivalent syntaxes
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> accepts two equivalent syntaxes
+<!## end>
     for type casts:
 <synopsis>
 CAST ( <replaceable>expression</replaceable> AS <replaceable>type</replaceable> )
@@ -1963,6 +2014,9 @@ CAST ( <replaceable>expression</replaceable> AS <replaceable>type</replaceable> 
 <!## end>
 <!## XC>
     <literal>::</literal> is historical <productname>Postgres-XC</productname>
+<!## end>
+<!## XL>
+    <literal>::</literal> is historical <productname>Postgres-XL</productname>
 <!## end>
     usage.
    </para>
@@ -2436,6 +2490,9 @@ SELECT ... WHERE CASE WHEN x &gt; 0 THEN y/x &gt; 1.5 ELSE false END;
 <!## XC>
     <productname>Postgres-XC</productname> allows functions that have named
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> allows functions that have named
+<!## end>
     parameters to be called using either <firstterm>positional</firstterm> or
     <firstterm>named</firstterm> notation.  Named notation is especially
     useful for functions that have a large number of parameters, since it
@@ -2461,6 +2518,9 @@ SELECT ... WHERE CASE WHEN x &gt; 0 THEN y/x &gt; 1.5 ELSE false END;
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname> also supports
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> also supports
 <!## end>
     <firstterm>mixed</firstterm> notation, which combines positional and
     named notation.  In this case, positional parameters are written first
@@ -2509,6 +2569,9 @@ LANGUAGE SQL IMMUTABLE STRICT;
 <!## end>
 <!## XC>
      to functions in <productname>Postgres-XC</productname>.  An example is:
+<!## end>
+<!## XL>
+     to functions in <productname>Postgres-XL</productname>.  An example is:
 <!## end>
 <screen>
 SELECT concat_lower_or_upper('Hello', 'World', true);

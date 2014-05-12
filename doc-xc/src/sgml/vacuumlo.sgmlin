@@ -16,6 +16,15 @@
   the future releases.
  </para>
 <!## end>
+<!## XL>
+&xlonly;
+
+ <para>
+  <application>vacuumlo</> is not supported
+  by <productname>Postgres-XL</> at present.  This may be supported in
+  the future releases.
+ </para>
+<!## end>
 
 <!## PG>
  <para>

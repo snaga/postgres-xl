@@ -5,6 +5,11 @@
  *	  commands.  At one time acted as an interface between the Lisp and C
  *	  systems.
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
@@ -67,7 +72,7 @@
 #include "pgxc/execRemote.h"
 #include "pgxc/locator.h"
 #include "pgxc/pgxc.h"
-#include "optimizer/pgxcplan.h"
+#include "pgxc/planner.h"
 #include "pgxc/poolutils.h"
 #include "nodes/nodes.h"
 #include "pgxc/poolmgr.h"
@@ -75,8 +80,12 @@
 #include "pgxc/groupmgr.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
+#include "utils/builtins.h"
 #include "utils/snapmgr.h"
 #include "pgxc/xc_maintenance_mode.h"
+#ifdef XCP
+#include "pgxc/pause.h"
+#endif
 
 static void ExecUtilityStmtOnNodes(const char *queryString, ExecNodes *nodes, bool sentToRemote,
 								   bool force_autocommit, RemoteQueryExecType exec_type,
@@ -89,6 +98,7 @@ static RemoteQueryExecType GetNodesForCommentUtility(CommentStmt *stmt, bool *is
 static RemoteQueryExecType GetNodesForRulesUtility(RangeVar *relation, bool *is_temp);
 static void DropStmtPreTreatment(DropStmt *stmt, const char *queryString, bool sentToRemote,
 								 bool *is_temp, RemoteQueryExecType *exec_type);
+static bool IsStmtAllowedInLockedMode(Node *parsetree, const char *queryString);
 static void ExecUtilityWithMessage(const char *queryString, bool sentToRemote, bool is_temp);
 #endif
 
@@ -389,6 +399,39 @@ standard_ProcessUtility(Node *parsetree,
 #endif /* PGXC */
 						char *completionTag)
 {
+#ifdef PGXC
+	/*
+	 * For more detail see comments in function pgxc_lock_for_backup.
+	 *
+	 * Cosider the following scenario:
+	 * Imagine a two cordinator cluster CO1, CO2
+	 * Suppose a client connected to CO1 issues select pgxc_lock_for_backup()
+	 * Now assume that a client connected to CO2 issues a create table
+	 * select pgxc_lock_for_backup() would try to acquire the advisory lock
+	 * in exclusive mode, whereas create table would try to acquire the same
+	 * lock in shared mode. Both these requests will always try acquire the
+	 * lock in the same order i.e. they would both direct the request first to
+	 * CO1 and then to CO2. One of the two requests would therefore pass
+	 * and the other would fail.
+	 *
+	 * Consider another scenario:
+	 * Suppose we have a two cooridnator cluster CO1 and CO2
+	 * Assume one client connected to each coordinator
+	 * Further assume one client starts a transaction
+	 * and issues a DDL. This is an unfinished transaction.
+	 * Now assume the second client issues
+	 * select pgxc_lock_for_backup()
+	 * This request would fail because the unfinished transaction
+	 * would already hold the advisory lock.
+	 */
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord() && IsNormalProcessingMode())
+	{
+		/* Is the statement a prohibited one? */
+		if (!IsStmtAllowedInLockedMode(parsetree, queryString))
+			pgxc_lock_for_utility_stmt(parsetree);
+	}
+#endif
+
 	check_xact_readonly(parsetree);
 
 	if (completionTag)
@@ -606,8 +649,20 @@ standard_ProcessUtility(Node *parsetree,
 #endif
 
 				/* Run parse analysis ... */
+#ifdef XCP
+				/*
+				 * If sentToRemote is set it is either EXECUTE DIRECT or part
+				 * of extencion definition script, that is a kind of extension
+				 * specific metadata table. So it makes sense do not distribute
+				 * the relation. If someone sure he needs the table distributed
+				 * it should explicitly specify distribution.
+				 */
+				stmts = transformCreateStmt((CreateStmt *) parsetree,
+											queryString, !sentToRemote);
+#else
 				stmts = transformCreateStmt((CreateStmt *) parsetree,
 											queryString);
+#endif
 #ifdef PGXC
 				if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
 				{
@@ -667,7 +722,11 @@ standard_ProcessUtility(Node *parsetree,
 				 * Coordinator, if not already done so
 				 */
 				if (!sentToRemote)
+#ifdef XCP
+					stmts = AddRemoteQueryNode(stmts, queryString, is_temp ? EXEC_ON_DATANODES : EXEC_ON_ALL_NODES);
+#else
 					stmts = AddRemoteQueryNode(stmts, queryString, EXEC_ON_ALL_NODES, is_temp);
+#endif
 #endif
 
 				/* ... and do it */
@@ -681,9 +740,11 @@ standard_ProcessUtility(Node *parsetree,
 						static char *validnsps[] = HEAP_RELOPT_NAMESPACES;
 
 #ifdef PGXC
+#ifndef XCP
 						/* Set temporary object object flag in pooler */
 						if (is_temp)
 							PoolManagerSetCommand(POOL_CMD_TEMP, NULL);
+#endif
 #endif
 
 						/* Create the table itself */
@@ -800,7 +861,11 @@ standard_ProcessUtility(Node *parsetree,
 #ifdef PGXC
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+#ifdef XCP
+					 errmsg("Postgres-XL does not support FOREIGN DATA WRAPPER yet"),
+#else
 					 errmsg("Postgres-XC does not support FOREIGN DATA WRAPPER yet"),
+#endif
 					 errdetail("The feature is not currently supported")));
 #endif
 			CreateForeignDataWrapper((CreateFdwStmt *) parsetree);
@@ -814,7 +879,11 @@ standard_ProcessUtility(Node *parsetree,
 #ifdef PGXC
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+#ifdef XCP
+					 errmsg("Postgres-XL does not support SERVER yet"),
+#else
 					 errmsg("Postgres-XC does not support SERVER yet"),
+#endif
 					 errdetail("The feature is not currently supported")));
 #endif
 			CreateForeignServer((CreateForeignServerStmt *) parsetree);
@@ -828,7 +897,11 @@ standard_ProcessUtility(Node *parsetree,
 #ifdef PGXC
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+#ifdef XCP
+					 errmsg("Postgres-XL does not support USER MAPPING yet"),
+#else
 					 errmsg("Postgres-XC does not support USER MAPPING yet"),
+#endif
 					 errdetail("The feature is not currently supported")));
 #endif
 			CreateUserMapping((CreateUserMappingStmt *) parsetree);
@@ -895,15 +968,34 @@ standard_ProcessUtility(Node *parsetree,
 			break;
 
 		case T_TruncateStmt:
+			ExecuteTruncate((TruncateStmt *) parsetree);
 #ifdef PGXC
 			/*
-			 * In Postgres-XC, TRUNCATE needs to be launched to remote nodes
-			 * before AFTER triggers. As this needs an internal control it is
-			 * managed by this function internally.
+			 * Check details of the object being truncated.
+			 * If at least one temporary table is truncated truncate cannot use 2PC
+			 * at commit.
 			 */
-			ExecuteTruncate((TruncateStmt *) parsetree, queryString);
-#else
-			ExecuteTruncate((TruncateStmt *) parsetree);
+			if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+			{
+				bool is_temp = false;
+				ListCell	*cell;
+				TruncateStmt *stmt = (TruncateStmt *) parsetree;
+
+				foreach(cell, stmt->relations)
+				{
+					Oid relid;
+					RangeVar *rel = (RangeVar *) lfirst(cell);
+
+					relid = RangeVarGetRelid(rel, NoLock, false);
+					if (IsTempTable(relid))
+					{
+						is_temp = true;
+						break;
+					}
+				}
+
+				ExecUtilityStmtOnNodes(queryString, NULL, sentToRemote, false, EXEC_ON_DATANODES, is_temp);
+			}
 #endif
 			break;
 
@@ -1092,7 +1184,11 @@ standard_ProcessUtility(Node *parsetree,
 															 relid,
 															 &is_temp);
 
+#ifdef XCP
+							stmts = AddRemoteQueryNode(stmts, queryString, exec_type);
+#else
 							stmts = AddRemoteQueryNode(stmts, queryString, exec_type, is_temp);
+#endif
 						}
 					}
 #endif
@@ -1367,7 +1463,13 @@ standard_ProcessUtility(Node *parsetree,
 #ifdef PGXC
 			if (IS_PGXC_COORDINATOR)
 			{
+#ifdef XCP
+				ViewStmt *stmt = (ViewStmt *) parsetree;
+
+				if (stmt->view->relpersistence != RELPERSISTENCE_TEMP)
+#else
 				if (!ExecIsTempObjectIncluded())
+#endif
 					ExecUtilityStmtOnNodes(queryString, NULL, sentToRemote, false, EXEC_ON_COORDS, false);
 			}
 #endif
@@ -1425,26 +1527,12 @@ standard_ProcessUtility(Node *parsetree,
 				stmt = transformIndexStmt(stmt, queryString);
 
 				/* ... and do it */
-				DefineIndex(stmt->relation,		/* relation */
-							stmt->idxname,		/* index name */
+				DefineIndex(stmt,
 							InvalidOid, /* no predefined OID */
-							InvalidOid, /* no previous storage */
-							stmt->accessMethod, /* am name */
-							stmt->tableSpace,
-							stmt->indexParams,	/* parameters */
-							(Expr *) stmt->whereClause,
-							stmt->options,
-							stmt->excludeOpNames,
-							stmt->unique,
-							stmt->primary,
-							stmt->isconstraint,
-							stmt->deferrable,
-							stmt->initdeferred,
 							false,		/* is_alter_table */
 							true,		/* check_rights */
 							false,		/* skip_build */
-							false,		/* quiet */
-							stmt->concurrent);	/* concurrent */
+							false);		/* quiet */
 #ifdef PGXC
 				if (IS_PGXC_COORDINATOR && !stmt->isconstraint && !IsConnFromCoord())
 					ExecUtilityStmtOnNodes(queryString, NULL, sentToRemote,
@@ -1479,9 +1567,11 @@ standard_ProcessUtility(Node *parsetree,
 				{
 					bool is_temp = stmt->sequence->relpersistence == RELPERSISTENCE_TEMP;
 
+#ifndef XCP
 					/* Set temporary object flag in pooler */
 					if (is_temp)
 						PoolManagerSetCommand(POOL_CMD_TEMP, NULL);
+#endif
 
 					ExecUtilityStmtOnNodes(queryString, NULL, sentToRemote, false, EXEC_ON_ALL_NODES, is_temp);
 				}
@@ -1572,7 +1662,11 @@ standard_ProcessUtility(Node *parsetree,
 					/* Clean also remote Coordinators */
 					sprintf(query, "CLEAN CONNECTION TO ALL FOR DATABASE %s;", stmt->dbname);
 
+#ifdef XCP
+					ExecUtilityStmtOnNodes(query, NULL, sentToRemote, true, EXEC_ON_ALL_NODES, false);
+#else
 					ExecUtilityStmtOnNodes(query, NULL, sentToRemote, true, EXEC_ON_COORDS, false);
+#endif
 				}
 #endif
 
@@ -1648,18 +1742,22 @@ standard_ProcessUtility(Node *parsetree,
 			break;
 
 		case T_VacuumStmt:
-			/* we choose to allow this during "read only" transactions */
-			PreventCommandDuringRecovery("VACUUM");
+			{
+				VacuumStmt *stmt = (VacuumStmt *) parsetree;
+
+				/* we choose to allow this during "read only" transactions */
+				PreventCommandDuringRecovery((stmt->options & VACOPT_VACUUM) ?
+											 "VACUUM" : "ANALYZE");
 #ifdef PGXC
-			/*
-			 * We have to run the command on nodes before Coordinator because
-			 * vacuum() pops active snapshot and we can not send it to nodes
-			 */
-			if (IS_PGXC_COORDINATOR)
-				ExecUtilityStmtOnNodes(queryString, NULL, sentToRemote, true, EXEC_ON_DATANODES, false);
+				/*
+				 * We have to run the command on nodes before Coordinator because
+				 * vacuum() pops active snapshot and we can not send it to nodes
+				 */
+				if (IS_PGXC_COORDINATOR)
+					ExecUtilityStmtOnNodes(queryString, NULL, sentToRemote, true, EXEC_ON_DATANODES, false);
 #endif
-			vacuum((VacuumStmt *) parsetree, InvalidOid, true, NULL, false,
-				   isTopLevel);
+				vacuum(stmt, InvalidOid, true, NULL, false, isTopLevel);
+			}
 			break;
 
 		case T_ExplainStmt:
@@ -1674,6 +1772,7 @@ standard_ProcessUtility(Node *parsetree,
 		case T_VariableSetStmt:
 			ExecSetVariableStmt((VariableSetStmt *) parsetree);
 #ifdef PGXC
+#ifndef XCP
 			/* Let the pooler manage the statement */
 			if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
 			{
@@ -1696,6 +1795,7 @@ standard_ProcessUtility(Node *parsetree,
 						elog(ERROR, "Postgres-XC: ERROR SET query");
 				}
 			}
+#endif
 #endif
 			break;
 
@@ -1726,25 +1826,18 @@ standard_ProcessUtility(Node *parsetree,
 			(void) CreateTrigger((CreateTrigStmt *) parsetree, queryString,
 								 InvalidOid, InvalidOid, false);
 #ifdef PGXC
+			/* Postgres-XC does not support yet triggers */
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+#ifdef XCP
+					 errmsg("Postgres-XL does not support TRIGGER yet"),
+#else
+					 errmsg("Postgres-XC does not support TRIGGER yet"),
+#endif
+					 errdetail("The feature is not currently supported")));
+
 			if (IS_PGXC_COORDINATOR)
-			{
-				CreateTrigStmt *stmt = (CreateTrigStmt *) parsetree;
-				RemoteQueryExecType exec_type;
-				bool is_temp;
-
-				/* Postgres-XC does not support yet FOR EACH ROW yet */
-				if (stmt->row)
-					ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("Postgres-XC does not support ROW TRIGGER yet"),
-							 errdetail("The feature is not currently supported")));
-
-				exec_type = ExecUtilityFindNodes(OBJECT_TABLE,
-												 RangeVarGetRelid(stmt->relation, NoLock, false),
-												 &is_temp);
-
-				ExecUtilityStmtOnNodes(queryString, NULL, sentToRemote, false, exec_type, is_temp);
-			}
+				ExecUtilityStmtOnNodes(queryString, NULL, sentToRemote, false, EXEC_ON_ALL_NODES, false);
 #endif
 			break;
 
@@ -1835,6 +1928,18 @@ standard_ProcessUtility(Node *parsetree,
 		case T_ConstraintsSetStmt:
 			AfterTriggerSetState((ConstraintsSetStmt *) parsetree);
 #ifdef PGXC
+#ifdef XCP
+			/*
+			 * Just send statement to all the datanodes. It is effectively noop
+			 * if no transaction, because transaction will be committed and
+			 * changes will be cleared after completion.
+			 * Side effect of that command is that session takes a connection
+			 * to each Datanode and holds it while transaction lasts, even if
+			 * subsequent statements won't use some of them.
+			 */
+			ExecUtilityStmtOnNodes(queryString, NULL, sentToRemote, false,
+								   EXEC_ON_DATANODES, false);
+#else
 			/*
 			 * Let the pooler manage the statement, SET CONSTRAINT can just be used
 			 * inside a transaction block, hence it has no effect outside that, so use
@@ -1845,6 +1950,7 @@ standard_ProcessUtility(Node *parsetree,
 				if (PoolManagerSetCommand(POOL_CMD_LOCAL_SET, queryString) < 0)
 					elog(ERROR, "Postgres-XC: ERROR SET query");
 			}
+#endif
 #endif
 			break;
 
@@ -1872,6 +1978,12 @@ standard_ProcessUtility(Node *parsetree,
 		case T_BarrierStmt:
 			RequestBarrier(((BarrierStmt *) parsetree)->id, completionTag);
 			break;
+#ifdef XCP
+		case T_PauseClusterStmt:
+			RequestClusterPause(((PauseClusterStmt *) parsetree)->pause, completionTag);
+			break;
+#endif
+
 
 		/*
 		 * Node DDL is an operation local to Coordinator.
@@ -1880,6 +1992,10 @@ standard_ProcessUtility(Node *parsetree,
 		 */
 		case T_AlterNodeStmt:
 			PgxcNodeAlter((AlterNodeStmt *) parsetree);
+#ifdef XCP
+			if (((AlterNodeStmt *) parsetree)->cluster)
+				ExecUtilityStmtOnNodes(queryString, NULL, sentToRemote, false, EXEC_ON_ALL_NODES, false);
+#endif
 			break;
 
 		case T_CreateNodeStmt:
@@ -2007,11 +2123,21 @@ standard_ProcessUtility(Node *parsetree,
 			break;
 
 		case T_CleanConnStmt:
-			Assert(IS_PGXC_COORDINATOR);
+#ifdef XCP
+			/*
+			 * First send command to other nodes via probably existing
+			 * connections, then clean local pooler
+			 */
+			if (IS_PGXC_COORDINATOR)
+				ExecUtilityStmtOnNodes(queryString, NULL, sentToRemote, true, EXEC_ON_ALL_NODES, false);
+			CleanConnection((CleanConnStmt *) parsetree);
+#else
+ 			Assert(IS_PGXC_COORDINATOR);
 			CleanConnection((CleanConnStmt *) parsetree);
 
 			if (IS_PGXC_COORDINATOR)
 				ExecUtilityStmtOnNodes(queryString, NULL, sentToRemote, true, EXEC_ON_COORDS, false);
+#endif
 			break;
 #endif
 		default:
@@ -2093,7 +2219,9 @@ ExecUtilityStmtOnNodes(const char *queryString, ExecNodes *nodes, bool sentToRem
 		step->sql_statement = pstrdup(queryString);
 		step->force_autocommit = force_autocommit;
 		step->exec_type = exec_type;
+#ifndef XCP
 		step->is_temp = is_temp;
+#endif
 		ExecRemoteUtility(step);
 		pfree(step->sql_statement);
 		pfree(step);
@@ -2124,9 +2252,7 @@ ExecUtilityFindNodes(ObjectType object_type,
 			exec_type = EXEC_ON_ALL_NODES;
 			break;
 
-		/* Triggers are evaluated based on the relation they are defined on */
 		case OBJECT_TABLE:
-		case OBJECT_TRIGGER:
 			/* Do the check on relation kind */
 			exec_type = ExecUtilityFindNodesRelkind(object_id, is_temp);
 			break;
@@ -2176,13 +2302,21 @@ ExecUtilityFindNodesRelkind(Oid relid, bool *is_temp)
 	switch (relkind_str)
 	{
 		case RELKIND_SEQUENCE:
+#ifndef XCP
 			*is_temp = IsTempTable(relid);
 			exec_type = EXEC_ON_ALL_NODES;
 			break;
-
+#endif
 		case RELKIND_RELATION:
+#ifdef XCP
+			if ((*is_temp = IsTempTable(relid)))
+				exec_type = EXEC_ON_DATANODES;
+			else
+				exec_type = EXEC_ON_ALL_NODES;
+#else
 			*is_temp = IsTempTable(relid);
 			exec_type = EXEC_ON_ALL_NODES;
+#endif
 			break;
 
 		case RELKIND_VIEW:
@@ -2343,26 +2477,35 @@ QueryReturnsTuples(Query *parsetree)
  * UtilityContainsQuery
  *		Return the contained Query, or NULL if there is none
  *
- * Certain utility statements, such as EXPLAIN, contain a Query.
+ * Certain utility statements, such as EXPLAIN, contain a plannable Query.
  * This function encapsulates knowledge of exactly which ones do.
  * We assume it is invoked only on already-parse-analyzed statements
  * (else the contained parsetree isn't a Query yet).
+ *
+ * In some cases (currently, only EXPLAIN of CREATE TABLE AS/SELECT INTO),
+ * potentially Query-containing utility statements can be nested.  This
+ * function will drill down to a non-utility Query, or return NULL if none.
  */
 Query *
 UtilityContainsQuery(Node *parsetree)
 {
+	Query	   *qry;
+
 	switch (nodeTag(parsetree))
 	{
 		case T_ExplainStmt:
-			Assert(IsA(((ExplainStmt *) parsetree)->query, Query));
-			return (Query *) ((ExplainStmt *) parsetree)->query;
+			qry = (Query *) ((ExplainStmt *) parsetree)->query;
+			Assert(IsA(qry, Query));
+			if (qry->commandType == CMD_UTILITY)
+				return UtilityContainsQuery(qry->utilityStmt);
+			return qry;
 
 		case T_CreateTableAsStmt:
-			/* might or might not contain a Query ... */
-			if (IsA(((CreateTableAsStmt *) parsetree)->query, Query))
-				return (Query *) ((CreateTableAsStmt *) parsetree)->query;
-			Assert(IsA(((CreateTableAsStmt *) parsetree)->query, ExecuteStmt));
-			return NULL;
+			qry = (Query *) ((CreateTableAsStmt *) parsetree)->query;
+			Assert(IsA(qry, Query));
+			if (qry->commandType == CMD_UTILITY)
+				return UtilityContainsQuery(qry->utilityStmt);
+			return qry;
 
 		default:
 			return NULL;
@@ -3050,6 +3193,12 @@ CreateCommandTag(Node *parsetree)
 		case T_DropGroupStmt:
 			tag = "DROP NODE GROUP";
 			break;
+
+#ifdef XCP
+		case T_PauseClusterStmt:
+			tag = "PAUSE/UNPAUSE CLUSTER";
+			break;
+#endif
 #endif
 
 		case T_ReindexStmt:
@@ -3651,7 +3800,18 @@ GetCommandLogLevel(Node *parsetree)
 			lev = LOGSTMT_DDL;
 			break;
 #endif
-
+#ifdef XCP
+		case T_AlterNodeStmt:
+		case T_CreateNodeStmt:
+		case T_DropNodeStmt:
+		case T_CreateGroupStmt:
+		case T_DropGroupStmt:
+			lev = LOGSTMT_DDL;
+			break;
+		case T_ExecDirectStmt:
+			lev = LOGSTMT_ALL;
+			break;
+#endif
 		default:
 			elog(WARNING, "unrecognized node type: %d",
 				 (int) nodeTag(parsetree));
@@ -3663,6 +3823,97 @@ GetCommandLogLevel(Node *parsetree)
 }
 
 #ifdef PGXC
+/*
+ * IsStmtAllowedInLockedMode
+ *
+ * Allow/Disallow a utility command while cluster is locked
+ * A statement will be disallowed if it makes such changes
+ * in catalog that are backed up by pg_dump except
+ * CREATE NODE that has to be allowed because
+ * a new node has to be created while the cluster is still
+ * locked for backup
+ */
+static bool
+IsStmtAllowedInLockedMode(Node *parsetree, const char *queryString)
+{
+#define ALLOW         1
+#define DISALLOW      0
+
+	switch (nodeTag(parsetree))
+	{
+		/* To allow creation of temp tables */
+		case T_CreateStmt:                                      /* CREATE TABLE */
+			{
+				CreateStmt *stmt = (CreateStmt *) parsetree;
+				if (stmt->relation->relpersistence == RELPERSISTENCE_TEMP)
+					return ALLOW;
+				return DISALLOW;
+			}
+			break;
+
+		case T_ExecuteStmt:                                     /*
+																 * Prepared statememts can only have
+																 * SELECT, INSERT, UPDATE, DELETE,
+																 * or VALUES statement, there is no
+																 * point stopping EXECUTE.
+																 */
+		case T_CreateNodeStmt:                          /*
+														 * This has to be allowed so that the new node
+														 * can be created, while the cluster is still
+														 * locked for backup
+														 */
+		case T_DropNodeStmt:                            /*
+														 * This has to be allowed so that DROP NODE
+														 * can be issued to drop a node that has crashed.
+														 * Otherwise system would try to acquire a shared
+														 * advisory lock on the crashed node.
+														 */
+
+		case T_TransactionStmt:
+		case T_PlannedStmt:
+		case T_ClosePortalStmt:
+		case T_FetchStmt:
+		case T_TruncateStmt:
+		case T_CopyStmt:
+		case T_PrepareStmt:                                     /*
+																 * Prepared statememts can only have
+																 * SELECT, INSERT, UPDATE, DELETE,
+																 * or VALUES statement, there is no
+																 * point stopping PREPARE.
+																 */
+		case T_DeallocateStmt:                          /*
+														 * If prepare is allowed the deallocate should
+														 * be allowed also
+														 */
+		case T_DoStmt:
+		case T_NotifyStmt:
+		case T_ListenStmt:
+		case T_UnlistenStmt:
+		case T_LoadStmt:
+		case T_ClusterStmt:
+		case T_VacuumStmt:
+		case T_ExplainStmt:
+		case T_VariableSetStmt:
+		case T_VariableShowStmt:
+		case T_DiscardStmt:
+		case T_LockStmt:
+		case T_ConstraintsSetStmt:
+		case T_CheckPointStmt:
+		case T_BarrierStmt:
+		case T_ReindexStmt:
+		case T_RemoteQuery:
+		case T_CleanConnStmt:
+#ifdef XCP
+		case T_PauseClusterStmt:
+#endif
+			return ALLOW;
+
+		default:
+			return DISALLOW;
+	}
+	return DISALLOW;
+}
+
 /*
  * GetCommentObjectId
  * TODO Change to return the nodes to execute the utility on
@@ -3831,18 +4082,17 @@ DropStmtPreTreatment(DropStmt *stmt, const char *queryString, bool sentToRemote,
 			}
 			break;
 
-		/*
-		 * Those objects are dropped depending on the nature of the relationss
-		 * they are defined on. This evaluation uses the temporary behavior
-		 * and the relkind of the relation used.
-		 */
 		case OBJECT_RULE:
-		case OBJECT_TRIGGER:
 			{
+				/*
+				 * In the case of a rule we need to find the object on
+				 * which the rule is dependent and define if this rule
+				 * has a dependency with a temporary object or not.
+				 */
 				List *objname = linitial(stmt->objects);
 				Relation    relation = NULL;
 
-				get_object_address(stmt->removeType,
+				get_object_address(OBJECT_RULE,
 								   objname, NIL,
 								   &relation,
 								   AccessExclusiveLock,
@@ -3850,7 +4100,7 @@ DropStmtPreTreatment(DropStmt *stmt, const char *queryString, bool sentToRemote,
 
 				/* Do nothing if no relation */
 				if (relation && OidIsValid(relation->rd_id))
-					res_exec_type = ExecUtilityFindNodes(stmt->removeType,
+					res_exec_type = ExecUtilityFindNodes(OBJECT_RULE,
 														 relation->rd_id,
 														 &res_is_temp);
 				else

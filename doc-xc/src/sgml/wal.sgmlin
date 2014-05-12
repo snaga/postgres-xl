@@ -22,6 +22,9 @@
 <!## XC>
    system, and <productname>Postgres-XC</> does everything possible to
 <!## end>
+<!## XL>
+   system, and <productname>Postgres-XL</> does everything possible to
+<!## end>
    guarantee reliable operation. One aspect of reliable operation is
    that all data recorded by a committed transaction should be stored
    in a nonvolatile area that is safe from power loss, operating
@@ -47,6 +50,9 @@
 <!## end>
 <!## XC>
    the buffer cache to disk, and <productname>Postgres-XC</> uses those
+<!## end>
+<!## XL>
+   the buffer cache to disk, and <productname>Postgres-XL</> uses those
 <!## end>
    features.  (See the <xref linkend="guc-wal-sync-method"> parameter
    to adjust how this is done.)
@@ -143,6 +149,9 @@
 <!## XC>
    accessible to <productname>Postgres-XC</>, but some file systems
 <!## end>
+<!## XL>
+   accessible to <productname>Postgres-XL</>, but some file systems
+<!## end>
    (e.g., <acronym>ZFS</>, <acronym>ext4</>) can use them to flush
    data to the platters on write-back-enabled drives.  Unfortunately, such
    file systems behave suboptimally when combined with battery-backup unit
@@ -185,6 +194,9 @@
 <!## XC>
    of 512 bytes (<productname>Postgres-XC</> typically writes 8192 bytes, or
 <!## end>
+<!## XL>
+   of 512 bytes (<productname>Postgres-XL</> typically writes 8192 bytes, or
+<!## end>
    16 sectors, at a time), and the process of writing could fail due
    to power loss at any time, meaning some of the 512-byte sectors were
    written while others were not.  To guard against such failures,
@@ -197,6 +209,11 @@
    <productname>Postgres-XC</> periodically writes full page images to
    permanent WAL storage <emphasis>before</> modifying the actual page on
    disk. By doing this, during crash recovery <productname>Postgres-XC</> can
+<!## end>
+<!## XL>
+   <productname>Postgres-XL</> periodically writes full page images to
+   permanent WAL storage <emphasis>before</> modifying the actual page on
+   disk. By doing this, during crash recovery <productname>Postgres-XL</> can
 <!## end>
    restore partially-written pages from WAL.  If you have file-system software
    that prevents partial page writes (e.g., ZFS),  you can turn off
@@ -399,6 +416,12 @@
    crash (that is, a hardware or operating system crash, not a failure of
    <productname>Postgres-XC</> itself) could result in arbitrarily bad
 <!## end>
+<!## XL>
+   all logic within <productname>Postgres-XL</> that attempts to synchronize
+   writes to different portions of the database, and therefore a system
+   crash (that is, a hardware or operating system crash, not a failure of
+   <productname>Postgres-XL</> itself) could result in arbitrarily bad
+<!## end>
    corruption of the database state.  In many scenarios, asynchronous
    commit provides most of the performance improvement that could be
    obtained by turning off <varname>fsync</varname>, but without the risk
@@ -517,6 +540,9 @@
 <!## XC>
    <productname>Postgres-XC</> can be expected to complete each checkpoint
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</> can be expected to complete each checkpoint
+<!## end>
    in about half the time before the next checkpoint starts.  On a system
    that's very close to maximum I/O throughput during normal operation,
    you might want to increase <varname>checkpoint_completion_target</varname>
@@ -618,6 +644,9 @@
 <!## XC>
    <productname>Postgres-XC</productname> will ask the kernel to force
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> will ask the kernel to force
+<!## end>
    <acronym>WAL</acronym> updates out to disk.
    All the options should be the same in terms of reliability, with
    the exception of <literal>fsync_writethrough</>, which can sometimes
@@ -636,6 +665,9 @@
 <!## end>
 <!## XC>
    (provided that <productname>Postgres-XC</productname> has been
+<!## end>
+<!## XL>
+   (provided that <productname>Postgres-XL</productname> has been
 <!## end>
    compiled with support for it) will result in each
    <function>LogInsert</function> and <function>LogFlush</function>
@@ -693,6 +725,9 @@
 <!## end>
 <!## XC>
    that disks holding <productname>Postgres-XC</productname>'s
+<!## end>
+<!## XL>
+   that disks holding <productname>Postgres-XL</productname>'s
 <!## end>
    <acronym>WAL</acronym> log files do not make such false reports.
    (See <xref linkend="wal-reliability">.)
@@ -791,6 +826,76 @@
    must be careful while choosing a barrier identifier and ensure
    that an unique identifier is used for every barrier. Similarly, at
    the time of recovery, user must specify the same barrier id in the
+   <filename>recovery.conf</filename> file on all the nodes. Otherwise,
+   the cluster would not recover to a global consistent image.
+  </para>
+ </sect1>
+<!## end>
+<!## XL>
+
+ <sect1 id="barriers">
+  <title>Barrier</title>
+&xlonly;
+  <para>
+   Its important to ensure that any global transactions in the cluster
+   must either be committed on all the nodes or none of the nodes. If
+   global recovery is done in a way such that on one node the
+   <acronym>WAL</acronym> recovery stops after a commit record of some
+   global transaction is processed, but stops before the commit record for
+   the same transaction is processed on some other node, the cluster may
+   be left in an inconsistent state. Since the commit messages of global
+   transactions can arrive out-of-order on different nodes, its very hard
+   to find a common synchronization point. For example, for two global
+   transactions T1 and T2, the commit messages for these transactions
+   can arrive on nodes N1 and N2 such that N1 receives commit message
+   for T1 first and N2 receives commit message T2 first. In this case,
+   during <acronym>PITR</acronym>, irrespective of whether we stop at
+   T1 or T2, the cluster would lose its consistency since at least one
+   transaction will be marked as committed on one node and as aborted
+   on the other node.
+  </para>
+
+  <para>
+   During recovery, it can be hard and even impossible to find
+   cluster-wide consistent synchronization points. In fact, such
+   synchronization points may not exists at all. Postgres-XL provides
+   a mechanism to create such synchronization points, called barriers,
+   during normal operation. A barrier can be created by using a SQL
+   command <command>BARRIER</command>
+  </para>
+
+  <para>
+   The user must connect to one of the Coordinators and issue the
+   <command>BARRIER</command> command, optionally followed by an
+   identifier. If the user does not specify an identifier, an unique
+   identifier will be generated and returned to the caller.  Upon
+   receiving the <command>BARRIER</command> command, the Coordinator
+   temporarily pauses any new two-phase commits. It also communicates with
+   other Coordinators to ensure that there are no in-progress two-phase
+   commits in the cluster. At that point, a barrier <acronym>WAL</acronym>
+   record along with the user-given or system-generated BARRIER identifier
+   is writtent to the <acronym>WAL</acronym> stream of all Datanodes and
+   the Coordinators.
+  </para>
+
+  <para>
+   The user can create as many barriers as she wants to. At the time of
+   point-in-time-recovery, the same barrier id must be specified in the
+   <filename>recovery.conf</filename> files of all the Coordinators and
+   Datanodes. When every node in the cluster recovers to the same barrier
+   id, a cluster-wide consistent state is reached. Its important that
+   the recovery must be started from a backup taken before the barrier
+   was generated. If no matching barrier record is found, either because
+   the barrier was created before the base backup used for the recovery
+   or the said barrier was never created, the recovery is run to the end.
+  </para>
+  
+  <para>
+   Note that in the current release, Postgres-XL has no means to detect
+   if another barrier with the same name already exists. So the user
+   must be careful while choosing a barrier identifier and ensure
+   that an unique identifier is used for every barrier. Similarly, at
+   the time of recovery, the user must specify the same barrier id in the
    <filename>recovery.conf</filename> file on all the nodes. Otherwise,
    the cluster would not recover to a global consistent image.
   </para>

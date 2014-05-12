@@ -4,6 +4,11 @@
  *	  storage manager switch public interface declarations.
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -33,6 +38,9 @@
  * without having to make the smgr explicitly aware of relcache.  There
  * can't be more than one "owner" pointer per SMgrRelation, but that's
  * all we need.
+ *
+ * SMgrRelations that do not have an "owner" are considered to be transient,
+ * and are deleted at end of transaction.
  */
 typedef struct SMgrRelationData
 {
@@ -60,20 +68,26 @@ typedef struct SMgrRelationData
 	 * submodules.	Do not touch them from elsewhere.
 	 */
 	int			smgr_which;		/* storage manager selector */
-	bool		smgr_transient; /* T if files are to be closed at EOXact */
 
 	/* for md.c; NULL for forks that are not open */
 	struct _MdfdVec *md_fd[MAX_FORKNUM + 1];
+
+	/* if unowned, list link in list of all unowned SMgrRelations */
+	struct SMgrRelationData *next_unowned_reln;
 } SMgrRelationData;
 
 typedef SMgrRelationData *SMgrRelation;
 
+#ifdef XCP
 #define SmgrIsTemp(smgr) \
-	((smgr)->smgr_rnode.backend != InvalidBackendId)
+	(!OidIsValid(MyCoordId) && RelFileNodeBackendIsTemp((smgr)->smgr_rnode))
+#else
+#define SmgrIsTemp(smgr) \
+	RelFileNodeBackendIsTemp((smgr)->smgr_rnode)
+#endif
 
 extern void smgrinit(void);
 extern SMgrRelation smgropen(RelFileNode rnode, BackendId backend);
-extern void smgrsettransient(SMgrRelation reln);
 extern bool smgrexists(SMgrRelation reln, ForkNumber forknum);
 extern void smgrsetowner(SMgrRelation *owner, SMgrRelation reln);
 extern void smgrclose(SMgrRelation reln);
@@ -97,6 +111,7 @@ extern void smgrimmedsync(SMgrRelation reln, ForkNumber forknum);
 extern void smgrpreckpt(void);
 extern void smgrsync(void);
 extern void smgrpostckpt(void);
+extern void AtEOXact_SMgr(void);
 
 
 /* internals: move me elsewhere -- ay 7/94 */
@@ -124,10 +139,9 @@ extern void mdsync(void);
 extern void mdpostckpt(void);
 
 extern void SetForwardFsyncRequests(void);
-extern void RememberFsyncRequest(RelFileNodeBackend rnode, ForkNumber forknum,
+extern void RememberFsyncRequest(RelFileNode rnode, ForkNumber forknum,
 					 BlockNumber segno);
-extern void ForgetRelationFsyncRequests(RelFileNodeBackend rnode,
-							ForkNumber forknum);
+extern void ForgetRelationFsyncRequests(RelFileNode rnode, ForkNumber forknum);
 extern void ForgetDatabaseFsyncRequests(Oid dbid);
 
 /* smgrtype.c */

@@ -4,3 +4,11 @@
 You should not specify any constraint which need to refer to rows at remote node.
 </para>
 <!## end>
+<!## XL>
+<para>
+<productname>Postgres-XL</> supports constraints only enforceable locally.
+You should not specify any constraint which need to refer to rows on remote node.
+For example, a unique index on a replicated is locally enforceable (every tuple exists
+on every node). A unique index on a column of a round-robin distributed table cannot be enforced locally.
+</para>
+<!## end>

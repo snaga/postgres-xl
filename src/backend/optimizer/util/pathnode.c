@@ -3,6 +3,11 @@
  * pathnode.c
  *	  Routines to manipulate pathlists and create path nodes
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -26,12 +31,15 @@
 #include "optimizer/tlist.h"
 #include "parser/parsetree.h"
 #include "utils/lsyscache.h"
-#include "utils/syscache.h"
 #include "utils/selfuncs.h"
-#ifdef PGXC
-#include "commands/tablecmds.h"
-#include "optimizer/restrictinfo.h"
-#endif /* PGXC */
+#ifdef XCP
+#include "access/heapam.h"
+#include "nodes/makefuncs.h"
+#include "nodes/nodeFuncs.h"
+#include "pgxc/locator.h"
+#include "pgxc/nodemgr.h"
+#include "utils/rel.h"
+#endif
 
 
 typedef enum
@@ -46,7 +54,15 @@ static void add_parameterized_path(RelOptInfo *parent_rel, Path *new_path);
 static List *translate_sub_tlist(List *tlist, int relid);
 static bool query_is_distinct_for(Query *query, List *colnos, List *opids);
 static Oid	distinct_col_search(int colno, List *colnos, List *opids);
-
+#ifdef XCP
+static void restrict_distribution(PlannerInfo *root, RestrictInfo *ri,
+								  Path *pathnode);
+static Path *redistribute_path(Path *subpath, char distributionType,
+				  Bitmapset *nodes, Bitmapset *restrictNodes,
+				  Node* distributionExpr);
+static void set_scanpath_distribution(PlannerInfo *root, RelOptInfo *rel, Path *pathnode);
+static List *set_joinpath_distribution(PlannerInfo *root, JoinPath *pathnode);
+#endif
 
 /*****************************************************************************
  *		MISC. PATH UTILITIES
@@ -727,6 +743,926 @@ add_parameterized_path(RelOptInfo *parent_rel, Path *new_path)
 /*****************************************************************************
  *		PATH NODE CREATION ROUTINES
  *****************************************************************************/
+#ifdef XCP
+/*
+ * restrict_distribution
+ *    Analyze the RestrictInfo and decide if it is possible to restrict
+ *    distribution nodes
+ */
+static void
+restrict_distribution(PlannerInfo *root, RestrictInfo *ri,
+								  Path *pathnode)
+{
+	Distribution   *distribution = pathnode->distribution;
+	Oid				keytype;
+	Const		   *constExpr = NULL;
+	bool			found_key = false;
+
+	/*
+	 * Can not restrict - not distributed or key is not defined
+	 */
+	if (distribution == NULL ||
+			distribution->distributionExpr == NULL)
+		return;
+
+	/*
+	 * We do not support OR'ed conditions yet
+	 */
+	if (ri->orclause)
+		return;
+
+	keytype = exprType(distribution->distributionExpr);
+	if (ri->left_ec)
+	{
+		EquivalenceClass *ec = ri->left_ec;
+		ListCell *lc;
+		foreach(lc, ec->ec_members)
+		{
+			EquivalenceMember *em = (EquivalenceMember *) lfirst(lc);
+			if (equal(em->em_expr, distribution->distributionExpr))
+				found_key = true;
+			else if (bms_is_empty(em->em_relids))
+			{
+				Expr *cexpr = (Expr *) eval_const_expressions(root,
+													   (Node *) em->em_expr);
+				if (IsA(cexpr, Const) &&
+						((Const *) cexpr)->consttype == keytype)
+					constExpr = (Const *) cexpr;
+			}
+		}
+	}
+	if (ri->right_ec)
+	{
+		EquivalenceClass *ec = ri->right_ec;
+		ListCell *lc;
+		foreach(lc, ec->ec_members)
+		{
+			EquivalenceMember *em = (EquivalenceMember *) lfirst(lc);
+			if (equal(em->em_expr, distribution->distributionExpr))
+				found_key = true;
+			else if (bms_is_empty(em->em_relids))
+			{
+				Expr *cexpr = (Expr *) eval_const_expressions(root,
+													   (Node *) em->em_expr);
+				if (IsA(cexpr, Const) &&
+						((Const *) cexpr)->consttype == keytype)
+					constExpr = (Const *) cexpr;
+			}
+		}
+	}
+	if (IsA(ri->clause, OpExpr))
+	{
+		OpExpr *opexpr = (OpExpr *) ri->clause;
+		if (opexpr->args->length == 2 &&
+				op_mergejoinable(opexpr->opno, exprType(linitial(opexpr->args))))
+		{
+			Expr *arg1 = (Expr *) linitial(opexpr->args);
+			Expr *arg2 = (Expr *) lsecond(opexpr->args);
+			Expr *other = NULL;
+			if (equal(arg1, distribution->distributionExpr))
+				other = arg2;
+			else if (equal(arg2, distribution->distributionExpr))
+				other = arg1;
+			if (other)
+			{
+				found_key = true;
+				other = (Expr *) eval_const_expressions(root, (Node *) other);
+				if (IsA(other, Const) &&
+						((Const *) other)->consttype == keytype)
+					constExpr = (Const *) other;
+			}
+		}
+	}
+	if (found_key && constExpr)
+	{
+		List 	   *nodeList = NIL;
+		Bitmapset  *tmpset = bms_copy(distribution->nodes);
+		Bitmapset  *restrictinfo = NULL;
+		Locator    *locator;
+		int		   *nodenums;
+		int 		i, count;
+
+		while((i = bms_first_member(tmpset)) >= 0)
+			nodeList = lappend_int(nodeList, i);
+		bms_free(tmpset);
+
+		locator = createLocator(distribution->distributionType,
+								RELATION_ACCESS_READ,
+								keytype,
+								LOCATOR_LIST_LIST,
+								0,
+								(void *) nodeList,
+								(void **) &nodenums,
+								false);
+		count = GET_NODES(locator, constExpr->constvalue,
+						  constExpr->constisnull, NULL);
+
+		for (i = 0; i < count; i++)
+			restrictinfo = bms_add_member(restrictinfo, nodenums[i]);
+		if (distribution->restrictNodes)
+			distribution->restrictNodes = bms_intersect(distribution->restrictNodes,
+														restrictinfo);
+		else
+			distribution->restrictNodes = restrictinfo;
+		list_free(nodeList);
+		freeLocator(locator);
+	}
+}
+
+/*
+ * set_scanpath_distribution
+ *	  Assign distribution to the path which is a base relation scan.
+ */
+static void
+set_scanpath_distribution(PlannerInfo *root, RelOptInfo *rel, Path *pathnode)
+{
+	RangeTblEntry   *rte;
+	RelationLocInfo *rel_loc_info;
+
+	rte = planner_rt_fetch(rel->relid, root);
+	rel_loc_info = GetRelationLocInfo(rte->relid);
+	if (rel_loc_info)
+	{
+		ListCell *lc;
+		Distribution *distribution = makeNode(Distribution);
+		distribution->distributionType = rel_loc_info->locatorType;
+		foreach(lc, rel_loc_info->nodeList)
+			distribution->nodes = bms_add_member(distribution->nodes,
+												 lfirst_int(lc));
+		distribution->restrictNodes = NULL;
+		/*
+		 * Distribution expression of the base relation is Var representing
+		 * respective attribute.
+		 */
+		distribution->distributionExpr = NULL;
+		if (rel_loc_info->partAttrNum)
+		{
+			Var 	   *var = NULL;
+			ListCell   *lc;
+
+			/* Look if the Var is already in the target list */
+			foreach (lc, rel->reltargetlist)
+			{
+				var = (Var *) lfirst(lc);
+				if (IsA(var, Var) && var->varno == rel->relid &&
+						var->varattno == rel_loc_info->partAttrNum)
+					break;
+			}
+			/* If not found we should look up the attribute and make the Var */
+			if (!lc)
+			{
+				Relation 	relation = heap_open(rte->relid, NoLock);
+				TupleDesc	tdesc = RelationGetDescr(relation);
+				Form_pg_attribute att_tup;
+
+				att_tup = tdesc->attrs[rel_loc_info->partAttrNum - 1];
+				var = makeVar(rel->relid, rel_loc_info->partAttrNum,
+							  att_tup->atttypid, att_tup->atttypmod,
+							  att_tup->attcollation, 0);
+
+
+				heap_close(relation, NoLock);
+			}
+
+			distribution->distributionExpr = (Node *) var;
+		}
+		pathnode->distribution = distribution;
+	}
+}
+
+
+/*
+ * Set a RemoteSubPath on top of the specified node and set specified
+ * distribution to it
+ */
+static Path *
+redistribute_path(Path *subpath, char distributionType,
+				  Bitmapset *nodes, Bitmapset *restrictNodes,
+				  Node* distributionExpr)
+{
+	Distribution   *distribution = NULL;
+	RelOptInfo	   *rel = subpath->parent;
+	RemoteSubPath  *pathnode;
+
+ 	if (distributionType != LOCATOR_TYPE_NONE)
+	{
+		distribution = makeNode(Distribution);
+		distribution->distributionType = distributionType;
+		distribution->nodes = nodes;
+		distribution->restrictNodes = restrictNodes;
+		distribution->distributionExpr = distributionExpr;
+	}
+
+	/*
+	 * If inner path node is a MaterialPath pull it up to store tuples on
+	 * the destination nodes and avoid sending them over the network.
+	 */
+	if (IsA(subpath, MaterialPath))
+	{
+		MaterialPath *mpath = (MaterialPath *) subpath;
+		/* If subpath is already a RemoteSubPath, just replace distribution */
+		if (IsA(mpath->subpath, RemoteSubPath))
+		{
+			pathnode = (RemoteSubPath *) mpath->subpath;
+		}
+		else
+		{
+			pathnode = makeNode(RemoteSubPath);
+			pathnode->path.pathtype = T_RemoteSubplan;
+			pathnode->path.parent = rel;
+			pathnode->path.param_info = subpath->param_info;
+			pathnode->path.pathkeys = subpath->pathkeys;
+			pathnode->subpath = mpath->subpath;
+			mpath->subpath = (Path *) pathnode;
+		}
+		subpath = pathnode->subpath;
+		pathnode->path.distribution = distribution;
+		mpath->path.distribution = (Distribution *) copyObject(distribution);
+		/* (re)calculate costs */
+		cost_remote_subplan((Path *) pathnode, subpath->startup_cost,
+							subpath->total_cost, subpath->rows, rel->width,
+							IsLocatorReplicated(distributionType) ?
+									bms_num_members(nodes) : 1);
+		mpath->subpath = (Path *) pathnode;
+		cost_material(&mpath->path,
+					  pathnode->path.startup_cost,
+					  pathnode->path.total_cost,
+					  pathnode->path.rows,
+					  rel->width);
+		return (Path *) mpath;
+	}
+	else
+	{
+		pathnode = makeNode(RemoteSubPath);
+		pathnode->path.pathtype = T_RemoteSubplan;
+		pathnode->path.parent = rel;
+		pathnode->path.param_info = subpath->param_info;
+		pathnode->path.pathkeys = subpath->pathkeys;
+		pathnode->subpath = subpath;
+		pathnode->path.distribution = distribution;
+		cost_remote_subplan((Path *) pathnode, subpath->startup_cost,
+							subpath->total_cost, subpath->rows, rel->width,
+							IsLocatorReplicated(distributionType) ?
+									bms_num_members(nodes) : 1);
+		return (Path *) pathnode;
+	}
+}
+
+
+static JoinPath *
+flatCopyJoinPath(JoinPath *pathnode)
+{
+	JoinPath   *newnode;
+	size_t 		size = 0;
+	switch(nodeTag(pathnode))
+	{
+		case T_NestPath:
+			size = sizeof(NestPath);
+			break;
+		case T_MergePath:
+			size = sizeof(MergePath);
+			break;
+		case T_HashPath:
+			size = sizeof(HashPath);
+			break;
+		default:
+			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(pathnode));
+			break;
+	}
+	newnode = (JoinPath *) palloc(size);
+	memcpy(newnode, pathnode, size);
+	return newnode;
+}
+
+
+/*
+ * Analyze join parameters and set distribution of the join node.
+ * If there are possible alternate distributions the respective pathes are
+ * returned as a list so caller can cost all of them and choose cheapest to
+ * continue.
+ */
+static List *
+set_joinpath_distribution(PlannerInfo *root, JoinPath *pathnode)
+{
+	Distribution   *innerd = pathnode->innerjoinpath->distribution;
+	Distribution   *outerd = pathnode->outerjoinpath->distribution;
+	Distribution   *targetd;
+	List		   *alternate = NIL;
+
+	/* Catalog join */
+	if (innerd == NULL && outerd == NULL)
+		return NIL;
+
+	/*
+	 * If both subpaths are distributed by replication, the resulting
+	 * distribution will be replicated on smallest common set of nodes.
+	 * Catalog tables are the same on all nodes, so treat them as replicated
+	 * on all nodes.
+	 */
+	if ((!innerd || IsLocatorReplicated(innerd->distributionType)) &&
+		(!outerd || IsLocatorReplicated(outerd->distributionType)))
+	{
+		/* Determine common nodes */
+		Bitmapset *common;
+
+		if (innerd == NULL)
+			common = bms_copy(outerd->nodes);
+		else if (outerd == NULL)
+			common = bms_copy(innerd->nodes);
+		else
+			common = bms_intersect(innerd->nodes, outerd->nodes);
+		if (bms_is_empty(common))
+			goto not_allowed_join;
+
+		/*
+		 * Join result is replicated on common nodes. Running query on any
+		 * of them produce correct result.
+		 */
+		targetd = makeNode(Distribution);
+		targetd->distributionType = LOCATOR_TYPE_REPLICATED;
+		targetd->nodes = common;
+		targetd->restrictNodes = NULL;
+		pathnode->path.distribution = targetd;
+		return alternate;
+	}
+
+	/*
+	 * Check if we have inner replicated
+	 * The "both replicated" case is already checked, so if innerd
+	 * is replicated, then outerd is not replicated and it is not NULL.
+	 * This case is not acceptable for some join types. If outer relation is
+	 * nullable data nodes will produce joined rows with NULLs for cases when
+	 * matching row exists, but on other data node.
+	 */
+	if ((!innerd || IsLocatorReplicated(innerd->distributionType)) &&
+			(pathnode->jointype == JOIN_INNER ||
+			 pathnode->jointype == JOIN_LEFT ||
+			 pathnode->jointype == JOIN_SEMI ||
+			 pathnode->jointype == JOIN_ANTI))
+	{
+		/* We need inner relation is defined on all nodes where outer is */
+		if (innerd && !bms_is_subset(outerd->nodes, innerd->nodes))
+			goto not_allowed_join;
+
+		targetd = makeNode(Distribution);
+		targetd->distributionType = outerd->distributionType;
+		targetd->nodes = bms_copy(outerd->nodes);
+		targetd->restrictNodes = bms_copy(outerd->restrictNodes);
+		targetd->distributionExpr = outerd->distributionExpr;
+		pathnode->path.distribution = targetd;
+		return alternate;
+	}
+
+
+	/*
+	 * Check if we have outer replicated
+	 * The "both replicated" case is already checked, so if outerd
+	 * is replicated, then innerd is not replicated and it is not NULL.
+	 * This case is not acceptable for some join types. If inner relation is
+	 * nullable data nodes will produce joined rows with NULLs for cases when
+	 * matching row exists, but on other data node.
+	 */
+	if ((!outerd || IsLocatorReplicated(outerd->distributionType)) &&
+			(pathnode->jointype == JOIN_INNER ||
+			 pathnode->jointype == JOIN_RIGHT))
+	{
+		/* We need outer relation is defined on all nodes where inner is */
+		if (outerd && !bms_is_subset(innerd->nodes, outerd->nodes))
+			goto not_allowed_join;
+
+		targetd = makeNode(Distribution);
+		targetd->distributionType = innerd->distributionType;
+		targetd->nodes = bms_copy(innerd->nodes);
+		targetd->restrictNodes = bms_copy(innerd->restrictNodes);
+		targetd->distributionExpr = innerd->distributionExpr;
+		pathnode->path.distribution = targetd;
+		return alternate;
+	}
+
+
+	/*
+	 * This join is still allowed if inner and outer paths have
+	 * equivalent distribution and joined along the distribution keys.
+	 */
+	if (innerd && outerd &&
+			innerd->distributionType == outerd->distributionType &&
+			innerd->distributionExpr &&
+			outerd->distributionExpr &&
+			bms_equal(innerd->nodes, outerd->nodes))
+	{
+		ListCell   *lc;
+
+		/*
+		 * Make sure distribution functions are the same, for now they depend
+		 * on data type
+		 */
+		if (exprType((Node *) innerd->distributionExpr) != exprType((Node *) outerd->distributionExpr))
+			goto not_allowed_join;
+
+		/*
+		 * Planner already did necessary work and if there is a join
+		 * condition like left.key=right.key the key expressions
+		 * will be members of the same equivalence class, and both
+		 * sides of the corresponding RestrictInfo will refer that
+		 * Equivalence Class.
+		 * Try to figure out if such restriction exists.
+		 */
+		foreach(lc, pathnode->joinrestrictinfo)
+		{
+			RestrictInfo *ri = (RestrictInfo *) lfirst(lc);
+			ListCell   *emc;
+			bool		found_outer, found_inner;
+
+			/*
+			 * Restriction operator is not equality operator ?
+			 */
+			if (ri->left_ec == NULL || ri->right_ec == NULL)
+				continue;
+
+			/*
+			 * A restriction with OR may be compatible if all OR'ed
+			 * conditions are compatible. For the moment we do not
+			 * check this and skip restriction. The case if multiple
+			 * OR'ed conditions are compatible is rare and probably
+			 * do not worth doing at all.
+			 */
+			if (ri->orclause)
+				continue;
+
+			found_outer = false;
+			found_inner = false;
+
+			/*
+			 * If parts belong to the same equivalence member check
+			 * if both distribution keys are members of the class.
+			 */
+			if (ri->left_ec == ri->right_ec)
+			{
+				foreach(emc, ri->left_ec->ec_members)
+				{
+					EquivalenceMember *em = (EquivalenceMember *) lfirst(emc);
+					Expr	   *var = (Expr *)em->em_expr;
+					if (!found_outer)
+						found_outer = equal(var, outerd->distributionExpr);
+
+					if (!found_inner)
+						found_inner = equal(var, innerd->distributionExpr);
+				}
+				if (found_outer && found_inner)
+				{
+					ListCell *tlc, *emc;
+
+					targetd = makeNode(Distribution);
+					targetd->distributionType = innerd->distributionType;
+					targetd->nodes = bms_copy(innerd->nodes);
+					targetd->restrictNodes = bms_copy(innerd->restrictNodes);
+					targetd->distributionExpr = NULL;
+					pathnode->path.distribution = targetd;
+
+					/*
+					 * Each member of the equivalence class may be a
+					 * distribution expression, but we prefer some from the
+					 * target list.
+					 */
+					foreach(tlc, pathnode->path.parent->reltargetlist)
+					{
+						Expr *var = (Expr *) lfirst(tlc);
+						foreach(emc, ri->left_ec->ec_members)
+						{
+							EquivalenceMember *em;
+							Expr *emvar;
+
+							em = (EquivalenceMember *) lfirst(emc);
+							emvar = (Expr *)em->em_expr;
+							if (equal(var, emvar))
+							{
+								targetd->distributionExpr = (Node *) var;
+								return alternate;
+							}
+						}
+					}
+					/* Not found, take any */
+					targetd->distributionExpr = innerd->distributionExpr;
+					return alternate;
+				}
+			}
+			/*
+			 * Check clause, if both arguments are distribution keys and
+			 * operator is an equality operator
+			 */
+			else
+			{
+				OpExpr *op_exp;
+				Expr   *arg1,
+					   *arg2;
+
+				op_exp = (OpExpr *) ri->clause;
+				if (!IsA(op_exp, OpExpr) || list_length(op_exp->args) != 2)
+					continue;
+
+				arg1 = (Expr *) linitial(op_exp->args);
+				arg2 = (Expr *) lsecond(op_exp->args);
+
+				found_outer = equal(arg1, outerd->distributionExpr) || equal(arg2, outerd->distributionExpr);
+				found_inner = equal(arg1, innerd->distributionExpr) || equal(arg2, innerd->distributionExpr);
+
+				if (found_outer && found_inner)
+				{
+					targetd = makeNode(Distribution);
+					targetd->distributionType = innerd->distributionType;
+					targetd->nodes = bms_copy(innerd->nodes);
+					targetd->restrictNodes = bms_copy(innerd->restrictNodes);
+					pathnode->path.distribution = targetd;
+
+					/*
+					 * In case of outer join distribution key should not refer
+					 * distribution key of nullable part.
+					 */
+					if (pathnode->jointype == JOIN_FULL)
+						/* both parts are nullable */
+						targetd->distributionExpr = NULL;
+					else if (pathnode->jointype == JOIN_RIGHT)
+						targetd->distributionExpr = innerd->distributionExpr;
+					else
+						targetd->distributionExpr = outerd->distributionExpr;
+
+					return alternate;
+				}
+			}
+		}
+	}
+
+	/*
+	 * If we could not determine the distribution redistribute the subpathes.
+	 */
+not_allowed_join:
+	/*
+	 * If redistribution is required, sometimes the cheapest path would be if
+	 * one of the subplan is replicated. If replication of any or all subplans
+	 * is possible, return resulting plans as alternates. Try to distribute all
+	 * by has as main variant.
+	 */
+
+	/* These join types allow replicated inner */
+	if (outerd &&
+			(pathnode->jointype == JOIN_INNER ||
+			 pathnode->jointype == JOIN_LEFT ||
+			 pathnode->jointype == JOIN_SEMI ||
+			 pathnode->jointype == JOIN_ANTI))
+	{
+		/*
+		 * Since we discard all alternate pathes except one it is OK if all they
+		 * reference the same objects
+		 */
+		JoinPath *altpath = flatCopyJoinPath(pathnode);
+		/* Redistribute inner subquery */
+		altpath->innerjoinpath = redistribute_path(
+				altpath->innerjoinpath,
+				LOCATOR_TYPE_REPLICATED,
+				bms_copy(outerd->nodes),
+				bms_copy(outerd->restrictNodes),
+				NULL);
+		targetd = makeNode(Distribution);
+		targetd->distributionType = outerd->distributionType;
+		targetd->nodes = bms_copy(outerd->nodes);
+		targetd->restrictNodes = bms_copy(outerd->restrictNodes);
+		targetd->distributionExpr = outerd->distributionExpr;
+		altpath->path.distribution = targetd;
+		alternate = lappend(alternate, altpath);
+	}
+
+	/* These join types allow replicated outer */
+	if (innerd &&
+			(pathnode->jointype == JOIN_INNER ||
+			 pathnode->jointype == JOIN_RIGHT))
+	{
+		/*
+		 * Since we discard all alternate pathes except one it is OK if all they
+		 * reference the same objects
+		 */
+		JoinPath *altpath = flatCopyJoinPath(pathnode);
+		/* Redistribute inner subquery */
+		altpath->outerjoinpath = redistribute_path(
+				altpath->outerjoinpath,
+				LOCATOR_TYPE_REPLICATED,
+				bms_copy(innerd->nodes),
+				bms_copy(innerd->restrictNodes),
+				NULL);
+		targetd = makeNode(Distribution);
+		targetd->distributionType = innerd->distributionType;
+		targetd->nodes = bms_copy(innerd->nodes);
+		targetd->restrictNodes = bms_copy(innerd->restrictNodes);
+		targetd->distributionExpr = innerd->distributionExpr;
+		altpath->path.distribution = targetd;
+		alternate = lappend(alternate, altpath);
+	}
+
+	/*
+	 * Redistribute subplans to make them compatible.
+	 * If any of the subplans is a coordinator subplan skip this stuff and do
+	 * coordinator join.
+	 */
+	if (innerd && outerd)
+	{
+		RestrictInfo   *preferred = NULL;
+		Expr		   *new_inner_key = NULL;
+		Expr		   *new_outer_key = NULL;
+		char			distType = LOCATOR_TYPE_NONE;
+		ListCell 	   *lc;
+
+		/*
+		 * Look through the join restrictions to find one that is a hashable
+		 * operator on two arguments. Choose best restriction acoording to
+		 * following criteria:
+		 * 1. one argument is already a partitioning key of one subplan.
+		 * 2. restriction is cheaper to calculate
+		 */
+		foreach(lc, pathnode->joinrestrictinfo)
+		{
+			RestrictInfo   *ri = (RestrictInfo *) lfirst(lc);
+
+			/* can not handle ORed conditions */
+			if (ri->orclause)
+				continue;
+
+			if (IsA(ri->clause, OpExpr))
+			{
+				OpExpr *expr = (OpExpr *) ri->clause;
+				if (list_length(expr->args) == 2 &&
+						op_hashjoinable(expr->opno, exprType(linitial(expr->args))))
+				{
+					Expr *left = (Expr *) linitial(expr->args);
+					Expr *right = (Expr *) lsecond(expr->args);
+					Oid leftType = exprType((Node *) left);
+					Oid rightType = exprType((Node *) right);
+					Relids inner_rels = pathnode->innerjoinpath->parent->relids;
+					Relids outer_rels = pathnode->outerjoinpath->parent->relids;
+					QualCost cost;
+
+					/*
+					 * Check if both parts are of the same data type and choose
+					 * distribution type to redistribute.
+					 * XXX We may want more sophisticated algorithm to choose
+					 * the best condition to redistribute parts along.
+					 * For now use simple but reliable approach.
+					 */
+					if (leftType != rightType)
+						continue;
+					/*
+					 * Evaluation cost will be needed to choose preferred
+					 * distribution
+					 */
+					cost_qual_eval_node(&cost, (Node *) ri, root);
+
+					if (outerd->distributionExpr)
+					{
+						/*
+						 * If left side is distribution key of outer subquery
+						 * and right expression refers only inner subquery
+						 */
+						if (equal(outerd->distributionExpr, left) &&
+								bms_is_subset(ri->right_relids, inner_rels))
+						{
+							if (!preferred || /* no preferred restriction yet found */
+									(new_inner_key && new_outer_key) || /* preferred restriction require redistribution of both parts */
+									(cost.per_tuple < preferred->eval_cost.per_tuple)) /* current restriction is cheaper */
+							{
+								/* set new preferred restriction */
+								preferred = ri;
+								new_inner_key = right;
+								new_outer_key = NULL; /* no need to change */
+								distType = outerd->distributionType;
+							}
+							continue;
+						}
+						/*
+						 * If right side is distribution key of outer subquery
+						 * and left expression refers only inner subquery
+						 */
+						if (equal(outerd->distributionExpr, right) &&
+								bms_is_subset(ri->left_relids, inner_rels))
+						{
+							if (!preferred || /* no preferred restriction yet found */
+									(new_inner_key && new_outer_key) || /* preferred restriction require redistribution of both parts */
+									(cost.per_tuple < preferred->eval_cost.per_tuple)) /* current restriction is cheaper */
+							{
+								/* set new preferred restriction */
+								preferred = ri;
+								new_inner_key = left;
+								new_outer_key = NULL; /* no need to change */
+								distType = outerd->distributionType;
+							}
+							continue;
+						}
+					}
+					if (innerd->distributionExpr)
+					{
+						/*
+						 * If left side is distribution key of inner subquery
+						 * and right expression refers only outer subquery
+						 */
+						if (equal(innerd->distributionExpr, left) &&
+								bms_is_subset(ri->right_relids, outer_rels))
+						{
+							if (!preferred || /* no preferred restriction yet found */
+									(new_inner_key && new_outer_key) || /* preferred restriction require redistribution of both parts */
+									(cost.per_tuple < preferred->eval_cost.per_tuple)) /* current restriction is cheaper */
+							{
+								/* set new preferred restriction */
+								preferred = ri;
+								new_inner_key = NULL; /* no need to change */
+								new_outer_key = right;
+								distType = innerd->distributionType;
+							}
+							continue;
+						}
+						/*
+						 * If right side is distribution key of inner subquery
+						 * and left expression refers only outer subquery
+						 */
+						if (equal(innerd->distributionExpr, right) &&
+								bms_is_subset(ri->left_relids, outer_rels))
+						{
+							if (!preferred || /* no preferred restriction yet found */
+									(new_inner_key && new_outer_key) || /* preferred restriction require redistribution of both parts */
+									(cost.per_tuple < preferred->eval_cost.per_tuple)) /* current restriction is cheaper */
+							{
+								/* set new preferred restriction */
+								preferred = ri;
+								new_inner_key = NULL; /* no need to change */
+								new_outer_key = left;
+								distType = innerd->distributionType;
+							}
+							continue;
+						}
+					}
+					/*
+					 * Current restriction recuire redistribution of both parts.
+					 * If preferred restriction require redistribution of one,
+					 * keep it.
+					 */
+					if (preferred &&
+							(new_inner_key == NULL || new_outer_key == NULL))
+						continue;
+
+					/*
+					 * Skip this condition if the data type of the expressions
+					 * does not allow either HASH or MODULO distribution.
+					 * HASH distribution is preferrable.
+					 */
+					if (IsTypeHashDistributable(leftType))
+						distType = LOCATOR_TYPE_HASH;
+					else if (IsTypeModuloDistributable(leftType))
+						distType = LOCATOR_TYPE_MODULO;
+					else
+						continue;
+					/*
+					 * If this restriction the first or easier to calculate
+					 * then preferred, try to store it as new preferred
+					 * restriction to redistribute along it.
+					 */
+					if (preferred == NULL ||
+							(cost.per_tuple < preferred->eval_cost.per_tuple))
+					{
+						/*
+						 * Left expression depends only on outer subpath and
+						 * right expression depends only on inner subpath, so
+						 * we can redistribute both and make left expression the
+						 * distribution key of outer subplan and right
+						 * expression the distribution key of inner subplan
+						 */
+						if (bms_is_subset(ri->left_relids, outer_rels) &&
+								bms_is_subset(ri->right_relids, inner_rels))
+						{
+							preferred = ri;
+							new_outer_key = left;
+							new_inner_key = right;
+						}
+						/*
+						 * Left expression depends only on inner subpath and
+						 * right expression depends only on outer subpath, so
+						 * we can redistribute both and make left expression the
+						 * distribution key of inner subplan and right
+						 * expression the distribution key of outer subplan
+						 */
+						if (bms_is_subset(ri->left_relids, inner_rels) &&
+								bms_is_subset(ri->right_relids, outer_rels))
+						{
+							preferred = ri;
+							new_inner_key = left;
+							new_outer_key = right;
+						}
+					}
+				}
+			}
+		}
+		/* If we have suitable restriction we can repartition accordingly */
+		if (preferred)
+		{
+			Bitmapset *nodes = NULL;
+			Bitmapset *restrictNodes = NULL;
+
+			/* If we redistribute both parts do join on all nodes ... */
+			if (new_inner_key && new_outer_key)
+			{
+				int i;
+				for (i = 0; i < NumDataNodes; i++)
+					nodes = bms_add_member(nodes, i);
+			}
+			/*
+			 * ... if we do only one of them redistribute it on the same nodes
+			 * as other.
+			 */
+			else if (new_inner_key)
+			{
+				nodes = bms_copy(outerd->nodes);
+				restrictNodes = bms_copy(outerd->restrictNodes);
+			}
+			else /*if (new_outer_key)*/
+			{
+				nodes = bms_copy(innerd->nodes);
+				restrictNodes = bms_copy(innerd->restrictNodes);
+			}
+
+			/*
+			 * Redistribute join by hash, and, if jointype allows, create
+			 * alternate path where inner subplan is distributed by replication
+			 */
+			if (new_inner_key)
+			{
+				/* Redistribute inner subquery */
+				pathnode->innerjoinpath = redistribute_path(
+						pathnode->innerjoinpath,
+						distType,
+						nodes,
+						restrictNodes,
+						(Node *) new_inner_key);
+			}
+			/*
+			 * Redistribute join by hash, and, if jointype allows, create
+			 * alternate path where outer subplan is distributed by replication
+			 */
+			if (new_outer_key)
+			{
+				/* Redistribute outer subquery */
+				pathnode->outerjoinpath = redistribute_path(
+						pathnode->outerjoinpath,
+						distType,
+						nodes,
+						restrictNodes,
+						(Node *) new_outer_key);
+			}
+			targetd = makeNode(Distribution);
+			targetd->distributionType = distType;
+			targetd->nodes = nodes;
+			targetd->restrictNodes = NULL;
+			pathnode->path.distribution = targetd;
+			/*
+			 * In case of outer join distribution key should not refer
+			 * distribution key of nullable part.
+			 * NB: we should not refer innerd and outerd here, subpathes are
+			 * redistributed already
+			 */
+			if (pathnode->jointype == JOIN_FULL)
+				/* both parts are nullable */
+				targetd->distributionExpr = NULL;
+			else if (pathnode->jointype == JOIN_RIGHT)
+				targetd->distributionExpr =
+						pathnode->innerjoinpath->distribution->distributionExpr;
+			else
+				targetd->distributionExpr =
+						pathnode->outerjoinpath->distribution->distributionExpr;
+
+			return alternate;
+		}
+	}
+
+	/*
+	 * Build cartesian product, if no hasheable restrictions is found.
+	 * Perform coordinator join in such cases. If this join would be a part of
+     * larger join, it will be handled as replicated.
+	 * To do that leave join distribution NULL and place a RemoteSubPath node on
+	 * top of each subpath to provide access to joined result sets.
+	 * Do not redistribute pathes that already have NULL distribution, this is
+	 * possible if performing outer join on a coordinator and a datanode
+	 * relations.
+	 */
+	if (innerd)
+		pathnode->innerjoinpath = redistribute_path(pathnode->innerjoinpath,
+													LOCATOR_TYPE_NONE,
+													NULL,
+													NULL,
+													NULL);
+	if (outerd)
+		pathnode->outerjoinpath = redistribute_path(pathnode->outerjoinpath,
+													LOCATOR_TYPE_NONE,
+													NULL,
+													NULL,
+													NULL);
+	return alternate;
+}
+#endif
+
 
 /*
  * create_seqscan_path
@@ -743,6 +1679,19 @@ create_seqscan_path(PlannerInfo *root, RelOptInfo *rel, Relids required_outer)
 	pathnode->param_info = get_baserel_parampathinfo(root, rel,
 													 required_outer);
 	pathnode->pathkeys = NIL;	/* seqscan has unordered result */
+
+#ifdef XCP
+	set_scanpath_distribution(root, rel, pathnode);
+	if (rel->baserestrictinfo)
+	{
+		ListCell *lc;
+		foreach (lc, rel->baserestrictinfo)
+		{
+			RestrictInfo *ri = (RestrictInfo *) lfirst(lc);
+			restrict_distribution(root, ri, pathnode);
+		}
+	}
+#endif
 
 	cost_seqscan(pathnode, root, rel, pathnode->param_info);
 
@@ -810,6 +1759,18 @@ create_index_path(PlannerInfo *root,
 	pathnode->indexorderbycols = indexorderbycols;
 	pathnode->indexscandir = indexscandir;
 
+#ifdef XCP
+	set_scanpath_distribution(root, rel, (Path *) pathnode);
+	if (indexclauses)
+	{
+		ListCell *lc;
+		foreach (lc, indexclauses)
+		{
+			RestrictInfo *ri = (RestrictInfo *) lfirst(lc);
+			restrict_distribution(root, ri, (Path *) pathnode);
+		}
+	}
+#endif
 	cost_index(pathnode, root, loop_count);
 
 	return pathnode;
@@ -844,6 +1805,19 @@ create_bitmap_heap_path(PlannerInfo *root,
 
 	pathnode->bitmapqual = bitmapqual;
 
+#ifdef XCP
+	set_scanpath_distribution(root, rel, (Path *) pathnode);
+	if (rel->baserestrictinfo)
+	{
+		ListCell *lc;
+		foreach (lc, rel->baserestrictinfo)
+		{
+			RestrictInfo *ri = (RestrictInfo *) lfirst(lc);
+			restrict_distribution(root, ri, (Path *) pathnode);
+		}
+	}
+#endif
+
 	cost_bitmap_heap_scan(&pathnode->path, root, rel,
 						  pathnode->path.param_info,
 						  bitmapqual, loop_count);
@@ -869,6 +1843,10 @@ create_bitmap_and_path(PlannerInfo *root,
 
 	pathnode->bitmapquals = bitmapquals;
 
+#ifdef XCP
+	set_scanpath_distribution(root, rel, (Path *) pathnode);
+#endif
+
 	/* this sets bitmapselectivity as well as the regular cost fields: */
 	cost_bitmap_and_node(pathnode, root);
 
@@ -893,6 +1871,10 @@ create_bitmap_or_path(PlannerInfo *root,
 
 	pathnode->bitmapquals = bitmapquals;
 
+#ifdef XCP
+	set_scanpath_distribution(root, rel, (Path *) pathnode);
+#endif
+
 	/* this sets bitmapselectivity as well as the regular cost fields: */
 	cost_bitmap_or_node(pathnode, root);
 
@@ -915,6 +1897,13 @@ create_tidscan_path(PlannerInfo *root, RelOptInfo *rel, List *tidquals)
 
 	pathnode->tidquals = tidquals;
 
+#ifdef XCP
+	set_scanpath_distribution(root, rel, (Path *) pathnode);
+	/* We may need to pass info about target node to support */
+	if (pathnode->path.distribution)
+		elog(ERROR, "could not perform TID scan on remote relation");
+#endif
+
 	cost_tidscan(&pathnode->path, root, rel, tidquals);
 
 	return pathnode;
@@ -932,6 +1921,10 @@ create_append_path(RelOptInfo *rel, List *subpaths, Relids required_outer)
 {
 	AppendPath *pathnode = makeNode(AppendPath);
 	ListCell   *l;
+#ifdef XCP
+	Distribution *distribution;
+	Path	   *subpath;
+#endif
 
 	pathnode->path.pathtype = T_Append;
 	pathnode->path.parent = rel;
@@ -939,6 +1932,65 @@ create_append_path(RelOptInfo *rel, List *subpaths, Relids required_outer)
 															required_outer);
 	pathnode->path.pathkeys = NIL;		/* result is always considered
 										 * unsorted */
+#ifdef XCP
+	/*
+	 * Append path is used to implement scans of inherited tables and some
+	 * "set" operations, like UNION ALL. While all inherited tables should
+	 * have the same distribution, UNION'ed queries may have different.
+	 * When paths being appended have the same distribution it is OK to push
+	 * Append down to the data nodes. If not, perform "coordinator" Append.
+	 */
+
+	/* Special case of the dummy relation, if the subpaths list is empty */
+	if (subpaths)
+	{
+		/* Take distribution of the first node */
+		l = list_head(subpaths);
+		subpath = (Path *) lfirst(l);
+		distribution = copyObject(subpath->distribution);
+		/*
+		 * Check remaining subpaths, if all distributions equal to the first set
+		 * it as a distribution of the Append path; otherwise make up coordinator
+		 * Append
+		 */
+		while ((l = lnext(l)))
+		{
+			subpath = (Path *) lfirst(l);
+
+			if (equal(distribution, subpath->distribution))
+			{
+				/*
+				 * Both distribution and subpath->distribution may be NULL at
+				 * this point, or they both are not null.
+				 */
+				if (distribution && subpath->distribution->restrictNodes)
+					distribution->restrictNodes = bms_union(
+							distribution->restrictNodes,
+							subpath->distribution->restrictNodes);
+			}
+			else
+			{
+				break;
+			}
+		}
+		if (l)
+		{
+			List *newsubpaths = NIL;
+			foreach(l, subpaths)
+			{
+				subpath = (Path *) lfirst(l);
+				if (subpath->distribution)
+					subpath = redistribute_path(subpath, LOCATOR_TYPE_NONE,
+												NULL, NULL, NULL);
+				newsubpaths = lappend(newsubpaths, subpath);
+			}
+			subpaths = newsubpaths;
+			pathnode->path.distribution = NULL;
+		}
+		else
+			pathnode->path.distribution = distribution;
+	}
+#endif
 	pathnode->subpaths = subpaths;
 
 	/*
@@ -985,9 +2037,70 @@ create_merge_append_path(PlannerInfo *root,
 	Cost		input_startup_cost;
 	Cost		input_total_cost;
 	ListCell   *l;
+#ifdef XCP
+	Distribution *distribution = NULL;
+	Path	   *subpath;
+#endif
 
 	pathnode->path.pathtype = T_MergeAppend;
 	pathnode->path.parent = rel;
+#ifdef XCP
+	/*
+	 * It is safe to push down MergeAppend if all subpath distributions
+	 * are the same and these distributions are Replicated or distribution key
+	 * is the expression of the first pathkey.
+	 */
+	/* Take distribution of the first node */
+	l = list_head(subpaths);
+	subpath = (Path *) lfirst(l);
+	distribution = copyObject(subpath->distribution);
+	/*
+	 * Verify if it is safe to push down MergeAppend with this distribution.
+	 * TODO implement check of the second condition (distribution key is the
+	 * first pathkey)
+	 */
+	if (distribution == NULL || IsLocatorReplicated(distribution->distributionType))
+	{
+		/*
+		 * Check remaining subpaths, if all distributions equal to the first set
+		 * it as a distribution of the Append path; otherwise make up coordinator
+		 * Append
+		 */
+		while ((l = lnext(l)))
+		{
+			subpath = (Path *) lfirst(l);
+
+			if (distribution && equal(distribution, subpath->distribution))
+			{
+				if (subpath->distribution->restrictNodes)
+					distribution->restrictNodes = bms_union(
+							distribution->restrictNodes,
+							subpath->distribution->restrictNodes);
+			}
+			else
+			{
+				break;
+			}
+		}
+	}
+	if (l)
+	{
+		List *newsubpaths = NIL;
+		foreach(l, subpaths)
+		{
+			subpath = (Path *) lfirst(l);
+			if (subpath->distribution)
+				subpath = redistribute_path(subpath, LOCATOR_TYPE_NONE,
+											NULL, NULL, NULL);
+			newsubpaths = lappend(newsubpaths, subpath);
+		}
+		subpaths = newsubpaths;
+		pathnode->path.distribution = NULL;
+	}
+	else
+		pathnode->path.distribution = distribution;
+#endif
+
 	pathnode->path.param_info = get_appendrel_parampathinfo(rel,
 															required_outer);
 	pathnode->path.pathkeys = pathkeys;
@@ -1100,6 +2213,10 @@ create_material_path(RelOptInfo *rel, Path *subpath)
 	pathnode->path.pathkeys = subpath->pathkeys;
 
 	pathnode->subpath = subpath;
+
+#ifdef XCP
+	pathnode->path.distribution = (Distribution *) copyObject(subpath->distribution);
+#endif
 
 	cost_material(&pathnode->path,
 				  subpath->startup_cost,
@@ -1297,6 +2414,32 @@ create_unique_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath,
 	if (contain_volatile_functions((Node *) uniq_exprs))
 		goto no_unique_path;
 
+#ifdef XCP
+	/*
+	 * We may only guarantee uniqueness if subplan is either replicated or it is
+	 * partitioned and one of the unigue expressions equals to the
+	 * distribution expression.
+	 */
+	if (subpath->distribution &&
+		!IsLocatorReplicated(subpath->distribution->distributionType))
+	{
+		/* Punt if no distribution key */
+		if (subpath->distribution->distributionExpr == NULL)
+			goto no_unique_path;
+
+		foreach(lc, uniq_exprs)
+		{
+			void *expr = lfirst(lc);
+			if (equal(expr, subpath->distribution->distributionExpr))
+				break;
+		}
+
+		/* XXX we may try and repartition if no matching expression */
+		if (!lc)
+			goto no_unique_path;
+	}
+#endif
+
 	/*
 	 * If we get here, we can unique-ify using at least one of sorting and
 	 * hashing.  Start building the result Path object.
@@ -1316,6 +2459,11 @@ create_unique_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath,
 	pathnode->subpath = subpath;
 	pathnode->in_operators = in_operators;
 	pathnode->uniq_exprs = uniq_exprs;
+
+#ifdef XCP
+	/* distribution is the same as in the subpath */
+	pathnode->path.distribution = (Distribution *) copyObject(subpath->distribution);
+#endif
 
 	/*
 	 * If the input is a relation and it has a unique index that proves the
@@ -1640,8 +2788,14 @@ distinct_col_search(int colno, List *colnos, List *opids)
  *	  returning the pathnode.
  */
 Path *
+#ifdef XCP
+create_subqueryscan_path(PlannerInfo *root, RelOptInfo *rel,
+						 List *pathkeys, Relids required_outer,
+						 Distribution *distribution)
+#else
 create_subqueryscan_path(PlannerInfo *root, RelOptInfo *rel,
 						 List *pathkeys, Relids required_outer)
+#endif
 {
 	Path	   *pathnode = makeNode(Path);
 
@@ -1650,6 +2804,9 @@ create_subqueryscan_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->param_info = get_baserel_parampathinfo(root, rel,
 													 required_outer);
 	pathnode->pathkeys = pathkeys;
+#ifdef XCP
+	pathnode->distribution = distribution;
+#endif
 
 	cost_subqueryscan(pathnode, root, rel, pathnode->param_info);
 
@@ -1736,6 +2893,33 @@ create_worktablescan_path(PlannerInfo *root, RelOptInfo *rel)
 
 	return pathnode;
 }
+
+
+#ifdef PGXC
+#ifndef XCP
+/*
+ * create_remotequery_path
+ *	  Creates a path corresponding to a scan of a remote query,
+ *	  returning the pathnode.
+ */
+Path *
+create_remotequery_path(PlannerInfo *root, RelOptInfo *rel)
+{
+	Path	   *pathnode = makeNode(Path);
+
+	pathnode->pathtype = T_RemoteQuery;
+	pathnode->parent = rel;
+	pathnode->param_info = NULL;	/* never parameterized at present */
+	pathnode->pathkeys = NIL;	/* result is always unordered */
+
+	/* PGXCTODO - set cost properly */
+	cost_seqscan(pathnode, root, rel, pathnode->param_info);
+
+	return pathnode;
+}
+#endif /* XCP */
+#endif /* PGXC */
+
 
 /*
  * create_foreignscan_path
@@ -1856,6 +3040,10 @@ create_nestloop_path(PlannerInfo *root,
 					 Relids required_outer)
 {
 	NestPath   *pathnode = makeNode(NestPath);
+#ifdef XCP
+	List	   *alternate;
+	ListCell   *lc;
+#endif
 	Relids		inner_req_outer = PATH_REQ_OUTER(inner_path);
 
 	/*
@@ -1900,7 +3088,23 @@ create_nestloop_path(PlannerInfo *root,
 	pathnode->innerjoinpath = inner_path;
 	pathnode->joinrestrictinfo = restrict_clauses;
 
+#ifdef XCP
+	alternate = set_joinpath_distribution(root, pathnode);
+#endif
 	final_cost_nestloop(root, pathnode, workspace, sjinfo, semifactors);
+
+#ifdef XCP
+	/*
+	 * Also calculate costs of all alternates and return cheapest path
+	 */
+	foreach(lc, alternate)
+	{
+		NestPath *altpath = (NestPath *) lfirst(lc);
+		final_cost_nestloop(root, altpath, workspace, sjinfo, semifactors);
+		if (altpath->path.total_cost < pathnode->path.total_cost)
+			pathnode = altpath;
+	}
+#endif
 
 	return pathnode;
 }
@@ -1940,6 +3144,10 @@ create_mergejoin_path(PlannerInfo *root,
 					  List *innersortkeys)
 {
 	MergePath  *pathnode = makeNode(MergePath);
+#ifdef XCP
+	List	   *alternate;
+	ListCell   *lc;
+#endif
 
 	pathnode->jpath.path.pathtype = T_MergeJoin;
 	pathnode->jpath.path.parent = joinrel;
@@ -1959,9 +3167,24 @@ create_mergejoin_path(PlannerInfo *root,
 	pathnode->path_mergeclauses = mergeclauses;
 	pathnode->outersortkeys = outersortkeys;
 	pathnode->innersortkeys = innersortkeys;
+#ifdef XCP
+	alternate = set_joinpath_distribution(root, (JoinPath *) pathnode);
+#endif
 	/* pathnode->materialize_inner will be set by final_cost_mergejoin */
-
 	final_cost_mergejoin(root, pathnode, workspace, sjinfo);
+
+#ifdef XCP
+	/*
+	 * Also calculate costs of all alternates and return cheapest path
+	 */
+	foreach(lc, alternate)
+	{
+		MergePath *altpath = (MergePath *) lfirst(lc);
+		final_cost_mergejoin(root, altpath, workspace, sjinfo);
+		if (altpath->jpath.path.total_cost < pathnode->jpath.path.total_cost)
+			pathnode = altpath;
+	}
+#endif
 
 	return pathnode;
 }
@@ -1996,6 +3219,10 @@ create_hashjoin_path(PlannerInfo *root,
 					 List *hashclauses)
 {
 	HashPath   *pathnode = makeNode(HashPath);
+#ifdef XCP
+	List	   *alternate;
+	ListCell   *lc;
+#endif
 
 	pathnode->jpath.path.pathtype = T_HashJoin;
 	pathnode->jpath.path.parent = joinrel;
@@ -2025,9 +3252,24 @@ create_hashjoin_path(PlannerInfo *root,
 	pathnode->jpath.innerjoinpath = inner_path;
 	pathnode->jpath.joinrestrictinfo = restrict_clauses;
 	pathnode->path_hashclauses = hashclauses;
+#ifdef XCP
+	alternate = set_joinpath_distribution(root, (JoinPath *) pathnode);
+#endif
 	/* final_cost_hashjoin will fill in pathnode->num_batches */
-
 	final_cost_hashjoin(root, pathnode, workspace, sjinfo, semifactors);
+
+#ifdef XCP
+	/*
+	 * Calculate costs of all alternates and return cheapest path
+	 */
+	foreach(lc, alternate)
+	{
+		HashPath *altpath = (HashPath *) lfirst(lc);
+		final_cost_hashjoin(root, altpath, workspace, sjinfo, semifactors);
+		if (altpath->jpath.path.total_cost < pathnode->jpath.path.total_cost)
+			pathnode = altpath;
+	}
+#endif
 
 	return pathnode;
 }
@@ -2093,8 +3335,13 @@ reparameterize_path(PlannerInfo *root, Path *path,
 														loop_count);
 			}
 		case T_SubqueryScan:
+#ifdef XCP
+			return create_subqueryscan_path(root, rel, path->pathkeys,
+											required_outer, path->distribution);
+#else
 			return create_subqueryscan_path(root, rel, path->pathkeys,
 											required_outer);
+#endif
 		default:
 			break;
 	}

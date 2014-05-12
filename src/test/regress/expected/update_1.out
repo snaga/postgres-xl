@@ -16,7 +16,8 @@ SELECT * FROM update_test ORDER BY a, b, c;
 (2 rows)
 
 UPDATE update_test SET a = DEFAULT, b = DEFAULT;
-ERROR:  Partition column can't be updated in current version
+ERROR:  could not plan this distributed update
+DETAIL:  correlated UPDATE or updating distribution column currently not supported in Postgres-XL.
 SELECT * FROM update_test  ORDER BY a, b, c;
  a  | b  |  c  
 ----+----+-----
@@ -46,7 +47,8 @@ SELECT * FROM update_test  ORDER BY a, b, c;
 --
 UPDATE update_test SET a=v.i FROM (VALUES(100, 20)) AS v(i, j)
   WHERE update_test.b = v.j;
-ERROR:  Partition column can't be updated in current version
+ERROR:  could not plan this distributed update
+DETAIL:  correlated UPDATE or updating distribution column currently not supported in Postgres-XL.
 SELECT * FROM update_test  ORDER BY a, b, c;
  a  | b  |  c  
 ----+----+-----
@@ -58,7 +60,8 @@ SELECT * FROM update_test  ORDER BY a, b, c;
 -- Test multiple-set-clause syntax
 --
 UPDATE update_test SET (c,b,a) = ('bugle', b+11, DEFAULT) WHERE c = 'foo';
-ERROR:  Partition column can't be updated in current version
+ERROR:  could not plan this distributed update
+DETAIL:  correlated UPDATE or updating distribution column currently not supported in Postgres-XL.
 SELECT * FROM update_test  ORDER BY a, b, c;
  a  | b  |  c  
 ----+----+-----
@@ -67,7 +70,8 @@ SELECT * FROM update_test  ORDER BY a, b, c;
 (2 rows)
 
 UPDATE update_test SET (c,b) = ('car', a+b), a = a + 1 WHERE a = 10;
-ERROR:  Partition column can't be updated in current version
+ERROR:  could not plan this distributed update
+DETAIL:  correlated UPDATE or updating distribution column currently not supported in Postgres-XL.
 SELECT * FROM update_test  ORDER BY a, b, c;
  a  | b  |  c  
 ----+----+-----

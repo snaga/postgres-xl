@@ -38,6 +38,9 @@
 <!## XC>
    <productname>Postgres-XC</productname> has
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> has
+<!## end>
    <literal>~</literal>, <literal>~*</literal>, <literal>LIKE</literal>, and
    <literal>ILIKE</literal> operators for textual data types, but they lack
    many essential properties required by modern information systems:
@@ -92,6 +95,9 @@
 <!## XC>
      <productname>Postgres-XC</productname> uses a <firstterm>parser</> to
 <!## end>
+<!## XL>
+     <productname>Postgres-XL</productname> uses a <firstterm>parser</> to
+<!## end>
      perform this step.  A standard parser is provided, and custom parsers
      can be created for specific needs.
     </para>
@@ -116,6 +122,9 @@
 <!## end>
 <!## XC>
      <productname>Postgres-XC</productname> uses <firstterm>dictionaries</> to
+<!## end>
+<!## XL>
+     <productname>Postgres-XL</productname> uses <firstterm>dictionaries</> to
 <!## end>
      perform this step.  Various standard dictionaries are provided, and
      custom ones can be created for specific needs.
@@ -209,6 +218,9 @@
 <!## XC>
     For searches within <productname>Postgres-XC</productname>,
 <!## end>
+<!## XL>
+    For searches within <productname>Postgres-XL</productname>,
+<!## end>
     a document is normally a textual field within a row of a database table,
     or possibly a combination (concatenation) of such fields, perhaps stored
     in several tables or obtained dynamically. In other words, a document can
@@ -247,6 +259,9 @@ WHERE mid = did AND mid = 12;
 <!## XC>
     the data inside <productname>Postgres-XC</productname>.  Also, keeping
 <!## end>
+<!## XL>
+    the data inside <productname>Postgres-XL</productname>.  Also, keeping
+<!## end>
     everything inside the database allows easy access
     to document metadata to assist in indexing and display.
    </para>
@@ -272,6 +287,9 @@ WHERE mid = did AND mid = 12;
 <!## end>
 <!## XC>
     Full text searching in <productname>Postgres-XC</productname> is based on
+<!## end>
+<!## XL>
+    Full text searching in <productname>Postgres-XL</productname> is based on
 <!## end>
     the match operator <literal>@@</literal>, which returns
     <literal>true</literal> if a <type>tsvector</type>
@@ -363,6 +381,9 @@ text @@ text
 <!## XC>
     configurations</>.  <productname>Postgres-XC</> comes with predefined
 <!## end>
+<!## XL>
+    configurations</>.  <productname>Postgres-XL</> comes with predefined
+<!## end>
     configurations for many languages, and you can easily create your own
     configurations.  (<application>psql</>'s <command>\dF</> command
     shows all available configurations.)
@@ -394,6 +415,9 @@ text @@ text
 <!## end>
 <!## XC>
     <productname>Postgres-XC</>'s text search facility provides
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</>'s text search facility provides
 <!## end>
     four types of configuration-related database objects:
    </para>
@@ -439,6 +463,9 @@ text @@ text
 <!## end>
 <!## XC>
     <productname>Postgres-XC</> distribution.)  Since dictionaries and
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</> distribution.)  Since dictionaries and
 <!## end>
     configurations just parameterize and connect together some underlying
     parsers and templates, no special privilege is needed to create a new
@@ -649,6 +676,9 @@ LIMIT 10;
 <!## XC>
    <productname>Postgres-XC</productname> provides support for all of these
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> provides support for all of these
+<!## end>
    functions.
   </para>
 
@@ -661,6 +691,9 @@ LIMIT 10;
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname> provides the
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> provides the
 <!## end>
     function <function>to_tsvector</function> for converting a document to
     the <type>tsvector</type> data type.
@@ -770,6 +803,9 @@ UPDATE tt SET ti =
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname> provides the
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> provides the
 <!## end>
     functions <function>to_tsquery</function> and
     <function>plainto_tsquery</function> for converting a query to
@@ -902,6 +938,9 @@ SELECT plainto_tsquery('english', 'The Fat &amp; Rats:C');
 <!## end>
 <!## XC>
     shown first.  <productname>Postgres-XC</productname> provides two
+<!## end>
+<!## XL>
+    shown first.  <productname>Postgres-XL</productname> provides two
 <!## end>
     predefined ranking functions, which take into account lexical, proximity,
     and structural information; that is, they consider how often the query
@@ -1127,6 +1166,9 @@ LIMIT 10;
 <!## XC>
     the document with marked search terms.  <productname>Postgres-XC</>
 <!## end>
+<!## XL>
+    the document with marked search terms.  <productname>Postgres-XL</>
+<!## end>
     provides a function <function>ts_headline</function> that
     implements this functionality.
    </para>
@@ -1290,6 +1332,9 @@ FROM (SELECT id, body, q, ts_rank_cd(ti, q) AS rank
 <!## XC>
     <productname>Postgres-XC</productname> also provides functions and
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> also provides functions and
+<!## end>
     operators that can be used to manipulate documents that are already
     in <type>tsvector</> form.
    </para>
@@ -1424,6 +1469,9 @@ strip(<replaceable class="PARAMETER">vector</replaceable> <type>tsvector</>) ret
 <!## end>
 <!## XC>
     <productname>Postgres-XC</productname> also provides functions and
+<!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> also provides functions and
 <!## end>
     operators that can be used to manipulate queries that are already
     in <type>tsquery</> form.
@@ -1880,6 +1928,9 @@ LIMIT 10;
 <!## XC>
    for custom dictionaries.  At present <productname>Postgres-XC</productname>
 <!## end>
+<!## XL>
+   for custom dictionaries.  At present <productname>Postgres-XL</productname>
+<!## end>
    provides just one built-in parser, which has been found to be useful for a
    wide range of applications.
   </para>
@@ -1939,6 +1990,9 @@ LIMIT 10;
 <!## XC>
       <entry><literal>postgres-XC</literal> in the context <literal>postgresql-beta1</literal></entry>
 <!## end>
+<!## XL>
+      <entry><literal>postgres-XL</literal> in the context <literal>postgresql-beta1</literal></entry>
+<!## end>
      </row>
      <row>
       <entry><literal>hword_part</></entry>
@@ -1955,6 +2009,9 @@ LIMIT 10;
 <!## end>
 <!## XC>
        <literal>postgres-XC-beta1</literal></entry>
+<!## end>
+<!## XL>
+       <literal>postgres-XL-beta1</literal></entry>
 <!## end>
      </row>
      <row>
@@ -2189,6 +2246,9 @@ SELECT alias, description, token FROM ts_debug('http://example.com/stuff/index.h
 <!## XC>
    <productname>Postgres-XC</productname> provides predefined dictionaries for
 <!## end>
+<!## XL>
+   <productname>Postgres-XL</productname> provides predefined dictionaries for
+<!## end>
    many languages.  There are also several predefined templates that can be
    used to create new dictionaries with custom parameters.  Each predefined
    dictionary template is described below.  If no existing
@@ -2198,6 +2258,9 @@ SELECT alias, description, token FROM ts_debug('http://example.com/stuff/index.h
 <!## end>
 <!## XC>
    <filename>contrib/</> area of the <productname>Postgres-XC</> distribution
+<!## end>
+<!## XL>
+   <filename>contrib/</> area of the <productname>Postgres-XL</> distribution
 <!## end>
    for examples.
   </para>
@@ -2321,11 +2384,17 @@ CREATE TEXT SEARCH DICTIONARY public.simple_dict (
 <!## XC>
     <productname>Postgres-XC</productname> installation's shared-data directory,
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</productname> installation's shared-data directory,
+<!## end>
 <!## PG>
     often <filename>/usr/local/share/postgresql</> (use <command>pg_config
 <!## end>
 <!## XC>
     often <filename>/usr/local/share/postgres-XC</> (use <command>pg_config
+<!## end>
+<!## XL>
+    often <filename>/usr/local/share/postgres-XL</> (use <command>pg_config
 <!## end>
     --sharedir</> to determine it if you're not sure).
     The file format is simply a list
@@ -2449,6 +2518,9 @@ SELECT * FROM ts_debug('english', 'Paris');
 <!## XC>
     <productname>Postgres-XC</> installation's shared-data directory).
 <!## end>
+<!## XL>
+    <productname>Postgres-XL</> installation's shared-data directory).
+<!## end>
     The file format is just one line
     per word to be substituted, with the word followed by its synonym,
     separated by white space.  Blank lines and trailing spaces are ignored.
@@ -2537,6 +2609,9 @@ mydb=# SELECT 'indexes are very useful'::tsvector @@ to_tsquery('tst','indices')
 <!## end>
 <!## XC>
     as well.  <productname>Postgres-XC</>'s current implementation of the
+<!## end>
+<!## XL>
+    as well.  <productname>Postgres-XL</>'s current implementation of the
 <!## end>
     thesaurus dictionary is an extension of the synonym dictionary with added
     <firstterm>phrase</firstterm> support.  A thesaurus dictionary requires
@@ -2757,6 +2832,9 @@ SELECT plainto_tsquery('supernova star');
 <!## XC>
     The standard <productname>Postgres-XC</productname> distribution does
 <!## end>
+<!## XL>
+    The standard <productname>Postgres-XL</productname> distribution does
+<!## end>
     not include any <application>Ispell</> configuration files.
     Dictionaries for a large number of languages are available from <ulink
     url="http://ficus-www.cs.ucla.edu/geoff/ispell.html">Ispell</ulink>.
@@ -2827,6 +2905,9 @@ SELECT ts_lexize('norwegian_ispell', 'sjokoladefabrikk');
 <!## XC>
      present, <productname>Postgres-XC</productname> implements only the basic
 <!## end>
+<!## XL>
+     present, <productname>Postgres-XL</productname> implements only the basic
+<!## end>
      compound word operations of Hunspell.
     </para>
    </note>
@@ -2851,6 +2932,9 @@ SELECT ts_lexize('norwegian_ispell', 'sjokoladefabrikk');
 <!## end>
 <!## XC>
     (<productname>Postgres-XC</productname>'s standard stopword lists are also
+<!## end>
+<!## XL>
+    (<productname>Postgres-XL</productname>'s standard stopword lists are also
 <!## end>
     provided by the Snowball project.)
     For example, there is a built-in definition equivalent to
@@ -2922,6 +3006,9 @@ CREATE TEXT SEARCH CONFIGURATION public.pg ( COPY = pg_catalog.english );
 <!## XC>
     We will use a Postgres-XC-specific synonym list
 <!## end>
+<!## XL>
+    We will use a Postgres-XL-specific synonym list
+<!## end>
     and store it in <filename>$SHAREDIR/tsearch_data/pg_dict.syn</filename>.
     The file contents look like:
 
@@ -2981,6 +3068,9 @@ PostgreSQL, the highly scalable, SQL compliant, open source object-relational
 <!## end>
 <!## XC>
 Postgres-XC, the highly scalable, SQL compliant, open source object-relational
+<!## end>
+<!## XL>
+Postgres-XL, the highly scalable, SQL compliant, open source object-relational
 <!## end>
 database management system, is now undergoing beta testing of the next
 version of our software.
@@ -3445,6 +3535,9 @@ CREATE INDEX <replaceable>name</replaceable> ON <replaceable>table</replaceable>
 <!## XC>
    (<productname>Postgres-XC</productname> does this automatically when needed.)
 <!## end>
+<!## XL>
+   (<productname>Postgres-XL</productname> does this automatically when needed.)
+<!## end>
    GiST indexes are lossy because each document is represented in the
    index by a fixed-length signature. The signature is generated by hashing
    each word into a single bit in an n-bit string, with all these bits OR-ed
@@ -3728,6 +3821,9 @@ Parser: "pg_catalog.default"
 <!## XC>
    The current limitations of <productname>Postgres-XC</productname>'s
 <!## end>
+<!## XL>
+   The current limitations of <productname>Postgres-XL</productname>'s
+<!## end>
    text search features are:
    <itemizedlist  spacing="compact" mark="bullet">
     <listitem>
@@ -3770,6 +3866,9 @@ Parser: "pg_catalog.default"
 <!## end>
 <!## XC>
    Another example &mdash; the <productname>Postgres-XC</productname> mailing
+<!## end>
+<!## XL>
+   Another example &mdash; the <productname>Postgres-XL</productname> mailing
 <!## end>
    list archives contained 910,989 unique words with 57,491,343 lexemes in
    461,020 messages.

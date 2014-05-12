@@ -232,7 +232,7 @@ DROP TABLE INSERT_CHILD;
 -- Check NO INHERIT type of constraints and inheritance
 --
 CREATE TABLE ATACC1 (TEST INT
-	CHECK NO INHERIT (TEST > 0));
+	CHECK (TEST > 0) NO INHERIT);
 CREATE TABLE ATACC2 (TEST2 INT) INHERITS (ATACC1);
 -- check constraint is not there on child
 INSERT INTO ATACC2 (TEST) VALUES (-3);
@@ -243,7 +243,7 @@ DETAIL:  Failing row contains (-3).
 DROP TABLE ATACC1 CASCADE;
 NOTICE:  drop cascades to table atacc2
 CREATE TABLE ATACC1 (TEST INT, TEST2 INT
-	CHECK (TEST > 0), CHECK NO INHERIT (TEST2 > 10));
+	CHECK (TEST > 0), CHECK (TEST2 > 10) NO INHERIT);
 CREATE TABLE ATACC2 () INHERITS (ATACC1);
 -- check constraint is there on child
 INSERT INTO ATACC2 (TEST) VALUES (-3);
@@ -330,8 +330,7 @@ SELECT '' AS two, * FROM COPY_TBL order by x,y,z;
 (2 rows)
 
 COPY COPY_TBL FROM '@abs_srcdir@/data/constrf.data';
-ERROR:  new row for relation "copy_tbl" violates check constraint "copy_con"
-DETAIL:  Failing row contains (7, check failed, 6).
+ERROR:  Error while running COPY
 SELECT * FROM COPY_TBL order by x,y,z;
  x |       y       | z 
 ---+---------------+---
@@ -520,8 +519,9 @@ BEGIN;
 SET CONSTRAINTS ALL DEFERRED;
 INSERT INTO unique_tbl VALUES (3, 'Three'); -- should succeed for now
 SET CONSTRAINTS ALL IMMEDIATE; -- should fail
+ERROR:  duplicate key value violates unique constraint "unique_tbl_i_key"
+DETAIL:  Key (i)=(3) already exists.
 COMMIT;
-ERROR:  Failed to PREPARE the transaction on one or more nodes
 -- test a HOT update that invalidates the conflicting tuple.
 -- the trigger should still fire and catch the violation
 BEGIN;
@@ -577,7 +577,7 @@ CREATE TABLE circles (
   EXCLUDE USING gist
     (c1 WITH &&, (c2::circle) WITH &&)
     WHERE (circle_center(c1) <> '(0,0)')
-) DISTRIBUTE BY REPLICATION;
+);
 NOTICE:  CREATE TABLE / EXCLUDE will create implicit index "circles_c1_c2_excl" for table "circles"
 -- these should succeed because they don't match the index predicate
 INSERT INTO circles VALUES('<(0,0), 5>', '<(0,0), 5>');

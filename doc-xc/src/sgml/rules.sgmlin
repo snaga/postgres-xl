@@ -669,6 +669,14 @@ SELECT shoe_ready.shoename, shoe_ready.sh_avail,
      of <productname>Postgres-XC</productname>.
 </para>
 <!## end>
+<!## XL>
+&pgonly
+<para>
+     Non-<command>SELECT</command> statements in rules are not
+     supported by the current version
+     of <productname>Postgres-XL</productname>.
+</para>
+<!## end>
 
 <!## PG>
 <para>
@@ -1970,6 +1978,14 @@ SELECT * FROM phone_number WHERE tricky(person, phone);
 <para>
     Trigger is not supported by the current release
     of <productname>Postgres-XC</>.  This may be supported in the
+    future releases.
+</para>
+<!## end>
+<!## XL>
+&xlonly;
+<para>
+    Trigger is not supported by the current release
+    of <productname>Postgres-XL</>.  This may be supported in the
     future releases.
 </para>
 <!## end>

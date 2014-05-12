@@ -1,8 +1,6 @@
 --
 -- WINDOW FUNCTIONS
 --
--- Enforce use of COMMIT instead of 2PC for temporary objects
-SET enforce_two_phase_commit TO off;
 CREATE TEMPORARY TABLE empsalary (
     depname varchar,
     empno bigint,
@@ -381,37 +379,11 @@ SELECT last_value(four) OVER (ORDER BY ten, four), ten, four FROM tenk1 WHERE un
 SELECT last_value(ten) OVER (PARTITION BY four), ten, four FROM
 	(SELECT * FROM tenk1 WHERE unique2 < 10 ORDER BY four, ten)s
 	ORDER BY four, ten;
- last_value | ten | four 
-------------+-----+------
-          4 |   0 |    0
-          4 |   0 |    0
-          4 |   4 |    0
-          9 |   1 |    1
-          9 |   1 |    1
-          9 |   7 |    1
-          9 |   9 |    1
-          0 |   0 |    2
-          3 |   1 |    3
-          3 |   3 |    3
-(10 rows)
-
+ERROR:  Postgres-XL does not currently support ORDER BY in subqueries
 SELECT nth_value(ten, four + 1) OVER (PARTITION BY four), ten, four
 	FROM (SELECT * FROM tenk1 WHERE unique2 < 10 ORDER BY four, ten)s
 	ORDER BY four, ten;
- nth_value | ten | four 
------------+-----+------
-         0 |   0 |    0
-         0 |   0 |    0
-         0 |   4 |    0
-         1 |   1 |    1
-         1 |   1 |    1
-         1 |   7 |    1
-         1 |   9 |    1
-           |   0 |    2
-           |   1 |    3
-           |   3 |    3
-(10 rows)
-
+ERROR:  Postgres-XL does not currently support ORDER BY in subqueries
 SELECT ten, two, sum(hundred) AS gsum, sum(sum(hundred)) OVER (PARTITION BY two ORDER BY ten) AS wsum 
 FROM tenk1 GROUP BY ten, two
 ORDER BY ten, two;
@@ -618,6 +590,20 @@ group by ten order by ten;
    9 | 10040184 |    7
 (10 rows)
 
+-- window and aggregate with GROUP BY expression (9.2 bug)
+explain (costs off)
+select first_value(max(x)) over (), y
+  from (select unique1 as x, ten+four as y from tenk1) ss
+  group by y;
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ WindowAgg
+   ->  HashAggregate
+         ->  Remote Subquery Scan on all (datanode_1,datanode_2)
+               ->  HashAggregate
+                     ->  Seq Scan on tenk1
+(5 rows)
+
 -- test non-default frame specifications
 SELECT four, ten,
 	sum(ten) over (partition by four order by ten),
@@ -779,88 +765,23 @@ FROM tenk1 WHERE unique1 < 10;
 SELECT sum(unique1) over (rows between current row and unbounded following),
 	unique1, four
 FROM (SELECT unique1, four FROM tenk1 WHERE unique1 < 10 ORDER BY 1, 2) stenk1;
- sum | unique1 | four 
------+---------+------
-  45 |       0 |    0
-  45 |       1 |    1
-  44 |       2 |    2
-  42 |       3 |    3
-  39 |       4 |    0
-  35 |       5 |    1
-  30 |       6 |    2
-  24 |       7 |    3
-  17 |       8 |    0
-   9 |       9 |    1
-(10 rows)
-
+ERROR:  Postgres-XL does not currently support ORDER BY in subqueries
 SELECT sum(unique1) over (rows between 2 preceding and 2 following),
 	unique1, four
 FROM (SELECT unique1, four FROM tenk1 WHERE unique1 < 10 ORDER BY 1, 2) stenk1;
- sum | unique1 | four 
------+---------+------
-   3 |       0 |    0
-   6 |       1 |    1
-  10 |       2 |    2
-  15 |       3 |    3
-  20 |       4 |    0
-  25 |       5 |    1
-  30 |       6 |    2
-  35 |       7 |    3
-  30 |       8 |    0
-  24 |       9 |    1
-(10 rows)
-
+ERROR:  Postgres-XL does not currently support ORDER BY in subqueries
 SELECT sum(unique1) over (rows between 2 preceding and 1 preceding),
 	unique1, four
 FROM (SELECT unique1, four FROM tenk1 WHERE unique1 < 10 ORDER BY 1, 2) stenk1;
- sum | unique1 | four 
------+---------+------
-     |       0 |    0
-   0 |       1 |    1
-   1 |       2 |    2
-   3 |       3 |    3
-   5 |       4 |    0
-   7 |       5 |    1
-   9 |       6 |    2
-  11 |       7 |    3
-  13 |       8 |    0
-  15 |       9 |    1
-(10 rows)
-
+ERROR:  Postgres-XL does not currently support ORDER BY in subqueries
 SELECT sum(unique1) over (rows between 1 following and 3 following),
 	unique1, four
 FROM (SELECT unique1, four FROM tenk1 WHERE unique1 < 10 ORDER BY 1, 2) stenk1;
- sum | unique1 | four 
------+---------+------
-   6 |       0 |    0
-   9 |       1 |    1
-  12 |       2 |    2
-  15 |       3 |    3
-  18 |       4 |    0
-  21 |       5 |    1
-  24 |       6 |    2
-  17 |       7 |    3
-   9 |       8 |    0
-     |       9 |    1
-(10 rows)
-
+ERROR:  Postgres-XL does not currently support ORDER BY in subqueries
 SELECT sum(unique1) over (rows between unbounded preceding and 1 following),
 	unique1, four
 FROM (SELECT unique1, four FROM tenk1 WHERE unique1 < 10 ORDER BY 1, 2) stenk1;
- sum | unique1 | four 
------+---------+------
-   1 |       0 |    0
-   3 |       1 |    1
-   6 |       2 |    2
-  10 |       3 |    3
-  15 |       4 |    0
-  21 |       5 |    1
-  28 |       6 |    2
-  36 |       7 |    3
-  45 |       8 |    0
-  45 |       9 |    1
-(10 rows)
-
+ERROR:  Postgres-XL does not currently support ORDER BY in subqueries
 SELECT sum(unique1) over (w range between current row and unbounded following),
 	unique1, four
 FROM tenk1 WHERE unique1 < 10 WINDOW w AS (order by four, unique1);
@@ -909,20 +830,7 @@ SELECT sum(unique1) over
 	 rows (SELECT unique1 FROM tenk1 ORDER BY unique1 LIMIT 1) + 1 PRECEDING),
 	unique1
 FROM (SELECT unique1, four FROM tenk1 WHERE unique1 < 10 ORDER BY 1, 2) stenk1;
- sum | unique1 
------+---------
-   0 |       0
-   1 |       1
-   3 |       2
-   5 |       3
-   7 |       4
-   9 |       5
-  11 |       6
-  13 |       7
-  15 |       8
-  17 |       9
-(10 rows)
-
+ERROR:  Postgres-XL does not currently support ORDER BY in subqueries
 CREATE TEMP VIEW v_window AS
 	SELECT i, sum(i) over (order by i rows between 1 preceding and 1 following) as sum_rows
 	FROM generate_series(1, 10) i;

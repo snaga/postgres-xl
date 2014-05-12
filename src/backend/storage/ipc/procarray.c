@@ -18,23 +18,6 @@
  * at need by checking for pid == 0.
  *
 #ifdef PGXC
- * Vanilla PostgreSQL assumes maximum TransactinIds in any snapshot is
- * arrayP->maxProcs.  It does not apply to XC because XC's snapshot
- * should include XIDs running in other node, which may come at any
- * time.   This means that needed size of xip varies from time to time.
- *
- * This must be handled properly in all the functions in this module.
- *
- * The member max_xcnt was added as SnapshotData member to indicate the
- * real size of xip array.
- * 
- * Here, the following assumption is made for SnapshotData struct throughout
- * this module.
- *
- * 1. xip member physical size is indicated by max_xcnt member.
- * 2. If max_xcnt == 0, it means that xip members is NULL, and vise versa.
- * 3. xip (and subxip) are allocated usign malloc() or realloc() directly.
- *
  * For Postgres-XC, there is some special handling for ANALYZE.
  * An XID for a local ANALYZE command will never involve other nodes.
  * Also, ANALYZE may run for a long time, affecting snapshot xmin values
@@ -58,6 +41,11 @@
  * happen, it would tie up KnownAssignedXids indefinitely, so we protect
  * ourselves by pruning the array when a valid list of running XIDs arrives.
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
@@ -86,7 +74,6 @@
 #include "pgxc/pgxc.h"
 #include "access/gtm.h"
 #include "storage/ipc.h"
-#include "pgxc/nodemgr.h"
 /* PGXC_DATANODE */
 #include "postmaster/autovacuum.h"
 #endif
@@ -121,9 +108,6 @@ typedef struct ProcArrayStruct
 	 * but actually it is maxProcs entries long.
 	 */
 	int			pgprocnos[1];	/* VARIABLE LENGTH ARRAY */
-#ifdef PGXC
-	int			pgAVproxnos[1];	/* VARIABLE LENGTH ARRAY */
-#endif
 } ProcArrayStruct;
 
 static ProcArrayStruct *procArray;
@@ -196,10 +180,6 @@ void UnsetGlobalSnapshotData(void);
 static bool GetPGXCSnapshotData(Snapshot snapshot);
 static bool GetSnapshotDataDataNode(Snapshot snapshot);
 static bool GetSnapshotDataCoordinator(Snapshot snapshot);
-static bool resizeXip(Snapshot snapshot, int newsize);
-static bool resizeSubxip(Snapshot snapshot, int newsize);
-static void cleanSnapshot(Snapshot snapshot);
-
 /* Global snapshot data */
 static SnapshotSource snapshot_source = SNAPSHOT_UNDEFINED;
 static int gxmin = InvalidTransactionId;
@@ -253,13 +233,8 @@ ProcArrayShmemSize(void)
 	 * standby in the current run, but we don't know that yet at the time
 	 * shared memory is being set up.
 	 */
-#if 0		/* Reamins this code for the test to disable KnownAssignedXids in the slave */
-#define TOTAL_MAX_CACHED_SUBXIDS \
-	(((PGPROC_MAX_CACHED_SUBXIDS + 1) * PROCARRAY_MAXPROCS) * (MaxCoords + MaxDataNodes))
-#else
 #define TOTAL_MAX_CACHED_SUBXIDS \
 	((PGPROC_MAX_CACHED_SUBXIDS + 1) * PROCARRAY_MAXPROCS)
-#endif
 
 	if (EnableHotStandby)
 	{
@@ -1345,8 +1320,6 @@ GetSnapshotData(Snapshot snapshot)
 	int			subcount = 0;
 	bool		suboverflowed = false;
 
-	Assert(snapshot != NULL);
-
 #ifdef PGXC  /* PGXC_DATANODE */
 	/*
 	 * Obtain a global snapshot for a Postgres-XC session
@@ -1354,18 +1327,22 @@ GetSnapshotData(Snapshot snapshot)
 	 */
 	if (GetPGXCSnapshotData(snapshot))
 		return snapshot;
+#ifdef XCP
 	/*
-	 * The codes below run when GetPGXCSnapshotData() couldn't get snapshot from
-	 * GTM.  So no data in snapshot will be used.
+	 * Making falling back stricter
 	 */
-	cleanSnapshot(snapshot);
+	if (!snapshot && !RecoveryInProgress() && IsPostmasterEnvironment && 
+				IsNormalProcessingMode() && !IsAutoVacuumLauncherProcess())
+		elog(ERROR, "Was unable to obtain a snapshot from GTM.");
+#else
+#endif
 #endif
 
 	/*
 	 * Fallback to standard routine, calculate snapshot from local proc arrey
 	 * if no master connection
 	 */
-
+	Assert(snapshot != NULL);
 
 	/*
 	 * Allocating space for maxProcs xids is usually overkill; numProcs would
@@ -1380,10 +1357,6 @@ GetSnapshotData(Snapshot snapshot)
 	 */
 	if (snapshot->xip == NULL)
 	{
-#ifdef PGXC
-		resizeXip(snapshot, arrayP->maxProcs);
-		resizeSubxip(snapshot, TOTAL_MAX_CACHED_SUBXIDS);
-#else
 		/*
 		 * First call for this snapshot. Snapshot is same size whether or not
 		 * we are in recovery, see later comments.
@@ -1401,7 +1374,6 @@ GetSnapshotData(Snapshot snapshot)
 			ereport(ERROR,
 					(errcode(ERRCODE_OUT_OF_MEMORY),
 					 errmsg("out of memory")));
-#endif
 	}
 
 	/*
@@ -1478,9 +1450,6 @@ GetSnapshotData(Snapshot snapshot)
 				continue;
 
 			/* Add XID to snapshot. */
-#ifdef PGXC
-			resizeXip(snapshot, count + 1);
-#endif
 			snapshot->xip[count++] = xid;
 
 			/*
@@ -1686,6 +1655,11 @@ ProcArrayInstallImportedXmin(TransactionId xmin, TransactionId sourcexid)
  * We don't worry about updating other counters, we want to keep this as
  * simple as possible and leave GetSnapshotData() as the primary code for
  * that bookkeeping.
+ *
+ * Note that if any transaction has overflowed its cached subtransactions
+ * then there is no real need include any subtransactions. That isn't a
+ * common enough case to worry about optimising the size of the WAL record,
+ * and we may wish to see that data for diagnostic purposes anyway.
  */
 RunningTransactions
 GetRunningTransactionData(void)
@@ -2696,12 +2670,12 @@ DisplayXidCache(void)
 void
 SetGlobalSnapshotData(int xmin, int xmax, int xcnt, int *xip)
 {
+	if (gxip)
+		free(gxip);
 	snapshot_source = SNAPSHOT_COORDINATOR;
 	gxmin = xmin;
 	gxmax = xmax;
 	gxcnt = xcnt;
-	if (gxip)
-		free(gxip);
 	gxip = xip;
 	elog (DEBUG1, "global snapshot info: gxmin: %d, gxmax: %d, gxcnt: %d", gxmin, gxmax, gxcnt);
 }
@@ -2712,12 +2686,12 @@ SetGlobalSnapshotData(int xmin, int xmax, int xcnt, int *xip)
 void
 UnsetGlobalSnapshotData(void)
 {
+	if (gxip)
+		free(gxip);
 	snapshot_source = SNAPSHOT_UNDEFINED;
 	gxmin = InvalidTransactionId;
 	gxmax = InvalidTransactionId;
 	gxcnt = 0;
-	if (gxip)
-		free(gxip);
 	gxip = NULL;
 	elog (DEBUG1, "unset snapshot info");
 }
@@ -2745,14 +2719,45 @@ GetPGXCSnapshotData(Snapshot snapshot)
 	 * GTM not to include this transaction ID in snapshot.
 	 * A vacuum worker starts as a normal transaction would.
 	 */
+#ifdef XCP
+	/* If we got the transaction id from GTM, we should get the snapshot 
+	 * from there, too
+	 */
+	if (IS_PGXC_DATANODE || IsConnFromCoord() || IsAutoVacuumWorkerProcess() || IsXidFromGTM)
+#else
 	if (IS_PGXC_DATANODE || IsConnFromCoord() || IsAutoVacuumWorkerProcess())
+#endif
 	{
 		if (GetSnapshotDataDataNode(snapshot))
 			return true;
 		/* else fallthrough */
+		else
+#ifdef XCP
+		{
+			if (IsAutoVacuumLauncherProcess() || !IsNormalProcessingMode() || !IsPostmasterEnvironment)
+			{
+#endif
+				elog(LOG, "Will fall back to local snapshot for XID = %d, source = %d, gxmin = %d, autovac launch = %d, autovac = %d, normProcMode = %d, postEnv = %d", 
+					   GetCurrentTransactionId(), snapshot_source, gxmin, 
+						IsAutoVacuumLauncherProcess(), IsAutoVacuumWorkerProcess(),
+						IsNormalProcessingMode(), IsPostmasterEnvironment);
+#ifdef XCP
+			}
+			else
+			{
+				elog(ERROR, "GTM error, no fallback, could not obtain snapshot. Current XID = %d, Autovac = %d", GetCurrentTransactionId(), IsAutoVacuumWorkerProcess());
+			}
+		}
+#endif
 	}
 	else if (IS_PGXC_COORDINATOR && !IsConnFromCoord() && IsNormalProcessingMode())
 	{
+#ifdef XCP
+		/* 
+		 * GetSnapshotDataCoordinator will always fail if there is a GTM error.
+		 * There is no need for special checking		
+		 */ 		
+#endif
 		/* Snapshot has ever been received from remote Coordinator */
 		if (GetSnapshotDataCoordinator(snapshot))
 			return true;
@@ -2770,13 +2775,17 @@ GetPGXCSnapshotData(Snapshot snapshot)
 	 * IsNormalProcessingMode() - checks for new connections
 	 * IsAutoVacuumLauncherProcess - checks for autovacuum launcher process
 	 */
-	if (IS_PGXC_DATANODE &&
+	if (IS_PGXC_DATANODE && !isRestoreMode &&
 		snapshot_source == SNAPSHOT_UNDEFINED &&
 		IsPostmasterEnvironment &&
 		IsNormalProcessingMode() &&
 		!IsAutoVacuumLauncherProcess())
 	{
+#ifdef XCP
+		elog(ERROR, "Do not have a GTM snapshot available");
+#else
 		elog(WARNING, "Do not have a GTM snapshot available");
+#endif
 	}
 
 	return false;
@@ -2791,7 +2800,11 @@ GetPGXCSnapshotData(Snapshot snapshot)
 static bool
 GetSnapshotDataDataNode(Snapshot snapshot)
 {
+#ifdef XCP
+	Assert(IS_PGXC_DATANODE || IsConnFromCoord() || IsAutoVacuumWorkerProcess() || IsXidFromGTM);
+#else
 	Assert(IS_PGXC_DATANODE || IsConnFromCoord() || IsAutoVacuumWorkerProcess());
+#endif
 
 	/*
 	 * Fallback to general case if Datanode is accessed directly by an application
@@ -2800,35 +2813,42 @@ GetSnapshotDataDataNode(Snapshot snapshot)
 		return GetSnapshotDataCoordinator(snapshot);
 
 	/* Have a look at cases where Datanode is accessed by cluster internally */
+#ifdef XCP
+	if (IsAutoVacuumWorkerProcess() || GetForceXidFromGTM() || IsAutoVacuumLauncherProcess() || IsXidFromGTM)
+#else
 	if (IsAutoVacuumWorkerProcess() || GetForceXidFromGTM())
+#endif
 	{
 		GTM_Snapshot gtm_snapshot;
 		bool canbe_grouped = (!FirstSnapshotSet) || (!IsolationUsesXactSnapshot());
 		elog(DEBUG1, "Getting snapshot for autovacuum. Current XID = %d", GetCurrentTransactionId());
 		gtm_snapshot = GetSnapshotGTM(GetCurrentTransactionId(), canbe_grouped);
-
 		if (!gtm_snapshot)
 			ereport(ERROR,
 				(errcode(ERRCODE_CONNECTION_FAILURE),
-				errmsg("GTM error, could not obtain snapshot")));
+#ifdef XCP
+				errmsg("GTM error, could not obtain snapshot. Current XID = %d, Autovac = %d", GetCurrentTransactionId(), IsAutoVacuumWorkerProcess())));
+#else
+				errmsg("GTM error, could not obtain snapshot.");
+#endif
 		else {
+			if (gxip)
+				free(gxip);
 			snapshot_source = SNAPSHOT_DIRECT;
 			gxmin = gtm_snapshot->sn_xmin;
 			gxmax = gtm_snapshot->sn_xmax;
 			gxcnt = gtm_snapshot->sn_xcnt;
 			RecentGlobalXmin = gtm_snapshot->sn_recent_global_xmin;
-			if (gxip)
-				free(gxip);
 			if (gxcnt > 0)
 			{
-				gxip = malloc(gxcnt * 4);
+				gxip = malloc(gxcnt * sizeof(int));
 				if (gxip == NULL)
 				{
 					ereport(ERROR,
 							(errcode(ERRCODE_OUT_OF_MEMORY),
 							 errmsg("out of memory")));
 				}
-				memcpy(gxip, gtm_snapshot->sn_xip, gxcnt * 4);
+				memcpy(gxip, gtm_snapshot->sn_xip, gxcnt * sizeof(int));
 			}
 			else
 				gxip = NULL;
@@ -2856,8 +2876,38 @@ GetSnapshotDataDataNode(Snapshot snapshot)
 		 * maxProcs does not change at runtime, we can simply reuse the previous
 		 * xip arrays if any.  (This relies on the fact that all callers pass
 		 * static SnapshotData structs.) */
-		resizeXip(snapshot, Max(arrayP->maxProcs, gxcnt));
-		resizeSubxip(snapshot, PGPROC_MAX_CACHED_SUBXIDS);
+		if (snapshot->xip == NULL)
+		{
+			ProcArrayStruct *arrayP = procArray;
+			/*
+			 * First call for this snapshot
+			 */
+			snapshot->xip = (TransactionId *)
+				malloc(Max(arrayP->maxProcs, gxcnt) * sizeof(TransactionId));
+			if (snapshot->xip == NULL)
+				ereport(ERROR,
+						(errcode(ERRCODE_OUT_OF_MEMORY),
+						 errmsg("out of memory")));
+			snapshot->max_xcnt = Max(arrayP->maxProcs, gxcnt);
+
+			Assert(snapshot->subxip == NULL);
+			snapshot->subxip = (TransactionId *)
+				malloc(arrayP->maxProcs * PGPROC_MAX_CACHED_SUBXIDS * sizeof(TransactionId));
+			if (snapshot->subxip == NULL)
+				ereport(ERROR,
+						(errcode(ERRCODE_OUT_OF_MEMORY),
+						 errmsg("out of memory")));
+		}
+		else if (snapshot->max_xcnt < gxcnt)
+		{
+			snapshot->xip = (TransactionId *)
+				realloc(snapshot->xip, gxcnt * sizeof(TransactionId));
+			if (snapshot->xip == NULL)
+				ereport(ERROR,
+						(errcode(ERRCODE_OUT_OF_MEMORY),
+						 errmsg("out of memory")));
+			snapshot->max_xcnt = gxcnt;
+		}
 
 		memcpy(snapshot->xip, gxip, gxcnt * sizeof(TransactionId));
 		snapshot->curcid = GetCurrentCommandId(false);
@@ -2930,7 +2980,17 @@ GetSnapshotDataDataNode(Snapshot snapshot)
 						continue;
 					if (proc != MyProc)
 					{
-						resizeXip(snapshot, snapshot->xcnt+1);
+						if (snapshot->xcnt >= snapshot->max_xcnt)
+						{
+							snapshot->max_xcnt += arrayP->numProcs;
+
+							snapshot->xip = (TransactionId *)
+								realloc(snapshot->xip, snapshot->max_xcnt * sizeof(TransactionId));
+							if (snapshot->xip == NULL)
+								ereport(ERROR,
+										(errcode(ERRCODE_OUT_OF_MEMORY),
+										 errmsg("out of memory")));
+						}
 						snapshot->xip[snapshot->xcnt++] = xid;
 						elog(DEBUG1, "Adding Analyze for xid %d to snapshot", pgxact->xid);
 					}
@@ -2978,7 +3038,8 @@ GetSnapshotDataCoordinator(Snapshot snapshot)
 	if (!gtm_snapshot)
 			ereport(ERROR,
 				(errcode(ERRCODE_CONNECTION_FAILURE),
-				errmsg("GTM error, could not obtain snapshot")));
+				errmsg("GTM error, could not obtain snapshot XID = %d",
+					   GetCurrentTransactionId())));
 	else
 	{
 		snapshot->xmin = gtm_snapshot->sn_xmin;
@@ -2998,10 +3059,44 @@ GetSnapshotDataCoordinator(Snapshot snapshot)
 		 * xip arrays if any.  (This relies on the fact that all callers pass
 		 * static SnapshotData structs.)
 		 */
+		if (snapshot->xip == NULL)
 		{
 			ProcArrayStruct *arrayP = procArray;
-			resizeXip(snapshot, Max(arrayP->maxProcs, gtm_snapshot->sn_xcnt));
-			resizeSubxip(snapshot, PGPROC_MAX_CACHED_SUBXIDS);
+			/*
+			 * First call for this snapshot
+			 */
+			snapshot->xip = (TransactionId *)
+				malloc(Max(arrayP->maxProcs, gtm_snapshot->sn_xcnt) * sizeof(TransactionId));
+			if (snapshot->xip == NULL)
+				ereport(ERROR,
+						(errcode(ERRCODE_OUT_OF_MEMORY),
+						 errmsg("out of memory")));
+			snapshot->max_xcnt = Max(arrayP->maxProcs, gtm_snapshot->sn_xcnt);
+
+			/*
+			 * FIXME
+			 *
+			 * We really don't support subtransaction in PGXC right now, but
+			 * when we would, we should fix the allocation below
+			 */
+			Assert(snapshot->subxip == NULL);
+			snapshot->subxip = (TransactionId *)
+				malloc(arrayP->maxProcs * PGPROC_MAX_CACHED_SUBXIDS * sizeof(TransactionId));
+
+			if (snapshot->subxip == NULL)
+				ereport(ERROR,
+						(errcode(ERRCODE_OUT_OF_MEMORY),
+						 errmsg("out of memory")));
+		}
+		else if (snapshot->max_xcnt < gtm_snapshot->sn_xcnt)
+		{
+			snapshot->xip = (TransactionId *)
+				realloc(snapshot->xip, gtm_snapshot->sn_xcnt * sizeof(TransactionId));
+			if (snapshot->xip == NULL)
+				ereport(ERROR,
+						(errcode(ERRCODE_OUT_OF_MEMORY),
+						 errmsg("out of memory")));
+			snapshot->max_xcnt = gtm_snapshot->sn_xcnt;
 		}
 
 		memcpy(snapshot->xip, gtm_snapshot->sn_xip, gtm_snapshot->sn_xcnt * sizeof(TransactionId));
@@ -3030,83 +3125,6 @@ GetSnapshotDataCoordinator(Snapshot snapshot)
 		return true;
 	}
 	return false;
-}
-
-/*
- * Handlers for xip and subxip member array size, only for XC.
- *
- * Assumes xip is NULL when max_xcnt == 0
- */
-static bool
-resizeXip(Snapshot snapshot, int newsize)
-{
-#define xipResizeUnit (64)
-	newsize = ((newsize + xipResizeUnit - 1)/xipResizeUnit)*xipResizeUnit;
-
-	if (snapshot->max_xcnt == 0)
-	{
-		snapshot->xip = malloc(newsize * sizeof(TransactionId));
-		if (snapshot->xip == NULL)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_OUT_OF_MEMORY),
-					 errmsg("out of memory")));
-			return false;
-		}
-		snapshot->max_xcnt = newsize;
-		snapshot->xcnt = 0;
-		return true;
-	}
-	else if (snapshot->max_xcnt >= newsize)
-		return true;
-	else
-	{
-		snapshot->xip = realloc(snapshot->xip, newsize * sizeof(TransactionId));
-		if (snapshot->xip == NULL)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_OUT_OF_MEMORY),
-					 errmsg("out of memory")));
-			return false;
-		}
-		snapshot->max_xcnt = newsize;
-		return true;
-	}
-	return false;
-}
-
-/*
- * Because XC does not support subtransaction so far, this function allocates
- * subxip array with the fixes size of TOTAL_MAX_CACHED_SUBXIDS.  This is
- * controlled by resizeXip() above.
- * If subxip member is not NULL, it assumes subxip array has TOTAL_MAX_CACHED_SUBXIDS
- * size, regardless what size is specified.
- * This part needs improvement when XC supports subtransaction.
- */
-static bool
-resizeSubxip(Snapshot snapshot, int newsize)
-{
-	if (snapshot->subxip)
-		return true;
-	snapshot->subxip = (TransactionId *)
-		malloc(TOTAL_MAX_CACHED_SUBXIDS * sizeof(TransactionId));
-	if (snapshot->subxip == NULL)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 errmsg("out of memory")));
-		return false;
-	}
-	return true;
-}
-
-/* Cleanup the snapshot */
-static void
-cleanSnapshot(Snapshot snapshot)
-{
-	snapshot->xcnt = 0;
-	snapshot->subxcnt = 0;
-	snapshot->xmin = snapshot->xmax = InvalidTransactionId;
 }
 #endif /* PGXC */
 
@@ -3451,25 +3469,6 @@ static void
 KnownAssignedXidsAdd(TransactionId from_xid, TransactionId to_xid,
 					 bool exclusive_lock)
 {
-#ifdef PGXC
-	/*
-	 * Postgres-XC Version 1.0.x supports log shipping replication but not hot standby
-	 * because hot standby needs to provide consistent database views for all the
-	 * datanode, which is not available yet.
-	 *
-	 * On the other hand, in the slave, current KnownAssignedXids ignores latter half
-	 * of XLOG_XACT_ASSIGNMENT wal record and registers all the possible XIDs found
-	 * at the first half of the wal record.   Some of them can be missing and such missing
-	 * Xids remain in the buffer, causing overflow and the slave stops.
-	 *
-	 * It will need various change in the code, while the hot standby does not work correctly.
-	 *
-	 * For short term solution for Version 1.0.x, it was determined to disable whole hot
-	 * hot staydby.
-	 *
-	 * Hot standby correction will be done in next major release.
-	 */
-#else
 	/* use volatile pointer to prevent code rearrangement */
 	volatile ProcArrayStruct *pArray = procArray;
 	TransactionId next_xid;
@@ -3574,7 +3573,6 @@ KnownAssignedXidsAdd(TransactionId from_xid, TransactionId to_xid,
 		pArray->headKnownAssignedXids = head;
 		SpinLockRelease(&pArray->known_assigned_xids_lck);
 	}
-#endif
 }
 
 /*
@@ -3744,25 +3742,6 @@ KnownAssignedXidsRemoveTree(TransactionId xid, int nsubxids,
 static void
 KnownAssignedXidsRemovePreceding(TransactionId removeXid)
 {
-#ifdef PGXC
-	/*
-	 * Postgres-XC Version 1.0.x supports log shipping replication but not hot standby
-	 * because hot standby needs to provide consistent database views for all the
-	 * datanode, which is not available yet.
-	 *
-	 * On the other hand, in the slave, current KnownAssignedXids ignores latter half
-	 * of XLOG_XACT_ASSIGNMENT wal record and registers all the possible XIDs found
-	 * at the first half of the wal record.   Some of them can be missing and such missing
-	 * Xids remain in the buffer, causing overflow and the slave stops.
-	 *
-	 * It will need various change in the code, while the hot standby does not work correctly.
-	 *
-	 * For short term solution for Version 1.0.x, it was determined to disable whole hot
-	 * hot staydby.
-	 *
-	 * Hot standby correction will be done in next major release.
-	 */
-#else
 	/* use volatile pointer to prevent code rearrangement */
 	volatile ProcArrayStruct *pArray = procArray;
 	int			count = 0;
@@ -3828,7 +3807,6 @@ KnownAssignedXidsRemovePreceding(TransactionId removeXid)
 
 	/* Opportunistically compress the array */
 	KnownAssignedXidsCompress(false);
-#endif
 }
 
 /*
@@ -3858,26 +3836,6 @@ static int
 KnownAssignedXidsGetAndSetXmin(TransactionId *xarray, TransactionId *xmin,
 							   TransactionId xmax)
 {
-#ifdef PGXC
-	/*
-	 * Postgres-XC Version 1.0.x supports log shipping replication but not hot standby
-	 * because hot standby needs to provide consistent database views for all the
-	 * datanode, which is not available yet.
-	 *
-	 * On the other hand, in the slave, current KnownAssignedXids ignores latter half
-	 * of XLOG_XACT_ASSIGNMENT wal record and registers all the possible XIDs found
-	 * at the first half of the wal record.   Some of them can be missing and such missing
-	 * Xids remain in the buffer, causing overflow and the slave stops.
-	 *
-	 * It will need various change in the code, while the hot standby does not work correctly.
-	 *
-	 * For short term solution for Version 1.0.x, it was determined to disable whole hot
-	 * hot staydby.
-	 *
-	 * Hot standby correction will be done in next major release.
-	 */
-	return 0;
-#else
 	/* use volatile pointer to prevent code rearrangement */
 	volatile ProcArrayStruct *pArray = procArray;
 	int			count = 0;
@@ -3928,7 +3886,6 @@ KnownAssignedXidsGetAndSetXmin(TransactionId *xarray, TransactionId *xmin,
 	}
 
 	return count;
-#endif
 }
 
 /*
@@ -3938,26 +3895,6 @@ KnownAssignedXidsGetAndSetXmin(TransactionId *xarray, TransactionId *xmin,
 static TransactionId
 KnownAssignedXidsGetOldestXmin(void)
 {
-#ifdef PGXC
-	/*
-	 * Postgres-XC Version 1.0.x supports log shipping replication but not hot standby
-	 * because hot standby needs to provide consistent database views for all the
-	 * datanode, which is not available yet.
-	 *
-	 * On the other hand, in the slave, current KnownAssignedXids ignores latter half
-	 * of XLOG_XACT_ASSIGNMENT wal record and registers all the possible XIDs found
-	 * at the first half of the wal record.   Some of them can be missing and such missing
-	 * Xids remain in the buffer, causing overflow and the slave stops.
-	 *
-	 * It will need various change in the code, while the hot standby does not work correctly.
-	 *
-	 * For short term solution for Version 1.0.x, it was determined to disable whole hot
-	 * hot staydby.
-	 *
-	 * Hot standby correction will be done in next major release.
-	 */
-	return InvalidTransactionId;
-#else
 	/* use volatile pointer to prevent code rearrangement */
 	volatile ProcArrayStruct *pArray = procArray;
 	int			head,
@@ -3980,7 +3917,6 @@ KnownAssignedXidsGetOldestXmin(void)
 	}
 
 	return InvalidTransactionId;
-#endif
 }
 
 /*
@@ -4027,6 +3963,120 @@ KnownAssignedXidsDisplay(int trace_level)
 
 	pfree(buf.data);
 }
+
+
+#ifdef XCP
+/*
+ * GetGlobalSessionInfo
+ *
+ * Determine the global session id of the specified backend process
+ * Returns coordinator node_id and pid of the initiating coordinator session.
+ * If no such backend or global session id is not defined for the backend
+ * return zero values.
+ */
+void
+GetGlobalSessionInfo(int pid, Oid *coordId, int *coordPid)
+{
+	ProcArrayStruct *arrayP = procArray;
+	int			index;
+
+	*coordId = InvalidOid;
+	*coordPid = 0;
+
+	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	/*
+	 * Scan processes and get from it info about the parent session
+	 */
+	for (index = 0; index < arrayP->numProcs; index++)
+	{
+		volatile PGPROC *proc = &allProcs[arrayP->pgprocnos[index]];
+
+		if (proc->pid == pid)
+		{
+			*coordId = proc->coordId;
+			*coordPid = proc->coordPid;
+			break;
+		}
+	}
+
+	LWLockRelease(ProcArrayLock);
+}
+
+
+/*
+ * GetFirstBackendId
+ *
+ * Determine BackendId of the current process.
+ * The caller must hold the ProcArrayLock and the global session id should
+ * be defined.
+ */
+int
+GetFirstBackendId(int *numBackends, int *backends)
+{
+	ProcArrayStruct *arrayP = procArray;
+	Oid				coordId = MyProc->coordId;
+	int				coordPid = MyProc->coordPid;
+	int				bCount = 0;
+	int				bPids[MaxBackends];
+	int				index;
+
+	Assert(OidIsValid(coordId));
+
+	/* Scan processes */
+	for (index = 0; index < arrayP->numProcs; index++)
+	{
+		volatile PGPROC *proc = &allProcs[arrayP->pgprocnos[index]];
+
+		/* Skip MyProc */
+		if (proc == MyProc)
+			continue;
+
+		if (proc->coordId == coordId && proc->coordPid == coordPid)
+		{
+			/* BackendId is the same for all backends of the session */
+			if (proc->firstBackendId != InvalidBackendId)
+				return proc->firstBackendId;
+
+			bPids[bCount++] = proc->pid;
+		}
+	}
+
+	if (*numBackends > 0)
+	{
+		int i, j;
+		/*
+		 * This is not the first invocation, to prevent endless loop in case
+		 * if first backend failed to complete initialization check if all the
+		 * processes which were intially found are still here, throw error if
+		 * not.
+		 */
+		for (i = 0; i < *numBackends; i++)
+		{
+			bool found = false;
+
+			for (j = 0; j < bCount; j++)
+			{
+				if (bPids[j] == backends[i])
+				{
+					found = true;
+					break;
+				}
+			}
+
+			if (!found)
+				elog(ERROR, "Failed to determine BackendId for distributed session");
+		}
+	}
+	else
+	{
+		*numBackends = bCount;
+		if (bCount)
+			memcpy(backends, bPids, bCount * sizeof(int));
+	}
+	return InvalidBackendId;
+}
+#endif
 
 /*
  * KnownAssignedXidsReset

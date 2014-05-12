@@ -3,6 +3,11 @@
  * gtm_client.h
  *
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
@@ -53,12 +58,15 @@ typedef union GTM_ResultData
 	{
 		GTM_SequenceKeyData		seqkey;
 		GTM_Sequence			seqval;
-	} grd_seq;									/* SEQUENCE_GET_NEXT */
-
+#ifdef XCP
+		GTM_Sequence			rangemax;
+#endif
+	} grd_seq;									/* SEQUENCE_GET_CURRENT
+												 * SEQUENCE_GET_NEXT */
 	struct
 	{
-		int				seq_count;
-		GTM_SeqInfo			**seq;
+		int						seq_count;
+		GTM_SeqInfo			   *seq;
 	} grd_seq_list;								/* SEQUENCE_GET_LIST */
 
 	struct
@@ -160,7 +168,7 @@ int end_replication_initial_sync(GTM_Conn *);
 size_t get_node_list(GTM_Conn *, GTM_PGXCNodeInfo *, size_t);
 GlobalTransactionId get_next_gxid(GTM_Conn *);
 uint32 get_txn_gxid_list(GTM_Conn *, GTM_Transactions *);
-size_t get_sequence_list(GTM_Conn *, GTM_SeqInfo **, size_t);
+size_t get_sequence_list(GTM_Conn *, GTM_SeqInfo **);
 
 /*
  * Transaction Management API
@@ -248,6 +256,10 @@ int node_unregister(GTM_Conn *conn, GTM_PGXCNodeType type, const char *node_name
 int bkup_node_unregister(GTM_Conn *conn, GTM_PGXCNodeType type, const char * node_name);
 int backend_disconnect(GTM_Conn *conn, bool is_postmaster, GTM_PGXCNodeType type, char *node_name);
 char *node_get_local_addr(GTM_Conn *conn, char *buf, size_t buflen, int *rc);
+#ifdef XCP
+int register_session(GTM_Conn *conn, const char *coord_name, int coord_procid,
+				 int coord_backendid);
+#endif
 
 /*
  * Sequence Management API
@@ -268,10 +280,26 @@ int close_sequence(GTM_Conn *conn, GTM_SequenceKey key);
 int bkup_close_sequence(GTM_Conn *conn, GTM_SequenceKey key);
 int rename_sequence(GTM_Conn *conn, GTM_SequenceKey key, GTM_SequenceKey newkey);
 int bkup_rename_sequence(GTM_Conn *conn, GTM_SequenceKey key, GTM_SequenceKey newkey);
+#ifdef XCP
+int get_current(GTM_Conn *conn, GTM_SequenceKey key,
+			char *coord_name, int coord_procid, GTM_Sequence *result);
+int get_next(GTM_Conn *conn, GTM_SequenceKey key,
+		 char *coord_name, int coord_procid,
+		 GTM_Sequence range, GTM_Sequence *result, GTM_Sequence *rangemax);
+int bkup_get_next(GTM_Conn *conn, GTM_SequenceKey key,
+		 char *coord_name, int coord_procid,
+		 GTM_Sequence range, GTM_Sequence *result, GTM_Sequence *rangemax);
+int set_val(GTM_Conn *conn, GTM_SequenceKey key, char *coord_name,
+		int coord_procid, GTM_Sequence nextval, bool iscalled);
+int bkup_set_val(GTM_Conn *conn, GTM_SequenceKey key, char *coord_name,
+			 int coord_procid, GTM_Sequence nextval, bool iscalled);
+#else
+GTM_Sequence get_current(GTM_Conn *conn, GTM_SequenceKey key);
 GTM_Sequence get_next(GTM_Conn *conn, GTM_SequenceKey key);
 GTM_Sequence bkup_get_next(GTM_Conn *conn, GTM_SequenceKey key);
 int set_val(GTM_Conn *conn, GTM_SequenceKey key, GTM_Sequence nextval, bool is_called);
 int bkup_set_val(GTM_Conn *conn, GTM_SequenceKey key, GTM_Sequence nextval, bool is_called);
+#endif
 int reset_sequence(GTM_Conn *conn, GTM_SequenceKey key);
 int bkup_reset_sequence(GTM_Conn *conn, GTM_SequenceKey key);
 

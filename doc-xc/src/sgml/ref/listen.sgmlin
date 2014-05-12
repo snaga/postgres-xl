@@ -35,6 +35,13 @@ LISTEN <replaceable class="PARAMETER">channel</replaceable>
    in <productname>Postgres-XC</> yet.
   </para>
 <!## end>
+<!## XL>
+&xlonly;
+  <para>
+   The <command>LISTEN</> statement is not yet supported
+   in <productname>Postgres-XL</>.
+  </para>
+<!## end>
 
 <!## PG>
   <para>

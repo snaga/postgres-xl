@@ -3,6 +3,11 @@
  * arrayfuncs.c
  *	  Support functions for arrays.
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -161,6 +166,40 @@ array_in(PG_FUNCTION_ARGS)
 				lBound[MAXDIM];
 	ArrayMetaState *my_extra;
 
+#ifdef XCP
+	/* Make a modifiable copy of the input */
+	string_save = pstrdup(string);
+	if (*string_save == '(')
+	{
+		/*
+		 * String representation contains prefix defining data type of array
+		 * elements, if array has been output as anyarray.
+		 */
+		char *typnspname;
+		char *typname;
+
+		/* Type namespace is started after '(' and terminated by a '.' */
+		typnspname = string_save + 1;
+		for (p = typnspname; *p != '.'; p++)
+			if (*p == ')' || *p == '\0') /* dot not found */
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+						 errmsg("invalid element type definition")));
+		/* it is OK to modify the copy */
+		*p = '\0';
+		typname = p + 1;
+		for (p = typname; *p != ')'; p++)
+			if (*p == '\0') /* closing paren not found */
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+						 errmsg("invalid element type definition")));
+		*p = '\0';
+		p++;
+		element_type = get_typname_typid(typname, get_namespaceid(typnspname));
+	}
+	else
+		p = string_save;
+#endif
 	/*
 	 * We arrange to look up info about element type, including its input
 	 * conversion proc, only once per series of calls, assuming the element
@@ -194,6 +233,7 @@ array_in(PG_FUNCTION_ARGS)
 	typdelim = my_extra->typdelim;
 	typioparam = my_extra->typioparam;
 
+#ifndef XCP
 	/* Make a modifiable copy of the input */
 	string_save = pstrdup(string);
 
@@ -206,6 +246,7 @@ array_in(PG_FUNCTION_ARGS)
 	 * outer loop iterates once per dimension item.
 	 */
 	p = string_save;
+#endif
 	ndim = 0;
 	for (;;)
 	{

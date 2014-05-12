@@ -3,6 +3,11 @@
  * storage.c
  *	  code to create and destroy physical storage for relations
  *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * Portions Copyright (c) 2012-2014, TransLattice, Inc.
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -106,6 +111,11 @@ RelationCreateStorage(RelFileNode rnode, char relpersistence)
 	switch (relpersistence)
 	{
 		case RELPERSISTENCE_TEMP:
+#ifdef XCP
+			if (OidIsValid(MyCoordId))
+				backend = MyFirstBackendId;
+			else
+#endif
 			backend = MyBackendId;
 			needs_wal = false;
 			break;
@@ -504,6 +514,24 @@ smgr_redo(XLogRecPtr lsn, XLogRecord *record)
 		 * best we can until the drop is seen.
 		 */
 		smgrcreate(reln, MAIN_FORKNUM, true);
+
+		/*
+		 * Before we perform the truncation, update minimum recovery point
+		 * to cover this WAL record. Once the relation is truncated, there's
+		 * no going back. The buffer manager enforces the WAL-first rule
+		 * for normal updates to relation files, so that the minimum recovery
+		 * point is always updated before the corresponding change in the
+		 * data file is flushed to disk. We have to do the same manually
+		 * here.
+		 *
+		 * Doing this before the truncation means that if the truncation fails
+		 * for some reason, you cannot start up the system even after restart,
+		 * until you fix the underlying situation so that the truncation will
+		 * succeed. Alternatively, we could update the minimum recovery point
+		 * after truncation, but that would leave a small window where the
+		 * WAL-first rule could be violated.
+		 */
+		XLogFlush(lsn);
 
 		smgrtruncate(reln, MAIN_FORKNUM, xlrec->blkno);
 
