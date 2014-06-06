@@ -57,6 +57,7 @@
 #include "pgxc/pgxc.h"
 #endif
 #ifdef XCP
+#include "access/visibilitymap.h"
 #include "executor/executor.h"
 #include "nodes/makefuncs.h"
 #include "pgxc/execRemote.h"

@@ -824,7 +824,7 @@ gtm_serialize_pgxcnodeinfo(GTM_PGXCNodeInfo *data, char *buf, size_t buflen)
  */
 #ifdef XCP
 size_t
-gtm_deserialize_pgxcnodeinfo(GTM_PGXCNodeInfo *data, const char *buf, size_t buflen, PQExpBuffer *errorbuf)
+gtm_deserialize_pgxcnodeinfo(GTM_PGXCNodeInfo *data, const char *buf, size_t buflen, PQExpBuffer errorbuf)
 #else
 size_t
 gtm_deserialize_pgxcnodeinfo(GTM_PGXCNodeInfo *data, const char *buf, size_t buflen)

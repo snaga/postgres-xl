@@ -257,7 +257,6 @@ void
 SetProducerTempMemory(DestReceiver *self, MemoryContext tmpcxt)
 {
 	ProducerState *myState = (ProducerState *) self;
-	DestReceiver *oldconsumer;
 
 	Assert(myState->pub.mydest == DestProducer);
 	myState->tmpcxt = tmpcxt;

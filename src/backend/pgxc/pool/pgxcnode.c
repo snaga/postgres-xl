@@ -2742,6 +2742,7 @@ PGXCNodeResetParams(bool only_local)
 }
 
 
+#ifdef NOT_USED
 static char *
 quote_ident_cstr(char *rawstr)
 {
@@ -2756,6 +2757,8 @@ quote_ident_cstr(char *rawstr)
 
 	return result;
 }
+#endif
+
 
 static void
 get_set_command(HTAB *table, StringInfo command, bool local)

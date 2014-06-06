@@ -47,8 +47,6 @@ RemoteCopy_GetRelationLoc(RemoteCopyData *state,
 {
 #ifndef XCP
 	ExecNodes  *exec_nodes = makeNode(ExecNodes);
-#else
-	ExecNodes  *exec_nodes = NULL;
 #endif
 
 	/*

@@ -25,6 +25,10 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#ifdef XCP
+#include "pgstat.h"
+#endif
+
 #include "access/heapam.h"
 #include "access/sysattr.h"
 #include "access/xact.h"

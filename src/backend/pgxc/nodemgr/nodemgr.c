@@ -206,7 +206,7 @@ check_node_options(const char *node_name, List *options, char **node_host,
 						node_name)));
 
 #ifdef XCP
-	if (node_type == PGXC_NODE_DATANODE && NumDataNodes >= MaxDataNodes)
+	if (*node_type == PGXC_NODE_DATANODE && NumDataNodes >= MaxDataNodes)
 		ereport(ERROR,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("Too many datanodes, current value of max_data_nodes is %d",
@@ -607,7 +607,10 @@ PgxcNodeAlter(AlterNodeStmt *stmt)
 {
 	const char *node_name = stmt->node_name;
 	char	   *node_host;
-	char		node_type, node_type_old;
+	char		node_type;
+#ifndef XCP
+	char		node_type_old;
+#endif
 	int			node_port;
 	bool		is_preferred;
 	bool		is_primary;
@@ -649,7 +652,9 @@ PgxcNodeAlter(AlterNodeStmt *stmt)
 	is_preferred = is_pgxc_nodepreferred(nodeOid);
 	is_primary = is_pgxc_nodeprimary(nodeOid);
 	node_type = get_pgxc_nodetype(nodeOid);
+#ifndef XCP
 	node_type_old = node_type;
+#endif
 	node_id = get_pgxc_node_id(nodeOid);
 
 	/* Filter options */

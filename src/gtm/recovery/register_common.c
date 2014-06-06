@@ -819,7 +819,6 @@ Recovery_PGXCNodeRegisterCoordProcess(char *coord_node, int coord_procid,
 								      int coord_backendid)
 {
 	GTM_PGXCNodeInfo   *nodeinfo;
-	GTM_PGXCSession    *session;
 	int					i;
 
 	/*

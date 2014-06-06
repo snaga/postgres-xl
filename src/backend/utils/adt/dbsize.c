@@ -1003,7 +1003,7 @@ pgxc_execute_on_nodes(int numnodes, Oid *nodelist, char *query)
 	bool            isnull;
 	char           *nodename;
 #endif
-	Datum           datum;
+	Datum			datum = (Datum) 0;
 
 #ifdef XCP
 	EState		   *estate;

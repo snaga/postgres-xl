@@ -2323,7 +2323,7 @@ _equalXmlSerialize(const XmlSerialize *a, const XmlSerialize *b)
 
 #ifdef XCP
 static bool
-_equalDistribution(Distribution *a, Distribution *b)
+_equalDistribution(const Distribution *a, const Distribution *b)
 {
 	COMPARE_SCALAR_FIELD(distributionType);
 	COMPARE_NODE_FIELD(distributionExpr);
@@ -2439,7 +2439,7 @@ _equalBarrierStmt(const BarrierStmt *a, const BarrierStmt *b)
  * Lock Cluster stuff
  */
 static bool
-_equalPauseClusterStmt(PauseClusterStmt *a, PauseClusterStmt *b)
+_equalPauseClusterStmt(const PauseClusterStmt *a, const PauseClusterStmt *b)
 {
 	COMPARE_SCALAR_FIELD(pause);
 	return true;

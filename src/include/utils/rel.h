@@ -377,8 +377,8 @@ typedef struct StdRdOptions
  */
 #ifdef XCP
 #define RelationUsesLocalBuffers(relation) \
-	!OidIsValid(MyCoordId) && \
-		((relation)->rd_rel->relpersistence == RELPERSISTENCE_TEMP)
+	(!OidIsValid(MyCoordId) && \
+		((relation)->rd_rel->relpersistence == RELPERSISTENCE_TEMP))
 #else
 #define RelationUsesLocalBuffers(relation) \
 	((relation)->rd_rel->relpersistence == RELPERSISTENCE_TEMP)

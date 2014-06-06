@@ -37,7 +37,7 @@ size_t gtm_deserialize_transactions(GTM_Transactions *, const char *, size_t);
 size_t gtm_get_pgxcnodeinfo_size(GTM_PGXCNodeInfo *);
 size_t gtm_serialize_pgxcnodeinfo(GTM_PGXCNodeInfo *, char *, size_t);
 #ifdef XCP
-size_t gtm_deserialize_pgxcnodeinfo(GTM_PGXCNodeInfo *, const char *, size_t, PQExpBuffer *);
+size_t gtm_deserialize_pgxcnodeinfo(GTM_PGXCNodeInfo *, const char *, size_t, PQExpBuffer);
 #else
 size_t gtm_deserialize_pgxcnodeinfo(GTM_PGXCNodeInfo *, const char *, size_t);
 #endif

@@ -1275,7 +1275,7 @@ createLocator(char locatorType, RelationAccessType accessType,
 {
 	Locator    *locator;
 	ListCell   *lc;
-	void 	   *nodeMap;
+	void 	   *nodeMap = NULL;
 	int 		i;
 
 	locator = (Locator *) palloc(sizeof(Locator));
@@ -1287,7 +1287,6 @@ createLocator(char locatorType, RelationAccessType accessType,
 	{
 		case LOCATOR_LIST_NONE:
 			/* No map, return indexes */
-			nodeMap = NULL;
 			break;
 		case LOCATOR_LIST_INT:
 			/* Copy integer array */

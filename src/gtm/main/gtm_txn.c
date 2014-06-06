@@ -493,7 +493,8 @@ GTM_SetDoVacuum(GTM_TransactionHandle handle)
 GlobalTransactionId
 GTM_GetGlobalTransactionIdMulti(GTM_TransactionHandle handle[], int txn_count)
 {
-	GlobalTransactionId xid, start_xid = InvalidGlobalTransactionId;
+	GlobalTransactionId xid = InvalidGlobalTransactionId;
+	GlobalTransactionId start_xid = InvalidGlobalTransactionId;
 	GTM_TransactionInfo *gtm_txninfo = NULL;
 	int ii;
 #ifdef XCP
@@ -581,7 +582,8 @@ GTM_GetGlobalTransactionIdMulti(GTM_TransactionHandle handle[], int txn_count)
 	/* Periodically write the xid and sequence info out to the control file.
 	 * Try and handle wrapping, too.
 	 */
-	if (xid - ControlXid > CONTROL_INTERVAL || xid < ControlXid)
+	if (GlobalTransactionIdIsValid(xid) &&
+			(xid - ControlXid > CONTROL_INTERVAL || xid < ControlXid))
 	{
 		save_control = true;
 		ControlXid = xid;
@@ -1272,7 +1274,7 @@ GTM_BkupBeginTransactionGetGXIDMulti(char *coord_name,
 
 #ifdef XCP
 	bool save_control = false;
-	GlobalTransactionId xid;
+	GlobalTransactionId xid = InvalidGlobalTransactionId;
 #endif
 
 	oldContext = MemoryContextSwitchTo(TopMostMemoryContext);
@@ -1309,7 +1311,8 @@ GTM_BkupBeginTransactionGetGXIDMulti(char *coord_name,
 	/* Periodically write the xid and sequence info out to the control file.
 	 * Try and handle wrapping, too.
 	 */
-	if (xid - ControlXid > CONTROL_INTERVAL || xid < ControlXid)
+	if (GlobalTransactionIdIsValid(xid) &&
+			(xid - ControlXid > CONTROL_INTERVAL || xid < ControlXid))
 	{
 		save_control = true;
 		ControlXid = xid;

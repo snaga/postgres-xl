@@ -1005,7 +1005,7 @@ SharedQueueReset(SharedQueue squeue, int consumerIdx)
  * That should allow to Finish/UnBind the queue gracefully and prevent
  * producer hanging.
  */
-int
+void
 SharedQueueResetNotConnected(SharedQueue squeue)
 {
 	SQueueSync *sqsync = squeue->sq_sync;

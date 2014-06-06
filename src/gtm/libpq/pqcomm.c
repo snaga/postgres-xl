@@ -133,7 +133,6 @@ StreamServerPort(int family, char *hostName, unsigned short portNumber,
 {
 	int			fd,
 				err;
-	int			maxconn;
 	int			ret;
 	char		portNumberStr[32];
 	const char *familyDesc;

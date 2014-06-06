@@ -102,6 +102,7 @@
 #include "utils/typcache.h"
 #ifdef XCP
 #include "pgxc/pgxc.h"
+#include "utils/memutils.h"
 #endif
 
 static TupleDesc ExecTypeFromTLInternal(List *targetList,

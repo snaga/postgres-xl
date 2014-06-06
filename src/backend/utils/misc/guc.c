@@ -3689,8 +3689,9 @@ static struct config_enum ConfigureNamesEnum[] =
 		{"remotetype", PGC_BACKEND, CONN_AUTH,
 #ifdef XCP
 			gettext_noop("Sets the type of Postgres-XL remote connection"),
-#endif
+#else			
 			gettext_noop("Sets the type of Postgres-XC remote connection"),
+#endif
 			NULL
 		},
 		&remoteConnType,

@@ -469,10 +469,10 @@ distrib_copy_from(RedistribState *distribState, ExecNodes *exec_nodes)
 	TupleDesc tupdesc;
 #ifdef XCP
 	/* May be needed to decode partitioning value */
-	int 		partIdx;
+	int 		partIdx = -1;
 	FmgrInfo 	in_function;
 	Oid 		typioparam;
-	int 		typmod;
+	int 		typmod = 0;
 #endif
 
 	/* Nothing to do if on remote node */
@@ -577,6 +577,7 @@ distrib_copy_from(RedistribState *distribState, ExecNodes *exec_nodes)
 			 */
 			fields = CopyOps_RawDataToArrayField(tupdesc, data, len - 1);
 
+			Assert(partIdx >= 0);
 			/* Determine partitioning value */
 			if (fields[partIdx])
 			{

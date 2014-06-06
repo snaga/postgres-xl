@@ -54,7 +54,7 @@ extern void SharedQueueWrite(SharedQueue squeue, int consumerIdx,
 extern bool SharedQueueRead(SharedQueue squeue, int consumerIdx,
 				TupleTableSlot *slot, bool canwait);
 extern void SharedQueueReset(SharedQueue squeue, int consumerIdx);
-extern int SharedQueueResetNotConnected(SharedQueue squeue);
+extern void SharedQueueResetNotConnected(SharedQueue squeue);
 extern bool SharedQueueCanPause(SharedQueue squeue);
 
 #endif

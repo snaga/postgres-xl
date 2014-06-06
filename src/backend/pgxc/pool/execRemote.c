@@ -1629,7 +1629,7 @@ FetchTuple(ResponseCombiner *combiner)
 		/* Advance subplan in a loop until we have something to return */
 		for (;;)
 		{
-			Datum 	value = NULL;
+			Datum 	value = (Datum) 0;
 			bool 	isnull;
 			int 	numnodes;
 			int		i;
@@ -2474,7 +2474,6 @@ is_data_node_ready(PGXCNodeHandle * conn)
 	char		*msg;
 	int		msg_len;
 	char		msg_type;
-	bool		suspended = false;
 
 	for (;;)
 	{
@@ -2496,23 +2495,18 @@ is_data_node_ready(PGXCNodeHandle * conn)
 			return false;
 
 		msg_type = get_message(conn, &msg_len, &msg);
-		switch (msg_type)
+		if (msg_type == 'Z')
 		{
-			case 's':			/* PortalSuspended */
-				suspended = true;
-				break;
-
-			case 'Z':			/* ReadyForQuery */
-				/*
-				 * Return result depends on previous connection state.
-				 * If it was PORTAL_SUSPENDED Coordinator want to send down
-				 * another EXECUTE to fetch more rows, otherwise it is done
-				 * with the connection
-				 */
-				conn->transaction_status = msg[0];
-				conn->state = DN_CONNECTION_STATE_IDLE;
-				conn->combiner = NULL;
-				return true;
+			/*
+			 * Return result depends on previous connection state.
+			 * If it was PORTAL_SUSPENDED Coordinator want to send down
+			 * another EXECUTE to fetch more rows, otherwise it is done
+			 * with the connection
+			 */
+			conn->transaction_status = msg[0];
+			conn->state = DN_CONNECTION_STATE_IDLE;
+			conn->combiner = NULL;
+			return true;
 		}
 	}
 	/* never happen, but keep compiler quiet */
@@ -9068,7 +9062,7 @@ get_success_nodes(int node_count, PGXCNodeHandle **handles, char node_type, Stri
 	for (i = 0; i < node_count; i++)
 	{
 		PGXCNodeHandle *handle = handles[i];
-		int nodenum = PGXCNodeGetNodeId(handle->nodeoid, node_type);
+		int nodenum = PGXCNodeGetNodeId(handle->nodeoid, &node_type);
 
 		if (!handle->error)
 		{

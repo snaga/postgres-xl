@@ -399,7 +399,7 @@ ExecFinishInitProcNode(PlanState *node)
 
 		case T_AppendState:
 		{
-			AppendState    *append = (RemoteSubplanState *) node;
+			AppendState    *append = (AppendState *) node;
 			int 			i;
 
 			for (i = 0; i < append->as_nplans; i++)

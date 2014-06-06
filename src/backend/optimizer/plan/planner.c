@@ -1858,7 +1858,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 					if (!IsA(sort_plan, Sort))
 					{
 						RemoteSubplan *pushdown;
-						pushdown = find_push_down_plan(sort_plan, true);
+						pushdown = find_push_down_plan((Plan *)sort_plan, true);
 						Assert(pushdown && pushdown->sort);
 						get_column_info_for_window(root, wc, tlist,
 												   pushdown->sort->numCols,

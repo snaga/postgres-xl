@@ -2166,7 +2166,7 @@ PlannedStmt *
 pgxc_direct_planner(Query *query, int cursorOptions, ParamListInfo boundParams)
 {
 	PlannedStmt *result;
-	RemoteQuery *query_step;
+	RemoteQuery *query_step = NULL;
 
 	/* build the PlannedStmt result */
 	result = makeNode(PlannedStmt);
@@ -2190,6 +2190,7 @@ pgxc_direct_planner(Query *query, int cursorOptions, ParamListInfo boundParams)
 		}
 	}
 
+	Assert(query_step);
 	/* Optimize multi-node handling */
 	query_step->read_only = query->commandType == CMD_SELECT;
 
