@@ -4299,7 +4299,6 @@ PostgresMain(int argc, char *argv[],
 			ereport(ERROR,
 				(errcode(ERRCODE_IO_ERROR),
 				 errmsg("Can not connect to pool manager")));
-			return STATUS_ERROR;
 		}
 		/* Pooler initialization has to be made before ressource is released */
 		PoolManagerConnect(pool_handle, dbname, username, session_options());
