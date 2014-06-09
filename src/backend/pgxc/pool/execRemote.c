@@ -774,7 +774,12 @@ HandleCopyDataRow(RemoteQueryState *combiner, char *msg_body, size_t len)
 			break;
 		case REMOTE_COPY_TUPLESTORE:
 #ifdef XCP
-			tuplestore_putmessage(combiner->tuplestorestate, len, msg_body);
+			/*
+			 * Do not store trailing \n character.
+			 * When tuplestore data are loaded to a table it automatically
+			 * inserts line ends.
+			 */
+			tuplestore_putmessage(combiner->tuplestorestate, len-1, msg_body);
 #else
 			{
 				Datum  *values;
