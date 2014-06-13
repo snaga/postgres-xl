@@ -1618,14 +1618,18 @@ copytup_message(Tuplestorestate *state, void *tup)
 static void
 writetup_message(Tuplestorestate *state, void *tup)
 {
-	int *msglen = (int *) tup;
+	void *tupbody = ((char *) tup) + sizeof(int);
+	unsigned int tupbodylen = *((int *) tup);
 	/* total on-disk footprint: */
-	unsigned int tuplen = *msglen;
+	unsigned int tuplen = tupbodylen + sizeof(tuplen);
 
-	if (BufFileWrite(state->myfile, tup, tuplen) != tuplen)
+	if (BufFileWrite(state->myfile, &tuplen,
+					 sizeof(tuplen)) != sizeof(tuplen))
+		elog(ERROR, "write failed");
+	if (BufFileWrite(state->myfile, tupbody, tupbodylen) != tupbodylen)
 		elog(ERROR, "write failed");
 	if (state->backward)		/* need trailing length word? */
-		if (BufFileWrite(state->myfile, (void *) &tuplen,
+		if (BufFileWrite(state->myfile, &tuplen,
 						 sizeof(tuplen)) != sizeof(tuplen))
 			elog(ERROR, "write failed");
 
@@ -1636,15 +1640,16 @@ writetup_message(Tuplestorestate *state, void *tup)
 static void *
 readtup_message(Tuplestorestate *state, unsigned int len)
 {
-	void *tuple = palloc(len + sizeof(int));
-	*((int *) tuple) = len;
+	void *tuple = palloc(len);
+	int tupbodylen = len - sizeof(int);
+	void *tupbody = ((char *) tuple) + sizeof(int);
+	*((int *) tuple) = tupbodylen;
 
 	USEMEM(state, GetMemoryChunkSpace(tuple));
 	/* read in the tuple proper */
-	if (BufFileRead(state->myfile, ((char *) tuple) + sizeof(int),
-					len) != (size_t) len)
+	if (BufFileRead(state->myfile, tupbody, tupbodylen) != tupbodylen)
 		elog(ERROR, "unexpected end of data");
-	if (state->backward)		/* need trailing length word? */
+	if (state->backward)		/* need to read trailing length word? */
 		if (BufFileRead(state->myfile, (void *) &len,
 						sizeof(len)) != sizeof(len))
 			elog(ERROR, "unexpected end of data");
