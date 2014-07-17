@@ -2342,15 +2342,19 @@ GTMProxy_ProxyCommand(GTMProxy_ConnectionInfo *conninfo, GTM_Conn *gtm_conn,
 	GTMProxy_CommandInfo *cmdinfo;
 	GTMProxy_ThreadInfo *thrinfo = GetMyThreadInfo;
 	GTM_ProxyMsgHeader proxyhdr;
+	char *unreadmsg;
+	int unreadmsglen;
 
 	proxyhdr.ph_conid = conninfo->con_id;
+
+	unreadmsglen = pq_getmsgunreadlen(message);
+	unreadmsg = pq_getmsgbytes(message, unreadmsglen);
 
 	 /* Start the message. */
 	if (gtmpqPutMsgStart('C', true, gtm_conn) ||
 		gtmpqPutnchar((char *)&proxyhdr, sizeof (GTM_ProxyMsgHeader), gtm_conn) ||
 		gtmpqPutInt(mtype, sizeof (GTM_MessageType), gtm_conn) ||
-		gtmpqPutnchar(pq_getmsgbytes(message, pq_getmsgunreadlen(message)),
-					  pq_getmsgunreadlen(message), gtm_conn))
+		gtmpqPutnchar(unreadmsg, unreadmsglen, gtm_conn))
 		elog(ERROR, "Error proxing data");
 
 	/*
