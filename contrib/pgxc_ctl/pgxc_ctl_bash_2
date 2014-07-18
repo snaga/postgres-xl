@@ -109,6 +109,9 @@ function print_values
 	echo primaryDatanode $primaryDatanode
 	print_array datanodeNames
 	print_array datanodePorts
+#ifdef XCP
+	print_array datanodePoolerPorts
+#endif
 	print_array datanodePgHbaEntries
 	
 	# Datanodes masters

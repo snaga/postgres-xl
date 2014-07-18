@@ -57,6 +57,8 @@ ex pgxc_ctl_bash.c.wk <<EOF
 %s/"/\\\"/g
 w
 %s/^\(.*\)$/"\1",/
+%s/^"#ifdef XCP",$/#ifdef XCP/
+%s/^"#endif",$/#endif/
 wq
 EOF
 
@@ -112,6 +114,8 @@ ex pgxc_ctl_conf_part.wk <<EOF
 %s/"/\\\"/g
 w
 %s/^\(.*\)$/"\1",/
+%s/^"#ifdef XCP",$/#ifdef XCP/
+%s/^"#endif",$/#endif/
 wq
 EOF
 
