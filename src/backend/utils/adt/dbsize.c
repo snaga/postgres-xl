@@ -987,6 +987,9 @@ pgxc_database_size(Oid dbOid)
  * assumes that the query returns exactly one row with one attribute of type
  * int64. If there is a single node, it just returns the datum as-is without
  * checking the type of the returned value.
+ *
+ * Note: nodelist should either have all coordinators or all datanodes in it.
+ * Mixing both will result an error being thrown
  */
 Datum
 pgxc_execute_on_nodes(int numnodes, Oid *nodelist, char *query)
@@ -1019,6 +1022,8 @@ pgxc_execute_on_nodes(int numnodes, Oid *nodelist, char *query)
 	plan = makeNode(RemoteQuery);
 	plan->combine_type = COMBINE_TYPE_NONE;
 	plan->exec_nodes = makeNode(ExecNodes);
+	plan->exec_type = EXEC_ON_NONE;
+
 	for (i = 0; i < numnodes; i++)
 	{
 		char ntype = PGXC_NODE_NONE;
@@ -1028,10 +1033,26 @@ pgxc_execute_on_nodes(int numnodes, Oid *nodelist, char *query)
 			ereport(ERROR,
 					(errcode(ERRCODE_INTERNAL_ERROR),
 					 errmsg("Unknown node Oid: %u", nodelist[i])));
+		else if (ntype == PGXC_NODE_COORDINATOR) 
+		{
+			if (plan->exec_type == EXEC_ON_DATANODES)
+				ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("Cannot mix datanodes and coordinators")));
+			plan->exec_type = EXEC_ON_COORDS;
+		}
+		else
+		{
+			if (plan->exec_type == EXEC_ON_COORDS)
+				ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("Cannot mix datanodes and coordinators")));
+			plan->exec_type = EXEC_ON_DATANODES;
+		}
+
 	}
 	plan->sql_statement = query;
 	plan->force_autocommit = false;
-	plan->exec_type = EXEC_ON_DATANODES;
 	/*
 	 * We only need the target entry to determine result data type.
 	 * So create dummy even if real expression is a function.
