@@ -11,7 +11,7 @@
  *-------------------------------------------------------------------------
  */
 #ifndef VARNAMES_H
-#define VAR_VARNAMES_H
+#define VARNAMES_H
 
 /* Install Directory */
 #define VAR_pgxcInstallDir	"pgxcInstallDir" /* Not mandatory */

@@ -1832,10 +1832,12 @@ cmd_t *prepare_killDatanodeMaster(char *nodeName)
 		freeAndReset(pidList);
 	}
 	else
+	{
+		elog(WARNING, "WARNING: pid for datanode master \"%s\" was not found.  Remove socket only.\n", nodeName);
 		snprintf(newCommand(cmd), MAXLINE,
-				 "killall -u %s -9 postgres;"	/* Kill the postmaster and all its children */
 				 "rm -rf /tmp/.s.'*'%d'*'",		/* Remove the socket */
-				 sval(VAR_pgxcUser), atoi(aval(VAR_datanodePorts)[dnIndex]));
+				 atoi(aval(VAR_datanodePorts)[dnIndex]));
+	}
 	return(cmd);
 }
 

@@ -703,9 +703,10 @@ cmd_t * prepare_killCoordinatorMaster(char *nodeName)
 	}
 	else
 	{
+		elog(WARNING, "WARNING: pid for coordinator master \"%s\" was not found.  Remove socket only.\n", nodeName);
 		snprintf(newCommand(cmdKill), MAXLINE,
-				 "killall -u %s -9 postgres; rm -f /tmp/.s.'*'%d'*'",
-				 sval(VAR_pgxcUser), atoi(aval(VAR_coordPorts)[idx]));
+				 "rm -f /tmp/.s.'*'%d'*'",
+				 atoi(aval(VAR_coordPorts)[idx]));
 	}
 	return cmd;
 }
@@ -748,29 +749,28 @@ cmd_t *prepare_killCoordinatorSlave(char *nodeName)
 {
 	int idx;
 	pid_t pmPid;
-	cmd_t *cmd = NULL, *cmdKill = NULL, *cmdRmSock;
+	cmd_t *cmd = NULL;
 
 	if ((idx = coordIdx(nodeName)) < 0)
 	{
 		elog(WARNING, "WARNING: %s is not a coordinator.\n", nodeName);
 		return(NULL);
 	}
+	cmd = initCmd(aval(VAR_coordSlaveServers)[idx]);
 	if ((pmPid = get_postmaster_pid(aval(VAR_coordSlaveServers)[idx], aval(VAR_coordSlaveDirs)[idx])) > 0)
 	{
 		char *pidList = getChPidList(aval(VAR_coordSlaveServers)[idx], pmPid);
 
-		cmd = cmdKill = initCmd(aval(VAR_coordSlaveServers)[idx]);
-		snprintf(newCommand(cmdKill), MAXLINE,
-				 "kill -9 %d %s", 
-				 pmPid, pidList);
+		snprintf(newCommand(cmd), MAXLINE,
+				 "kill -9 %d %s", pmPid, pidList);
 		freeAndReset(pidList);
 	}
-	if (cmd == NULL)
-		cmd = cmdRmSock = initCmd(aval(VAR_coordSlaveServers)[idx]);
 	else
-		appendCmdEl(cmd, (cmdRmSock = initCmd(aval(VAR_coordSlaveServers)[idx])));
-	snprintf(newCommand(cmdRmSock), MAXLINE,
+	{
+		elog(WARNING, "WARNING: pid for coordinator slave \"%s\" was not found.  Remove socket only.\n", nodeName);
+		snprintf(newCommand(cmd), MAXLINE,
 			 "rm -f /tmp/.s.'*'%d'*'", atoi(aval(VAR_coordPorts)[idx]));
+	}
 	return(cmd);
 }
 

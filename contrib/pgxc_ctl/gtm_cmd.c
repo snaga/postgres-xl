@@ -57,8 +57,8 @@ cmd_t *prepare_initGtmMaster(void)
 	/* Kill current gtm, bild work directory and run initgtm */
 	cmdInitGtmMaster = initCmd(sval(VAR_gtmMasterServer));
 	snprintf(newCommand(cmdInitGtmMaster), MAXLINE,
-			 "killall -u %s -9 gtm; rm -rf %s; mkdir -p %s;initgtm -Z gtm -D %s",
-			 sval(VAR_pgxcUser), 
+			 "gtm_ctl -D %s -m immediate -Z gtm stop; rm -rf %s; mkdir -p %s;initgtm -Z gtm -D %s",
+			 sval(VAR_gtmMasterDir),
 			 sval(VAR_gtmMasterDir), sval(VAR_gtmMasterDir), sval(VAR_gtmMasterDir));
 
 	/* Then prepare gtm.conf file */
@@ -259,8 +259,8 @@ cmd_t *prepare_initGtmSlave(void)
 	/* Kill current gtm, build work directory and run initgtm */
 	cmdInitGtm = initCmd(sval(VAR_gtmSlaveServer));
 	snprintf(newCommand(cmdInitGtm), MAXLINE,
-			 "killall -u %s -9 gtm; rm -rf %s; mkdir -p %s; initgtm -Z gtm -D %s",
-			 sval(VAR_pgxcUser),
+			 "gtm_ctl -D %s -m immediate -Z gtm stop; rm -rf %s; mkdir -p %s; initgtm -Z gtm -D %s",
+			 sval(VAR_gtmSlaveDir),
 			 sval(VAR_gtmSlaveDir), sval(VAR_gtmSlaveDir), sval(VAR_gtmSlaveDir));
 
 	/* Prepare gtm.conf file */
@@ -471,9 +471,12 @@ cmd_t *prepare_killGtmMaster(void)
 				 "kill -9 %d; rm -rf /tmp/.s.'*'%d'*' %s/gtm.pid",
 				 gtmPid, atoi(sval(VAR_gtmMasterPort)), sval(VAR_gtmMasterDir));
 	else
+	{
+		elog(WARNING, "WARNING: pid for gtm master was not found.  Remove socket only.\n");
 		snprintf(newCommand(cmdKill), MAXLINE,
-				 "killall -u %s -9 gtm; rm -rf /tmp/.s.'*'%d'*' %s/gtm.pid",
-				 sval(VAR_pgxcUser), atoi(sval(VAR_gtmMasterPort)), sval(VAR_gtmMasterDir));
+				 "rm -rf /tmp/.s.'*'%d'*' %s/gtm.pid",
+				 atoi(sval(VAR_gtmMasterPort)), sval(VAR_gtmMasterDir));
+	}
 	return(cmdKill);
 }
 
@@ -519,10 +522,12 @@ cmd_t *prepare_killGtmSlave(void)
 				 "kill -9 %d; rm -rf /tmp/.s.'*'%d'*' %s/gtm.pid",
 				 gtmPid, atoi(sval(VAR_gtmSlavePort)), sval(VAR_gtmSlaveDir));
 	else
+	{
+		elog(WARNING, "WARNING: pid for gtm slave was not found.  Remove socket only.\n");
 		snprintf(newCommand(cmdKill), MAXLINE,
-				 "killall -u %s -9 gtm; rm -rf /tmp/.s.'*'%d'*' %s/gtm.pid",
-				 sval(VAR_pgxcUser), atoi(sval(VAR_gtmSlavePort)), sval(VAR_gtmSlaveDir));
-	cmdKill = initCmd(sval(VAR_gtmSlaveServer));
+				 "rm -rf /tmp/.s.'*'%d'*' %s/gtm.pid",
+				 atoi(sval(VAR_gtmSlavePort)), sval(VAR_gtmSlaveDir));
+	}
 	return(cmdKill);
 }
 
@@ -872,11 +877,11 @@ cmd_t *prepare_initGtmProxy(char *nodeName)
 	/* Build directory and run initgtm */
 	cmdInitGtm = initCmd(aval(VAR_gtmProxyServers)[idx]);
 	snprintf(newCommand(cmdInitGtm), MAXLINE,
-			 "killall -u %s -9 gtm_proxy;"
+			 "gtm_ctl -D %s -m immediate -Z gtm_proxy stop;"
 			 "rm -rf %s;"
 			 "mkdir -p %s;"
 			 "initgtm -Z gtm_proxy -D %s",
-			 sval(VAR_pgxcUser),
+			 aval(VAR_gtmProxyDirs)[idx],
 			 aval(VAR_gtmProxyDirs)[idx],
 			 aval(VAR_gtmProxyDirs)[idx],
 			 aval(VAR_gtmProxyDirs)[idx]);
@@ -971,9 +976,9 @@ cmd_t *prepare_startGtmProxy(char *nodeName)
 	}
 	cmd = initCmd(aval(VAR_gtmProxyServers)[idx]);
 	snprintf(newCommand(cmd), MAXLINE,
-			 "killall -u %s -9 gtm_proxy;"
+			 "gtm_ctl -D %s -m immediate -Z gtm_proxy stop;"
 			 "gtm_ctl start -Z gtm_proxy -D %s",
-			 sval(VAR_pgxcUser),
+			 aval(VAR_gtmProxyDirs)[idx],
 			 aval(VAR_gtmProxyDirs)[idx]);
 	return(cmd);
 }
@@ -1098,9 +1103,12 @@ cmd_t *prepare_killGtmProxy(char *nodeName)
 				 "kill -9 %d; rm -rf /tmp/.s.'*'%d'*' %s/gtm_proxy.pid",
 				 gtmPxyPid, atoi(aval(VAR_gtmProxyPorts)[idx]), aval(VAR_gtmProxyDirs)[idx]);
 	else
+	{
+		elog(WARNING, "WARNING: pid for gtm proxy \"%s\" was not found.  Remove socket only.\n", nodeName);
 		snprintf(newCommand(cmd), MAXLINE,
-				 "killall -u %s -9 gtm; rm -rf /tmp/.s.'*'%d'*' %s/gtm_proxy.pid",
-				 sval(VAR_pgxcUser), atoi(aval(VAR_gtmProxyPorts)[idx]), aval(VAR_gtmProxyDirs)[idx]);
+				 "rm -rf /tmp/.s.'*'%d'*' %s/gtm_proxy.pid",
+				 atoi(aval(VAR_gtmProxyPorts)[idx]), aval(VAR_gtmProxyDirs)[idx]);
+	}
 	return(cmd);
 }
 
