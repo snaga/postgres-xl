@@ -1046,7 +1046,7 @@ int add_coordinatorMaster(char *name, char *host, int port, int pooler, char *di
 				"# End of Additon\n",
 				timeStampString(date, MAXTOKEN+1),
 				port, pooler, gtmHost, atoi(gtmPort));
-		fclose(f);
+		pclose(f);
 	}
 	CleanArray(confFiles);
 	jj = coordIdx(name);
@@ -1062,7 +1062,7 @@ int add_coordinatorMaster(char *name, char *host, int port, int pooler, char *di
 							sval(VAR_pgxcOwner), aval(VAR_coordPgHbaEntries)[kk]);
 		}
 		fprintf(f, "# End of addition\n");
-		fclose(f);
+		pclose(f);
 	}
 
 	/* Lock ddl */
@@ -1109,7 +1109,7 @@ int add_coordinatorMaster(char *name, char *host, int port, int pooler, char *di
 			}
 			fprintf(f, "CREATE NODE %s WITH (TYPE = 'coordinator', host='%s', PORT=%d);\n", name, host, port);
 			fprintf(f, "\\q\n");
-			fclose(f);
+			pclose(f);
 		}
 	}
 	/* Issue CREATE NODE on datanodes */
@@ -1124,19 +1124,19 @@ int add_coordinatorMaster(char *name, char *host, int port, int pooler, char *di
 			}
 			fprintf(f, "EXECUTE DIRECT ON (%s) 'CREATE NODE %s WITH (TYPE = ''coordinator'', host=''%s'', PORT=%d)';\n", aval(VAR_datanodeNames)[ii], name, host, port);
 			fprintf(f, "\\q\n");
-			fclose(f);
+			pclose(f);
 		}
 	}
 	/* Quit DDL lokkup session */
 	fprintf(lockf, "\\q\n");
-	fclose(lockf);
+	pclose(lockf);
 	if ((f = pgxc_popen_wRaw("psql -h %s -p %d %s", host, port, sval(VAR_defaultDatabase))) == NULL)
 		elog(ERROR, "ERROR: cannot connect to the coordinator master %s.\n", name);
 	else
 	{
 		fprintf(f, "ALTER NODE %s WITH (host='%s', PORT=%d);\n", name, host, port);
 		fprintf(f, "\\q\n");
-		fclose(f);
+		pclose(f);
 	}
 	return 0;
 }
@@ -1206,7 +1206,7 @@ int add_coordinatorSlave(char *name, char *host, char *dir, char *archDir)
 			timeStampString(date, MAXPATH),
 			sval(VAR_pgxcUser), host, archDir,
 			getDefaultWalSender(TRUE));
-	fclose(f);
+	pclose(f);
 	/* pg_hba.conf for replication */
 	if ((f = pgxc_popen_w(aval(VAR_coordMasterServers)[idx], "cat >> %s/pg_hba.conf", aval(VAR_coordMasterDirs)[idx])) == NULL)
 	{
@@ -1221,7 +1221,7 @@ int add_coordinatorSlave(char *name, char *host, char *dir, char *archDir)
 			"# End of addition ===============================\n",
 			timeStampString(date, MAXPATH),
 			sval(VAR_pgxcOwner), getIpAddress(host));
-	fclose(f);
+	pclose(f);
 	/* Reconfigure pgxc_ctl configuration with the new slave */
 	/* Need an API to expand the array to desired size */
 	if ((extendVar(VAR_coordSlaveServers, idx, "none") != 0) ||
@@ -1292,7 +1292,7 @@ int add_coordinatorSlave(char *name, char *host, char *dir, char *archDir)
 			"max_wal_senders = 0\n"		/* Minimum WAL senders */
 			"# End of Addition\n",
 			timeStampString(date, MAXTOKEN), atoi(aval(VAR_coordPorts)[idx]));
-	fclose(f);
+	pclose(f);
 	/* Update the slave recovery.conf */
 	if ((f = pgxc_popen_w(host, "cat >> %s/recovery.conf", dir)) == NULL)
 	{
@@ -1311,7 +1311,7 @@ int add_coordinatorSlave(char *name, char *host, char *dir, char *archDir)
 			timeStampString(date, MAXTOKEN), aval(VAR_coordMasterServers)[idx], aval(VAR_coordPorts)[idx],
 			sval(VAR_pgxcOwner), aval(VAR_coordNames)[idx], 
 			aval(VAR_coordArchLogDirs)[idx], aval(VAR_coordArchLogDirs)[idx]);
-	fclose(f);
+	pclose(f);
 
 	/* Start the slave */
 	doImmediate(host, NULL, "pg_ctl start -Z coordinator -D %s", dir);
@@ -1532,7 +1532,7 @@ int remove_coordinatorSlave(char *name, int clean_opt)
 				"wal_level = minimal\n"
 				"# End of the update\n",
 				timeStampString(date, MAXTOKEN));
-		fclose(f);
+		pclose(f);
 	}
 	doImmediate(aval(VAR_coordMasterServers)[idx], NULL, "pg_ctl restart -Z coordinator -D %s", aval(VAR_coordMasterDirs)[idx]);
 	if (clean_opt)
@@ -1964,7 +1964,7 @@ static int failover_oneCoordinator(int coordIdx)
 			"# End of addition\n",
 			timeStampString(timestamp, MAXTOKEN),
 			gtmHost, gtmPort);
-	fclose(f);
+	pclose(f);
 
 	/* Restart coord Slave Server */
 	rc_local = doImmediate(aval(VAR_coordSlaveServers)[coordIdx], NULL,

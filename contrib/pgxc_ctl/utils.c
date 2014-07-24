@@ -289,7 +289,7 @@ pid_t get_prog_pid(char *host, char *progname, char *dir)
 		return(-1);
 	}
 	fgets(pid_s, MAXLINE, wkf);
-	fclose(wkf);
+	pclose(wkf);
 	/* Get the second token */
 	line = pid_s;
 	if ((line = get_word(line, &token)) == NULL)
@@ -357,6 +357,7 @@ char *getChPidList(char *host, pid_t ppid)
 		strncat(rv, line, MAXLINE);
 		strncat(rv, " ", MAXLINE);
 	}
+	pclose(wkf);
 	return rv;
 }
 	
@@ -374,7 +375,7 @@ char *getIpAddress(char *hostName)
 	}
 	ipAddr = Malloc(MAXTOKEN+1);
 	fgets(ipAddr, MAXTOKEN, f);
-	fclose(f);
+	pclose(f);
 	trimNl(ipAddr);
 	return ipAddr;
 }
