@@ -258,49 +258,38 @@ int getEffectiveGtmProxyIdxFromServerName(char *serverName)
 	return -1;
 }
 
-
-
 /*
- * Please note that this function deeply depend upon
- * the environment.
- *
- * It works find with CentOS/Ubuntu/ReadHat Linux but
- * may need another tweak for other operation systems
- * such as Solaris, FreeBSD, MacOS.
+ * We rely on the PID file created in Postgres/GTM et al data directory to
+ * fetch the PID. The first line in these respective files has the PID.
  */
-pid_t get_prog_pid(char *host, char *progname, char *dir)
+pid_t get_prog_pid(char *host, char *pidfile, char *dir)
 {
 	char cmd[MAXLINE+1];
 	char pid_s[MAXLINE+1];
-	int ii;
 	FILE *wkf;
-	char *token;
-	char *line;
 
 	snprintf(cmd, MAXLINE,
 			 "ssh %s@%s "
-			 "\"ps -f -C %s | grep %s\"",
-			 sval(VAR_pgxcUser), host, progname, dir);
+			 "\"cat %s/%s.pid\"",
+			 sval(VAR_pgxcUser), host, dir, pidfile);
 	wkf = popen(cmd, "r");
 	if (wkf == NULL)
 	{
-		elog(ERROR, "ERROR: cannot obtain pid value of the remote postmaster, host \"%s\" dir \"%s\", %s\n",
+		elog(ERROR, "ERROR: cannot obtain pid value of the remote server process, host \"%s\" dir \"%s\", %s\n",
 					host, dir, strerror(errno));
 		return(-1);
 	}
-	fgets(pid_s, MAXLINE, wkf);
+
+	if (fgets(pid_s, MAXLINE, wkf) == NULL)
+	{
+		elog(ERROR, "ERROR: fgets failed to get pid of remote server process, host \"%s\" dir \"%s\", %d\n",
+					host, dir, ferror(wkf));
+		pclose(wkf);
+		return(-1);
+	}
+
 	pclose(wkf);
-	/* Get the second token */
-	line = pid_s;
-	if ((line = get_word(line, &token)) == NULL)
-		return 0;
-	get_word(line, &token);
-	if (token == NULL)
-		return 0;
-	for (ii = 0; token[ii]; ii++)
-		if (token[ii] < '0' || token[ii] > '9')
-			return 0;
-	return(atoi(token));
+	return(atoi(pid_s));
 }
 
 int pingNode(char *host, char *port)

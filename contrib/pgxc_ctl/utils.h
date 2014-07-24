@@ -27,13 +27,13 @@ extern int gtmProxyIdx(char *gtmProxyName);
 extern int coordIdx(char *coordName);
 extern int datanodeIdx(char *datanodeName);
 extern int getEffectiveGtmProxyIdxFromServerName(char *serverName);
-extern pid_t get_prog_pid(char *host, char *progname, char *dir);
+extern pid_t get_prog_pid(char *host, char *pidfile, char *dir);
 extern int pingNode(char *host, char *port);
 extern void trimNl(char *s);
 extern char *getChPidList(char *host, pid_t ppid);
 extern char *getIpAddress(char *hostName);
 
-#define get_postmaster_pid(host, dir) get_prog_pid(host, "postgres", dir)
+#define get_postmaster_pid(host, dir) get_prog_pid(host, "postmaster", dir)
 #define get_gtm_pid(host, dir) get_prog_pid(host, "gtm", dir)
 #define get_gtmProxy_pid(host, dir) get_prog_pid(host, "gtm_proxy", dir)
 #define freeAndReset(x) do{Free(x);(x)=NULL;}while(0)
