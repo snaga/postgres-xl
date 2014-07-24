@@ -1075,6 +1075,7 @@ int add_datanodeMaster(char *name, char *host, int port, char *dir, char *restor
 				continue;
 			}
 			fprintf(f, "CREATE NODE %s WITH (TYPE = 'datanode', host='%s', PORT=%d);\n", name, host, port);
+			fprintf(f, "SELECT pgxc_pool_reload();\n");
 			fprintf(f, "\\q\n");
 			pclose(f);
 		}
@@ -1094,6 +1095,7 @@ int add_datanodeMaster(char *name, char *host, int port, char *dir, char *restor
 				fprintf(f, "EXECUTE DIRECT ON (%s) 'CREATE NODE %s WITH (TYPE = ''datanode'', host=''%s'', PORT=%d)';\n", aval(VAR_datanodeNames)[ii], name, host, port);
 			else
 				fprintf(f, "EXECUTE DIRECT ON (%s) 'ALTER NODE %s WITH (TYPE = ''datanode'', host=''%s'', PORT=%d)';\n", aval(VAR_datanodeNames)[ii], name, host, port);
+			fprintf(f, "EXECUTE DIRECT ON (%s) 'SELECT pgxc_pool_reload();'\n", aval(VAR_datanodeNames)[ii]);
 			fprintf(f, "\\q\n");
 			pclose(f);
 		}
@@ -1390,6 +1392,7 @@ int remove_datanodeMaster(char *name, int clean_opt)
 				continue;
 			}
 			fprintf(f, "DROP NODE %s;\n", name);
+			fprintf(f, "SELECT pgxc_pool_reload();\n");
 			fprintf(f, "\\q");
 			fclose(f);
 		}
@@ -1406,6 +1409,7 @@ int remove_datanodeMaster(char *name, int clean_opt)
 				continue;
 			}
 			fprintf(f, "EXECUTE DIRECT ON (%s) 'DROP NODE %s';\n", aval(VAR_datanodeNames)[ii], name);
+			fprintf(f, "EXECUTE DIRECT ON (%s) 'SELECT pgxc_pool_reload();'\n", aval(VAR_datanodeNames)[ii]);
 			fprintf(f, "\\q\n");
 			fclose(f);
 		}

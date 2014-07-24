@@ -511,6 +511,7 @@ cmd_t *prepare_configureNode(char *nodeName)
 						atoi(aval(VAR_datanodePorts)[dnIdx]));
 		}
 	}
+	fprintf(f, "SELECT pgxc_pool_reload();\n");
 	fclose(f);
 	return(cmd);
 }	
@@ -565,6 +566,7 @@ static cmd_t *prepare_configureDataNode(char *nodeName)
 					atoi(aval(VAR_coordPorts)[ii]));
 		}
 	}
+
 	/* Setup datanodes */
 	for (ii = 0; aval(VAR_datanodeNames)[ii]; ii++)
 	{
@@ -597,13 +599,13 @@ static cmd_t *prepare_configureDataNode(char *nodeName)
 			{
 				/* Primary Node */
 				if (is_preferred)
-{
+				{
 					/* Primay and preferred node */
 					fprintf(f, "EXECUTE DIRECT ON (%s) 'CREATE NODE %s WITH (TYPE=''datanode'', HOST=''%s'', PORT=%d, PRIMARY, PREFERRED)';\n",
 							aval(VAR_datanodeNames)[idx],
 							aval(VAR_datanodeNames)[dnIdx], aval(VAR_datanodeMasterServers)[dnIdx],
 							atoi(aval(VAR_datanodePorts)[dnIdx]));
-}
+				}
 				else
 					/* Primary but not prefereed node */
 					fprintf(f, "EXECUTE DIRECT ON (%s) 'CREATE NODE %s WITH (TYPE=''datanode'', HOST=''%s'', PORT=%d, PRIMARY)';\n",
@@ -612,6 +614,7 @@ static cmd_t *prepare_configureDataNode(char *nodeName)
 							atoi(aval(VAR_datanodePorts)[dnIdx]));
 			}
 			else
+			{
 				/* Primary Node */
 				if (is_preferred)
 					/* Primay and preferred node */
@@ -625,6 +628,7 @@ static cmd_t *prepare_configureDataNode(char *nodeName)
 							aval(VAR_datanodeNames)[idx],
 							aval(VAR_datanodeNames)[dnIdx], aval(VAR_datanodeMasterServers)[dnIdx],
 							atoi(aval(VAR_datanodePorts)[dnIdx]));
+			}
 		}
 		else
 		{
@@ -662,6 +666,7 @@ static cmd_t *prepare_configureDataNode(char *nodeName)
 			}
 		}
 	}
+	fprintf(f, "EXECUTE DIRECT ON (%s) 'SELECT pgxc_pool_reload()';\n", aval(VAR_datanodeNames)[idx]);
 	fclose(f);
 	return(cmd);
 }
@@ -1108,6 +1113,7 @@ int add_coordinatorMaster(char *name, char *host, int port, int pooler, char *di
 				continue;
 			}
 			fprintf(f, "CREATE NODE %s WITH (TYPE = 'coordinator', host='%s', PORT=%d);\n", name, host, port);
+			fprintf(f, "SELECT pgxc_pool_reload();\n");
 			fprintf(f, "\\q\n");
 			pclose(f);
 		}
@@ -1123,6 +1129,7 @@ int add_coordinatorMaster(char *name, char *host, int port, int pooler, char *di
 				continue;
 			}
 			fprintf(f, "EXECUTE DIRECT ON (%s) 'CREATE NODE %s WITH (TYPE = ''coordinator'', host=''%s'', PORT=%d)';\n", aval(VAR_datanodeNames)[ii], name, host, port);
+			fprintf(f, "EXECUTE DIRECT ON (%s) 'SELECT pgxc_pool_reload()';\n", aval(VAR_datanodeNames)[ii]);
 			fprintf(f, "\\q\n");
 			pclose(f);
 		}
@@ -1135,6 +1142,7 @@ int add_coordinatorMaster(char *name, char *host, int port, int pooler, char *di
 	else
 	{
 		fprintf(f, "ALTER NODE %s WITH (host='%s', PORT=%d);\n", name, host, port);
+		fprintf(f, "SELECT pgxc_pool_reload();\n");
 		fprintf(f, "\\q\n");
 		pclose(f);
 	}
@@ -1408,6 +1416,7 @@ int remove_coordinatorMaster(char *name, int clean_opt)
 				continue;
 			}
 			fprintf(f, "DROP NODE %s;\n", name);
+			fprintf(f, "SELECT pgxc_pool_reload();\n");
 			fprintf(f, "\\q");
 			fclose(f);
 		}
@@ -1432,6 +1441,8 @@ int remove_coordinatorMaster(char *name, int clean_opt)
 			}
 			fprintf(f, "EXECUTE DIRECT ON (%s) 'DROP NODE %s';\n",
 					aval(VAR_datanodeNames)[ii], name);
+			fprintf(f, "EXECUTE DIRECT ON (%s) 'SELECT pgxc_pool_reload()';\n",
+					aval(VAR_datanodeNames)[ii]);
 			fprintf(f, "\\q");
 			fclose(f);
 		}
