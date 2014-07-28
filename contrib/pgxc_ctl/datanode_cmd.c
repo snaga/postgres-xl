@@ -813,7 +813,7 @@ static int failover_oneDatanode(int datanodeIdx)
 				"select pgxc_pool_reload();\n"
 				"\\q\n",
 				aval(VAR_datanodeNames)[datanodeIdx], aval(VAR_datanodeMasterServers)[datanodeIdx], aval(VAR_datanodePorts)[datanodeIdx]);
-		fclose(f);
+		pclose(f);
 	}
 	return rc;
 
@@ -1394,7 +1394,7 @@ int remove_datanodeMaster(char *name, int clean_opt)
 			fprintf(f, "DROP NODE %s;\n", name);
 			fprintf(f, "SELECT pgxc_pool_reload();\n");
 			fprintf(f, "\\q");
-			fclose(f);
+			pclose(f);
 		}
 	}
 	/* Issue DROP NODE  on datanodes */
@@ -1411,7 +1411,7 @@ int remove_datanodeMaster(char *name, int clean_opt)
 			fprintf(f, "EXECUTE DIRECT ON (%s) 'DROP NODE %s';\n", aval(VAR_datanodeNames)[ii], name);
 			fprintf(f, "EXECUTE DIRECT ON (%s) 'SELECT pgxc_pool_reload();'\n", aval(VAR_datanodeNames)[ii]);
 			fprintf(f, "\\q\n");
-			fclose(f);
+			pclose(f);
 		}
 	}
 #if 1

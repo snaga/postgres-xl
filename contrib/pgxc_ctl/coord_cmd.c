@@ -1418,7 +1418,7 @@ int remove_coordinatorMaster(char *name, int clean_opt)
 			fprintf(f, "DROP NODE %s;\n", name);
 			fprintf(f, "SELECT pgxc_pool_reload();\n");
 			fprintf(f, "\\q");
-			fclose(f);
+			pclose(f);
 		}
 	}
 	/* Issue "drop node" at all the datanodes */
@@ -1444,7 +1444,7 @@ int remove_coordinatorMaster(char *name, int clean_opt)
 			fprintf(f, "EXECUTE DIRECT ON (%s) 'SELECT pgxc_pool_reload()';\n",
 					aval(VAR_datanodeNames)[ii]);
 			fprintf(f, "\\q");
-			fclose(f);
+			pclose(f);
 		}
 	}
 #if 1
@@ -2045,7 +2045,7 @@ static int failover_oneCoordinator(int coordIdx)
 				"select pgxc_pool_reload();\n"
 				"\\q\n",
 				aval(VAR_coordNames)[coordIdx], aval(VAR_coordMasterServers)[coordIdx], aval(VAR_coordPorts)[coordIdx]);
-		fclose(f);
+		pclose(f);
 	}
 	return(rc);
 
