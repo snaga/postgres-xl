@@ -669,7 +669,7 @@ PgxcNodeAlter(AlterNodeStmt *stmt)
 	 */
 	if (is_primary &&
 		OidIsValid(primary_data_node) &&
-		node_id != primary_data_node)
+		nodeOid != primary_data_node)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("PGXC node %s: two nodes cannot be primary",
