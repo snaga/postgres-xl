@@ -701,6 +701,12 @@ static int failover_oneDatanode(int datanodeIdx)
 	FILE *f;
 	char timestamp[MAXTOKEN+1];
 
+#ifdef XCP	
+	char cmd[MAXLINE];
+	int	 cmdlen;
+	bool dnReconfigured;
+#endif	
+
 #	define checkRc() do{if(WEXITSTATUS(rc_local) > rc) rc = WEXITSTATUS(rc_local);}while(0)
 
 	/*
@@ -809,6 +815,43 @@ static int failover_oneDatanode(int datanodeIdx)
 		checkRc();
 	}
 
+#ifdef XCP	
+	cmdlen = 0;
+	cmd[0] = '\0';
+	/*
+	 * Reconfigure datanodes with the new datanode. We prepare the commands and
+	 * pass them to the first coordinator we reconfigure later
+	 */
+	for (jj = 0; aval(VAR_datanodeNames)[jj]; jj++)
+	{
+		int len;
+
+		if (is_none(aval(VAR_datanodeMasterServers)[jj]))
+			continue;
+			
+		if (pingNode(aval(VAR_datanodeMasterServers)[jj], aval(VAR_datanodePorts)[jj]) != 0)
+		{
+			elog(ERROR, "Datanode %s is not running.  Skip reconfiguration for this datanode.\n",
+				 aval(VAR_coordNames)[jj]);
+			continue;
+		}
+		
+		len = snprintf(cmd + cmdlen, MAXLINE - cmdlen, "EXECUTE DIRECT ON (%s) 'ALTER NODE %s WITH (HOST=''%s'', PORT=%s)';\n"
+				"EXECUTE DIRECT ON (%s) 'select pgxc_pool_reload()';\n",
+								 aval(VAR_datanodeNames)[jj],
+								 aval(VAR_datanodeNames)[datanodeIdx],
+								 aval(VAR_datanodeMasterServers)[datanodeIdx],
+								 aval(VAR_datanodePorts)[datanodeIdx],
+								 aval(VAR_datanodeNames)[jj]);
+		if (len > (MAXLINE - cmdlen))
+		{
+			elog(ERROR, "Datanode command exceeds the maximum allowed length");
+			return -1;
+		}
+		cmdlen += len;
+	}
+	dnReconfigured = false;
+#endif
 	/*
 	 * Reconfigure coordinators with new datanode
 	 */
@@ -836,10 +879,22 @@ static int failover_oneDatanode(int datanodeIdx)
 		fprintf(f,
 				"ALTER NODE %s WITH (HOST='%s', PORT=%s);\n"
 				"select pgxc_pool_reload();\n"
+#ifdef XCP				
+				"%s"
+#endif				
 				"\\q\n",
-				aval(VAR_datanodeNames)[datanodeIdx], aval(VAR_datanodeMasterServers)[datanodeIdx], aval(VAR_datanodePorts)[datanodeIdx]);
+				aval(VAR_datanodeNames)[datanodeIdx],
+				aval(VAR_datanodeMasterServers)[datanodeIdx],
+				aval(VAR_datanodePorts)[datanodeIdx]
+#ifdef XCP				
+				,dnReconfigured ? "" : cmd
+#endif				
+				);
+		dnReconfigured = true;
 		pclose(f);
 	}
+
+
 	return rc;
 
 #	undef checkRc
