@@ -11,5 +11,5 @@
 #ifndef SIGNATURE_H
 #define SIGNATURE_H
 /* Signature file to identify the make */
-#define signature "140308_0826_521531776"
+#define signature "140725_1610_N"
 #endif /* SIGNATURE_H */

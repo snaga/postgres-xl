@@ -369,6 +369,10 @@ static void emptyDatanodeSlaves()
 
 	reset_var_val(VAR_datanodeSlave, "n");
 	reset_var(VAR_datanodeSlaveServers);
+	reset_var(VAR_datanodeSlavePorts);
+#ifdef XCP	
+	reset_var(VAR_datanodeSlavePoolerPorts);
+#endif	
 	reset_var(VAR_datanodeSlaveDirs);
 	reset_var(VAR_datanodeArchLogDirs);
 	for (ii = 0; ii < arraySizeName(VAR_datanodeSlaveServers); ii++)
@@ -631,7 +635,7 @@ int checkPortConflict(char *host, int port)
 	if (isVarYes(VAR_datanodeSlave))
 		for (ii = 0; aval(VAR_datanodeNames)[ii]; ii++)
 			if (doesExist(VAR_datanodeSlaveServers, ii) && !is_none(aval(VAR_datanodeSlaveServers)[ii]) && 
-				(strcasecmp(host, aval(VAR_datanodeSlaveServers)[ii]) == 0) && (atoi(aval(VAR_datanodePorts)[ii]) == port))
+				(strcasecmp(host, aval(VAR_datanodeSlaveServers)[ii]) == 0) && (atoi(aval(VAR_datanodeSlavePorts)[ii]) == port))
 				return 1;
 	return 0;
 }
@@ -860,6 +864,10 @@ static void verifyResource(void)
 								  NULL};
 	char *datanodeSlaveVars[] = {VAR_datanodeNames,
 								 VAR_datanodeSlaveServers,
+								 VAR_datanodeSlavePorts,
+#ifdef XCP
+								  VAR_datanodeSlavePoolerPorts, 
+#endif
 								 VAR_datanodeSlaveDirs,
 								 VAR_datanodeArchLogDirs,
 								 NULL};
@@ -932,7 +940,7 @@ static void verifyResource(void)
 	/* GTM and datanode slaves, if any */
 	if(isVarYes(VAR_datanodeSlave))
 		checkResourceConflict(VAR_gtmName, VAR_gtmMasterServer, VAR_gtmMasterPort, NULL, VAR_gtmMasterDir,
-							  VAR_datanodeNames, VAR_datanodeMasterServers, VAR_datanodePorts, NULL, VAR_datanodeSlaveDirs,
+							  VAR_datanodeNames, VAR_datanodeMasterServers, VAR_datanodeSlavePorts, NULL, VAR_datanodeSlaveDirs,
 							  TRUE, TRUE);
 	/* 
 	 * GTM slave and others ------------
@@ -960,7 +968,7 @@ static void verifyResource(void)
 		/* GTM slave and datanode slave, if any */
 		if (isVarYes(VAR_datanodeSlave))
 			checkResourceConflict(VAR_gtmName, VAR_gtmSlaveServer, VAR_gtmSlavePort, NULL, VAR_gtmSlaveDir,
-								  VAR_datanodeNames, VAR_datanodeSlaveServers, VAR_datanodePorts, NULL, VAR_datanodeSlaveDirs,
+								  VAR_datanodeNames, VAR_datanodeSlaveServers, VAR_datanodeSlavePorts, NULL, VAR_datanodeSlaveDirs,
 								  TRUE, TRUE);
 	}
 	/* 
@@ -984,7 +992,7 @@ static void verifyResource(void)
 		/* GTM proxy and datanode slave, if any */
 		if (sval(VAR_datanodeSlave) && (strcmp(sval(VAR_datanodeSlave), "y") == 0))
 			checkResourceConflict(VAR_gtmProxyNames, VAR_gtmProxyServers, VAR_gtmProxyPorts, NULL, VAR_gtmProxyDirs,
-								  VAR_datanodeNames, VAR_datanodeSlaveServers, VAR_datanodePorts, NULL, VAR_datanodeSlaveDirs,
+								  VAR_datanodeNames, VAR_datanodeSlaveServers, VAR_datanodeSlavePorts, NULL, VAR_datanodeSlaveDirs,
 								  TRUE, TRUE);
 	}
 	/* 
@@ -1002,7 +1010,8 @@ static void verifyResource(void)
 	/* Coordinator masters and datanode slave, if any */
 	if (isVarYes(VAR_datanodeSlave))
 		checkResourceConflict(VAR_coordNames, VAR_coordMasterServers, VAR_coordPorts, VAR_poolerPorts, VAR_coordMasterDirs,
-							  VAR_datanodeNames, VAR_datanodeSlaveServers, VAR_datanodePorts, NULL, VAR_datanodeSlaveDirs,
+							  VAR_datanodeNames, VAR_datanodeSlaveServers,
+							  VAR_datanodeSlavePorts, NULL, VAR_datanodeSlaveDirs,
 							  TRUE, TRUE);
 	/* 
 	 * Coordinator slaves and others
@@ -1016,7 +1025,8 @@ static void verifyResource(void)
 		/* Coordinator slave and datanode slave, if any */
 		if (isVarYes(VAR_datanodeSlave))
 			checkResourceConflict(VAR_coordNames, VAR_coordSlaveServers, VAR_coordPorts, VAR_poolerPorts, VAR_coordSlaveDirs,
-								  VAR_datanodeNames, VAR_datanodeSlaveServers, VAR_datanodePorts, NULL, VAR_datanodeSlaveDirs,
+								  VAR_datanodeNames, VAR_datanodeSlaveServers,
+								  VAR_datanodeSlavePorts, NULL, VAR_datanodeSlaveDirs,
 								  TRUE, TRUE);
 	}
 	/* 
@@ -1029,7 +1039,8 @@ static void verifyResource(void)
 	/* Datanode master and datanode slave, if any */
 	if (sval(VAR_datanodeSlave) && (strcmp(sval(VAR_datanodeSlave), "y") == 0))
 		checkResourceConflict(VAR_datanodeNames, VAR_datanodeMasterServers, VAR_datanodePorts, NULL, VAR_datanodeMasterDirs,
-							  VAR_datanodeNames, VAR_datanodeSlaveServers, VAR_datanodePorts, NULL, VAR_datanodeSlaveDirs,
+							  VAR_datanodeNames, VAR_datanodeSlaveServers,
+							  VAR_datanodeSlavePorts, NULL, VAR_datanodeSlaveDirs,
 							  TRUE, FALSE);
 	if (anyConfigErrors)
 	{

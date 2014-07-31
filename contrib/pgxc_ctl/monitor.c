@@ -195,7 +195,7 @@ static void monitor_datanode_slave(char **nodeList)
 			continue;
 		}
 		if (doesExist(VAR_datanodeSlaveServers, idx) && !is_none(aval(VAR_datanodeSlaveServers)[idx]))
-			printResult(pingNode(aval(VAR_datanodeSlaveServers)[idx], aval(VAR_datanodePorts)[idx]), 
+			printResult(pingNode(aval(VAR_datanodeSlaveServers)[idx], aval(VAR_datanodeSlavePorts)[idx]), 
 						"datanode slave", actualNodeList[ii]);
 		else
 			elog(ERROR, "ERROR: datanode slave %s is not configured.\n", actualNodeList[ii]);
@@ -219,7 +219,7 @@ static void monitor_datanode(char **nodeList)
 		printResult(pingNode(aval(VAR_datanodeMasterServers)[idx], aval(VAR_datanodePorts)[idx]), 
 					"datanode master", actualNodeList[ii]);
 		if (doesExist(VAR_datanodeSlaveServers, idx) && !is_none(aval(VAR_datanodeSlaveServers)[idx]))
-			printResult(pingNode(aval(VAR_datanodeSlaveServers)[idx], aval(VAR_datanodePorts)[idx]),
+			printResult(pingNode(aval(VAR_datanodeSlaveServers)[idx], aval(VAR_datanodeSlavePorts)[idx]),
 						"datanode slave", actualNodeList[ii]);
 	}
 }

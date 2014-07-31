@@ -284,7 +284,7 @@ cmd_t *prepare_initDatanodeSlave(char *nodeName)
 			"#==========================================\n"
 			"# Added to initialize the slave, %s\n"
 			"standby_mode = on\n"
-			"primary_conninfo = 'host = %s port = %sd user = %s application_name = %s'\n"
+			"primary_conninfo = 'host = %s port = %s user = %s application_name = %s'\n"
 			"restore_command = 'cp %s/%%f %%p'\n"
 			"archive_cleanup_command = 'pg_archivecleanup %s %%r'\n",		
 			timeStampString(timestamp, MAXTOKEN),
@@ -309,9 +309,11 @@ cmd_t *prepare_initDatanodeSlave(char *nodeName)
 			"# Added to startup the slave, %s\n"
 			"hot_standby = on\n"
 			"port = %s\n"
+			"pooler_port = %s\n"
 			"# End of addition\n",
 			timeStampString(timestamp, MAXTOKEN),
-			aval(VAR_datanodePorts)[idx]);
+			aval(VAR_datanodeSlavePorts)[idx],
+			aval(VAR_datanodeSlavePoolerPorts)[idx]);
 	fclose(f);
 
 	/* Stp datanode master if needed */
@@ -589,7 +591,7 @@ cmd_t *prepare_stopDatanodeSlave(char *nodeName, char *immediate)
 	/* The next step might need improvement.  When GTM is dead, the following may
 	 * fail even though the master is running.
 	 */
-	if (pingNode(aval(VAR_datanodeSlaveServers)[idx], aval(VAR_datanodePorts)[idx]) == 0)
+	if (pingNode(aval(VAR_datanodeSlaveServers)[idx], aval(VAR_datanodeSlavePorts)[idx]) == 0)
 	{
 		cmd_t *cmdReloadMaster;
 
@@ -753,7 +755,14 @@ static int failover_oneDatanode(int datanodeIdx)
 	var_assign(&(aval(VAR_datanodeSlaveServers)[datanodeIdx]), Strdup("none"));
 	var_assign(&(aval(VAR_datanodeMasterDirs)[datanodeIdx]), Strdup(aval(VAR_datanodeSlaveDirs)[datanodeIdx]));
 	var_assign(&(aval(VAR_datanodeSlaveDirs)[datanodeIdx]), Strdup("none"));
-
+	var_assign(&(aval(VAR_datanodePorts)[datanodeIdx]), Strdup(aval(VAR_datanodeSlavePorts)[datanodeIdx]));
+#ifdef XCP	
+	var_assign(&(aval(VAR_datanodePoolerPorts)[datanodeIdx]), Strdup(aval(VAR_datanodeSlavePoolerPorts)[datanodeIdx]));
+#endif	
+	var_assign(&(aval(VAR_datanodeSlavePorts)[datanodeIdx]), Strdup("none"));
+#ifdef XCP	
+	var_assign(&(aval(VAR_datanodeSlavePoolerPorts)[datanodeIdx]), Strdup("none"));
+#endif
 	/*
 	 * Update the configuration file
 	 */
@@ -766,14 +775,30 @@ static int failover_oneDatanode(int datanodeIdx)
 			"#=====================================================\n"
 			"# Updated due to the datanode failover, %s, %s\n"
 			"datanodeMasterServers=( %s )\n"
+			"datanodePorts=( %s )\n"
+#ifdef XCP
+			"datanodePoolerPorts=( %s )\n"
+#endif			
 			"datanodeMasterDirs=( %s )\n"
 			"datanodeSlaveServers=( %s )\n"
+			"datanodeSlavePorts=( %s )\n"
+#ifdef XCP			
+			"datanodeSlavePoolerPorts=( %s )\n"
+#endif			
 			"datanodeSlaveDirs=( %s )\n"
 			"# End of the update\n",
 			aval(VAR_datanodeNames)[datanodeIdx], timeStampString(timestamp, MAXTOKEN),
 			listValue(VAR_datanodeMasterServers),
+			listValue(VAR_datanodePorts),
+#ifdef XCP
+			listValue(VAR_datanodePoolerPorts),
+#endif	
 			listValue(VAR_datanodeMasterDirs),
 			listValue(VAR_datanodeSlaveServers),
+			listValue(VAR_datanodeSlavePorts),
+#ifdef XCP
+			listValue(VAR_datanodeSlavePoolerPorts),
+#endif	
 			listValue(VAR_datanodeSlaveDirs));
 	fclose(f);
 
@@ -913,6 +938,10 @@ int add_datanodeMaster(char *name, char *host, int port, char *dir, char *restor
 	assign_arrayEl(VAR_datanodeMasterDirs, idx, dir, NULL);
 	assign_arrayEl(VAR_datanodeMaxWALSenders, idx, aval(VAR_datanodeMaxWALSenders)[0], NULL);	/* Could be vulnerable */
 	assign_arrayEl(VAR_datanodeSlaveServers, idx, "none", NULL);
+	assign_arrayEl(VAR_datanodeSlavePorts, idx, "-1", NULL);
+#ifdef XCP
+	assign_arrayEl(VAR_datanodeSlavePoolerPorts, idx, "-1", NULL);
+#endif
 	assign_arrayEl(VAR_datanodeSlaveDirs, idx, "none", NULL);
 	assign_arrayEl(VAR_datanodeArchLogDirs, idx, "none", NULL);
 	assign_arrayEl(VAR_datanodeSpecificExtraConfig, idx, "none", NULL);
@@ -950,6 +979,10 @@ int add_datanodeMaster(char *name, char *host, int port, char *dir, char *restor
 	fprintAval(f, VAR_datanodeMasterDirs);
 	fprintAval(f, VAR_datanodeMaxWALSenders);
 	fprintAval(f, VAR_datanodeSlaveServers);
+	fprintAval(f, VAR_datanodeSlavePorts);
+#ifdef XCP
+	fprintAval(f, VAR_datanodeSlavePoolerPorts);
+#endif
 	fprintAval(f, VAR_datanodeSlaveDirs);
 	fprintAval(f, VAR_datanodeArchLogDirs);
 	fprintAval(f, VAR_datanodeSpecificExtraConfig);
@@ -1109,10 +1142,14 @@ int add_datanodeMaster(char *name, char *host, int port, char *dir, char *restor
 }
 
 
-int add_datanodeSlave(char *name, char *host, char *dir, char *archDir)
+int add_datanodeSlave(char *name, char *host, int port, int pooler, char *dir, char *archDir)
 {
 	int idx;
 	FILE *f;
+	char port_s[MAXTOKEN+1];
+#ifdef XCP
+    char pooler_s[MAXTOKEN+1];
+#endif
 
 	/* Check if the name is valid datanode */
 	if ((idx = datanodeIdx(name)) < 0)
@@ -1136,7 +1173,7 @@ int add_datanodeSlave(char *name, char *host, char *dir, char *archDir)
 	 * We dont check the name conflict here because acquiring datanode index means that
 	 * there's no name conflict.
 	 */
-	if (checkPortConflict(host, atoi(aval(VAR_datanodePorts)[idx])))
+	if (checkPortConflict(host, port))
 	{
 		elog(ERROR, "ERROR: the port %s has already been used in the host %s.\n",  aval(VAR_datanodePorts)[idx], host);
 		return 1;
@@ -1201,9 +1238,19 @@ int add_datanodeSlave(char *name, char *host, char *dir, char *archDir)
 		return 1;
 	}
 #endif
+
+	snprintf(port_s, MAXTOKEN, "%d", port);
+#ifdef XCP
+	snprintf(pooler_s, MAXTOKEN, "%d", pooler);
+#endif
+
 	if (!isVarYes(VAR_datanodeSlave))
 		assign_sval(VAR_datanodeSlave, "y");
 	assign_arrayEl(VAR_datanodeSlaveServers, idx, host, NULL);
+	assign_arrayEl(VAR_datanodeSlavePorts, idx, port_s, NULL);
+#ifdef XCP	
+	assign_arrayEl(VAR_datanodeSlavePoolerPorts, idx, pooler_s, NULL);
+#endif	
 	assign_arrayEl(VAR_datanodeSlaveDirs, idx, dir, NULL);
 	assign_arrayEl(VAR_datanodeArchLogDirs, idx, archDir, NULL);
 	/* Update the configuration file and backup it */
@@ -1220,6 +1267,10 @@ int add_datanodeSlave(char *name, char *host, char *dir, char *archDir)
 			timeStampString(date, MAXTOKEN+1));
 	fprintSval(f, VAR_datanodeSlave);
 	fprintAval(f, VAR_datanodeSlaveServers);
+	fprintAval(f, VAR_datanodeSlavePorts);
+#ifdef XCP	
+	fprintAval(f, VAR_datanodeSlavePoolerPorts);
+#endif	
 	fprintAval(f, VAR_datanodeArchLogDirs);
 	fprintAval(f, VAR_datanodeSlaveDirs);
 	fprintf(f, "%s", "#----End of reconfiguration -------------------------\n");
@@ -1265,9 +1316,9 @@ int add_datanodeSlave(char *name, char *host, char *dir, char *archDir)
 			"max_wal_senders = 0\n"		/* Minimum WAL senders */
 			"# End of Addition\n",
 #ifdef XCP
-			timeStampString(date, MAXTOKEN), aval(VAR_datanodePorts)[idx], aval(VAR_datanodePoolerPorts)[idx]);
+			timeStampString(date, MAXTOKEN), aval(VAR_datanodeSlavePorts)[idx], aval(VAR_datanodeSlavePoolerPorts)[idx]);
 #else
-			timeStampString(date, MAXTOKEN), aval(VAR_datanodePorts)[idx]);
+			timeStampString(date, MAXTOKEN), aval(VAR_datanodeSlavePorts)[idx]);
 #endif
 	pclose(f);
 	/* Update the slave recovery.conf */
@@ -1464,6 +1515,7 @@ int remove_datanodeMaster(char *name, int clean_opt)
 	fprintAval(f, VAR_datanodeMasterServers);
 	fprintAval(f, VAR_datanodeMaxWALSenders);
 	fprintAval(f, VAR_datanodeSlaveServers);
+	fprintAval(f, VAR_datanodeSlavePorts);
 	fprintAval(f, VAR_datanodeSlaveDirs);
 	fprintAval(f, VAR_datanodeArchLogDirs);
 	fprintAval(f, VAR_datanodeSpecificExtraConfig);
@@ -1495,7 +1547,7 @@ int remove_datanodeSlave(char *name, int clean_opt)
 		return 1;
 	}
 	AddMember(nodelist, name);
-	if (pingNode(aval(VAR_datanodeSlaveServers)[idx], aval(VAR_datanodePorts)[idx]) == 0)
+	if (pingNode(aval(VAR_datanodeSlaveServers)[idx], aval(VAR_datanodeSlavePorts)[idx]) == 0)
 		stop_datanode_slave(nodelist, "immediate");
 	{
 		FILE *f;
@@ -1723,10 +1775,10 @@ int show_config_datanodeSlave(int flag, int idx, char *hostname)
 		elog(NOTICE, "%s", outBuf);
 #ifdef XCP
 	elog(NOTICE, "    Nodename: '%s', port: %s, pooler port: %s\n",
-		 aval(VAR_datanodeNames)[idx], aval(VAR_datanodePorts)[idx], aval(VAR_poolerPorts)[idx]);
+		 aval(VAR_datanodeNames)[idx], aval(VAR_datanodeSlavePorts)[idx], aval(VAR_poolerPorts)[idx]);
 #else
 	elog(NOTICE, "    Nodename: '%s', port: %s\n",
-		 aval(VAR_datanodeNames)[idx], aval(VAR_datanodePorts)[idx]);
+		 aval(VAR_datanodeNames)[idx], aval(VAR_datanodeSlavePorts)[idx]);
 #endif
 	elog(NOTICE,"    Dir: '%s', Archive Log Dir: '%s'\n",
 		 aval(VAR_datanodeSlaveDirs)[idx], aval(VAR_datanodeArchLogDirs)[idx]);
@@ -1908,7 +1960,7 @@ cmd_t *prepare_killDatanodeSlave(char *nodeName)
 		elog(WARNING, "WARNING: pid for datanode slave \"%s\" slave was not found.  Remove socket only.\n", nodeName);
 		snprintf(newCommand(cmd), MAXLINE,
 				 "rm -rf /tmp/.s.'*'%s'*'",		/* Remove the socket */
-				 aval(VAR_datanodePorts)[dnIndex]);
+				 aval(VAR_datanodeSlavePorts)[dnIndex]);
 	}
 	else
 	{
@@ -1919,7 +1971,7 @@ cmd_t *prepare_killDatanodeSlave(char *nodeName)
 				 "rm -rf /tmp/.s.'*'%d'*'",		/* Remove the socket */
 				 postmasterPid, 
 				 pidList,
-				 atoi(aval(VAR_datanodePorts)[dnIndex]));
+				 atoi(aval(VAR_datanodeSlavePorts)[dnIndex]));
 		freeAndReset(pidList);
 	}
 	return(cmd);

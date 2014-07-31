@@ -156,6 +156,10 @@ char *pgxc_ctl_bash_script[] = {
 "	echo datanodeSlave $datanodeSlave",
 "	echo datanodeSlaveSync $datanodeSlaveSync",
 "	print_array datanodeSlaveServers",
+"	print_array datanodeSlavePorts",
+#ifdef XCP
+"	print_array datanodeSlavePoolerPorts",
+#endif
 "	print_array datanodeSlaveDirs",
 "	print_array datanodeArchLogDirs",
 "",

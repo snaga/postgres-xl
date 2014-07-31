@@ -56,7 +56,7 @@ extern int add_datanodeMaster(char *name, char *host, int port, int pooler, char
 #else
 extern int add_datanodeMaster(char *name, char *host, int port, char *dir, char *restore_dname);
 #endif
-extern int add_datanodeSlave(char *name, char *host, char *dir, char *archDir);
+extern int add_datanodeSlave(char *name, char *host, int port, int pooler, char *dir, char *archDir);
 extern int remove_datanodeMaster(char *name, int clean_opt);
 extern int remove_datanodeSlave(char *name, int clean_opt);
 

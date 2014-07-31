@@ -971,11 +971,24 @@ static void do_add_command(char *line)
 		{
 			GetAndSet(name, "ERROR: please specify the name of the datanode slave\n");
 			GetAndSet(host, "ERROR: please specify the host for the datanode slave\n");
+			GetAndSet(port, "ERROR: please specify the port number for the datanode slave\n");
+#ifdef XCP
+			GetAndSet(pooler, "ERROR: please specify the pooler port number for the datanode slave.\n");
+#endif
 			GetAndSet(dir, "ERROR: please specify the working director for datanode slave\n");
 			GetAndSet(archDir, "ERROR: please specify WAL archive directory for datanode slave\n");
-			add_datanodeSlave(name, host, dir, archDir);
+			
+#ifdef XCP			
+			add_datanodeSlave(name, host, atoi(port), atoi(pooler), dir, archDir);
+#else
+			add_datanodeSlave(name, host, atoi(port), dir, archDir);
+#endif			
 			freeAndReset(name);
 			freeAndReset(host);
+			freeAndReset(port);
+#ifdef XCP
+			freeAndReset(pooler);
+#endif			
 			freeAndReset(dir);
 		}
 	}

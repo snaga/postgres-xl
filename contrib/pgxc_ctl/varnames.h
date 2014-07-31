@@ -103,6 +103,10 @@
 /* Datanode slaves */
 #define VAR_datanodeSlave			"datanodeSlave"
 #define VAR_datanodeSlaveServers	"datanodeSlaveServers"
+#define VAR_datanodeSlavePorts		"datanodeSlavePorts"
+#ifdef XCP
+#define VAR_datanodeSlavePoolerPorts		"datanodeSlavePoolerPorts"
+#endif
 #define VAR_datanodeSlaveSync		"datanodeSlaveSync"
 #define VAR_datanodeSlaveDirs		"datanodeSlaveDirs"
 #define VAR_datanodeArchLogDirs		"datanodeArchLogDirs"
