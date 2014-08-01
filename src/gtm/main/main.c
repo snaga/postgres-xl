@@ -175,17 +175,35 @@ MainThreadInit()
 	return thrinfo;
 }
 
+/*
+ * Bare minimum supporting infrastructure. Must be called at the very beginning
+ * so that further initilization can have it ready
+ */
+static void
+InitGTMProcess()
+{
+	GTM_ThreadInfo *thrinfo = MainThreadInit();
+	MyThreadID = pthread_self();
+	MemoryContextInit();
+
+	/*
+	 * The memory context is now set up.
+	 * Add the thrinfo structure in the global array
+	 */
+	if (GTM_ThreadAdd(thrinfo) == -1)
+	{
+		fprintf(stderr, "GTM_ThreadAdd for main thread failed: %d", errno);
+		fflush(stdout);
+		fflush(stderr);
+	}
+#ifdef XCP
+	GTM_MutexLockInit(&control_lock);
+#endif
+}
+
 static void
 BaseInit()
 {
-	GTM_ThreadInfo *thrinfo;
-
-	thrinfo = MainThreadInit();
-
-	MyThreadID = pthread_self();
-
-	MemoryContextInit();
-
 	checkDataDir();
 	SetDataDir();
 	ChangeToDataDir();
@@ -209,19 +227,6 @@ BaseInit()
 	GTM_InitTxnManager();
 	GTM_InitSeqManager();
 
-	/*
-	 * The memory context is now set up.
-	 * Add the thrinfo structure in the global array
-	 */
-	if (GTM_ThreadAdd(thrinfo) == -1)
-	{
-		fprintf(stderr, "GTM_ThreadAdd for main thread failed: %d", errno);
-		fflush(stdout);
-		fflush(stderr);
-	}
-#ifdef XCP
-	GTM_MutexLockInit(&control_lock);
-#endif
 }
 
 static void
@@ -376,6 +381,13 @@ main(int argc, char *argv[])
 	 * At first, initialize options.  Also moved something from BaseInit() here.
 	 */
 	InitializeGTMOptions();
+
+	/* 
+	 * Also initialize bare minimum supporting infrastructure such as memory
+	 * context and thread control structure
+	 */
+	InitGTMProcess();
+
 	/*
 	 * Catch standard options before doing much else
 	 */

@@ -220,8 +220,6 @@ MainThreadInit()
 
 	memset((char *)thrinfo, 0, sizeof(GTMProxy_ThreadInfo));
 
-	memset((char *)thrinfo, 0, sizeof(GTMProxy_ThreadInfo));
-
 	if (SetMyThreadInfo(thrinfo))
 	{
 		fprintf(stderr, "SetMyThreadInfo failed: %d", errno);
@@ -235,17 +233,32 @@ MainThreadInit()
 	return thrinfo;
 }
 
+/*
+ * Bare minimum supporting infrastructure. Must be called at the very beginning
+ * so that further initilization can have it ready
+ */
+static void
+InitGTMProxyProcess()
+{
+	GTMProxy_ThreadInfo *thrinfo = MainThreadInit();
+	MyThreadID = pthread_self();
+	MemoryContextInit();
+
+	/*
+	 * The memory context is now set up.
+	 * Add the thrinfo structure in the global array
+	 */
+	if (GTMProxy_ThreadAdd(thrinfo) == -1)
+	{
+		fprintf(stderr, "GTMProxy_ThreadAdd for main thread failed: %d", errno);
+		fflush(stdout);
+		fflush(stderr);
+	}
+}
+
 static void
 BaseInit()
 {
-	GTMProxy_ThreadInfo *thrinfo;
-
-	thrinfo = MainThreadInit();
-
-	MyThreadID = pthread_self();
-
-	MemoryContextInit();
-
 	checkDataDir();
 	SetDataDir();
 	ChangeToDataDir();
@@ -268,17 +281,6 @@ BaseInit()
 	RegisterProxy(false);
 
 	DebugFileOpen();
-
-	/*
-	 * The memory context is now set up.
-	 * Add the thrinfo structure in the global array
-	 */
-	if (GTMProxy_ThreadAdd(thrinfo) == -1)
-	{
-		fprintf(stderr, "GTMProxy_ThreadAdd for main thread failed: %d", errno);
-		fflush(stdout);
-		fflush(stderr);
-	}
 }
 
 static char *
@@ -580,9 +582,15 @@ main(int argc, char *argv[])
 	isStartUp = true;
 
 	/*
-	 * At first, initialize options.   Also moved something from BaseInit() here.
+	 * At first, initialize options.
 	 */
 	InitializeGTMOptions();
+
+	/* 
+	 * Also initialize bare minimum supporting infrastructure such as memory
+	 * context and thread control structure
+	 */
+	InitGTMProxyProcess();
 
 	/*
 	 * Catch standard options before doing much else

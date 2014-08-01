@@ -2545,7 +2545,7 @@ set_config_option(const char *name, const char *value,
 						}
 
 						if (hintmsg)
-							free(hintmsg);
+							pfree(hintmsg);
 						return false;
 					}
 				}
