@@ -130,7 +130,7 @@ static void monitor_coordinator_slave(char **nodeList)
 		if (!doesExist(VAR_coordSlaveServers, idx) || is_none(aval(VAR_coordSlaveServers)[idx]))
 			elog(ERROR, "ERROR: coordinator slave %s is not configured\n", actualNodeList[ii]);
 		else
-			printResult(pingNode(aval(VAR_coordSlaveServers)[idx], aval(VAR_coordPorts)[idx]), 
+			printResult(pingNode(aval(VAR_coordSlaveServers)[idx], aval(VAR_coordSlavePorts)[idx]), 
 						"coordinator slave", actualNodeList[ii]);
 	}
 }
@@ -152,8 +152,8 @@ static void monitor_coordinator(char **nodeList)
 		printResult(pingNode(aval(VAR_coordMasterServers)[idx], aval(VAR_coordPorts)[idx]), 
 					"coordinator master", actualNodeList[ii]);
 		if (doesExist(VAR_coordSlaveServers, idx) && !is_none(aval(VAR_coordSlaveServers)[idx]))
-			printResult(pingNode(aval(VAR_coordSlaveServers)[idx], aval(VAR_coordPorts)[idx]),
-						"coordinatr slave", actualNodeList[ii]);
+			printResult(pingNode(aval(VAR_coordSlaveServers)[idx], aval(VAR_coordSlavePorts)[idx]),
+						"coordinator slave", actualNodeList[ii]);
 	}
 }
 static void monitor_datanode_master(char **nodeList)

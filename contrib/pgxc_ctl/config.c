@@ -350,6 +350,8 @@ static void emptyCoordSlaves()
 
 	reset_var_val(VAR_coordSlave, "n");
 	reset_var(VAR_coordSlaveServers);
+	reset_var(VAR_coordSlavePorts);
+	reset_var(VAR_coordSlavePoolerPorts);
 	reset_var(VAR_coordSlaveDirs);
 	reset_var(VAR_coordArchLogDirs);
 	for (ii = 0; ii < arraySizeName(VAR_coordNames); ii++)
@@ -625,7 +627,7 @@ int checkPortConflict(char *host, int port)
 	if (isVarYes(VAR_coordSlave))
 		for (ii = 0; aval(VAR_coordNames)[ii]; ii++)
 			if (doesExist(VAR_coordSlaveServers, ii) && !is_none(aval(VAR_coordSlaveServers)[ii]) && 
-				(strcasecmp(host, aval(VAR_coordSlaveServers)[ii]) == 0) && (atoi(aval(VAR_coordPorts)[ii]) == port))
+				(strcasecmp(host, aval(VAR_coordSlaveServers)[ii]) == 0) && (atoi(aval(VAR_coordSlavePorts)[ii]) == port))
 				return 1;
 	/* Datanode Master */
 	for (ii = 0; aval(VAR_datanodeNames)[ii]; ii++)
@@ -840,6 +842,8 @@ static void verifyResource(void)
 							   NULL};
 	char *coordSlaveVars[] = {VAR_coordNames, 
 							  VAR_coordSlaveServers, 
+							  VAR_coordSlavePorts, 
+							  VAR_coordSlavePoolerPorts, 
 							  VAR_coordSlaveDirs, 
 							  VAR_coordArchLogDirs, 
 							  NULL};
@@ -933,7 +937,7 @@ static void verifyResource(void)
 	/* GTM and coordinator slaves, if any */
 	if (isVarYes(VAR_coordSlave))
 		checkResourceConflict(VAR_gtmName, VAR_gtmMasterServer, VAR_gtmMasterPort, NULL, VAR_gtmMasterDir,
-							  VAR_coordNames, VAR_coordSlaveServers, VAR_coordPorts, NULL, VAR_coordSlaveDirs, TRUE, TRUE);
+							  VAR_coordNames, VAR_coordSlaveServers, VAR_coordSlavePorts, NULL, VAR_coordSlaveDirs, TRUE, TRUE);
 	/* GTM and datanode masters */
 	checkResourceConflict(VAR_gtmName, VAR_gtmMasterServer, VAR_gtmMasterPort, NULL, VAR_gtmMasterDir,
 						  VAR_datanodeNames, VAR_datanodeMasterServers, VAR_datanodePorts, NULL, VAR_datanodeMasterDirs, TRUE, TRUE);
@@ -959,7 +963,8 @@ static void verifyResource(void)
 		/* GTM slave and coordinator slaves, if any */
 		if (isVarYes(VAR_coordSlave))
 			checkResourceConflict(VAR_gtmName, VAR_gtmSlaveServer, VAR_gtmSlavePort, NULL, VAR_gtmSlaveDir,
-								  VAR_coordNames, VAR_coordSlaveServers, VAR_coordPorts, VAR_poolerPorts, VAR_coordSlaveDirs,
+								  VAR_coordNames, VAR_coordSlaveServers,
+								  VAR_coordSlavePorts, VAR_coordSlavePoolerPorts, VAR_coordSlaveDirs,
 								  TRUE, TRUE);
 		/* GTM slave and datanode masters */
 		checkResourceConflict(VAR_gtmName, VAR_gtmSlaveServer, VAR_gtmSlavePort, NULL, VAR_gtmSlaveDir,
@@ -983,7 +988,7 @@ static void verifyResource(void)
 		/* GTM proxy and coordinator slaves, if any */
 		if (sval(VAR_coordSlave) && (strcmp(sval(VAR_coordSlave), "y") == 0))
 			checkResourceConflict(VAR_gtmProxyNames, VAR_gtmProxyServers, VAR_gtmProxyPorts, NULL, VAR_gtmProxyDirs,
-								  VAR_coordNames, VAR_coordSlaveServers, VAR_coordPorts, VAR_poolerPorts, VAR_coordSlaveDirs,
+								  VAR_coordNames, VAR_coordSlaveServers, VAR_coordSlavePorts, VAR_coordSlavePoolerPorts, VAR_coordSlaveDirs,
 								  TRUE, TRUE);
 		/* GTM proxy and datanode masters */
 			checkResourceConflict(VAR_gtmProxyNames, VAR_gtmProxyServers, VAR_gtmProxyPorts, NULL, VAR_gtmProxyDirs,
@@ -1001,7 +1006,8 @@ static void verifyResource(void)
 	/* Coordinator master and coordinator slaves, if any */
 	if (isVarYes(VAR_coordSlave))
 		checkResourceConflict(VAR_coordNames, VAR_coordMasterServers, VAR_coordPorts, VAR_poolerPorts, VAR_coordMasterDirs,
-							  VAR_coordNames, VAR_coordSlaveServers, VAR_coordPorts, VAR_poolerPorts, VAR_coordSlaveDirs,
+							  VAR_coordNames, VAR_coordSlaveServers,
+							  VAR_coordSlavePorts, VAR_coordSlavePoolerPorts, VAR_coordSlaveDirs,
 							  TRUE, FALSE);
 	/* Coordinator masters and datanode masters */
 	checkResourceConflict(VAR_coordNames, VAR_coordMasterServers, VAR_coordPorts, VAR_poolerPorts, VAR_coordMasterDirs,
@@ -1019,12 +1025,12 @@ static void verifyResource(void)
 	if (isVarYes(VAR_coordSlave))
 	{
 		/* Coordinator slave and datanode masters */
-		checkResourceConflict(VAR_coordNames, VAR_coordSlaveServers, VAR_coordPorts, VAR_poolerPorts, VAR_coordSlaveDirs,
+		checkResourceConflict(VAR_coordNames, VAR_coordSlaveServers, VAR_coordSlavePorts, VAR_coordSlavePoolerPorts, VAR_coordSlaveDirs,
 							  VAR_datanodeNames, VAR_datanodeSlaveServers, VAR_datanodePorts, NULL, VAR_datanodeSlaveDirs,
 							  FALSE, TRUE);
 		/* Coordinator slave and datanode slave, if any */
 		if (isVarYes(VAR_datanodeSlave))
-			checkResourceConflict(VAR_coordNames, VAR_coordSlaveServers, VAR_coordPorts, VAR_poolerPorts, VAR_coordSlaveDirs,
+			checkResourceConflict(VAR_coordNames, VAR_coordSlaveServers, VAR_coordSlavePorts, VAR_coordSlavePoolerPorts, VAR_coordSlaveDirs,
 								  VAR_datanodeNames, VAR_datanodeSlaveServers,
 								  VAR_datanodeSlavePorts, NULL, VAR_datanodeSlaveDirs,
 								  TRUE, TRUE);

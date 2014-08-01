@@ -3869,6 +3869,14 @@ IsStmtAllowedInLockedMode(Node *parsetree, const char *queryString)
 														 * advisory lock on the crashed node.
 														 */
 
+		case T_AlterNodeStmt:							/*
+														 * This has to be
+														 * allowed so that
+														 * ALTER NODE can be
+														 * issued in case a
+														 * datanode or
+														 * coordinator failover
+														 */  
 		case T_TransactionStmt:
 		case T_PlannedStmt:
 		case T_ClosePortalStmt:

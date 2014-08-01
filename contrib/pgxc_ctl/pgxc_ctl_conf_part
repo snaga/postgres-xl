@@ -140,8 +140,8 @@ coordArchLogDir=$HOME/pgxc/nodes/coord_archlog
 
 #---- Overall ------------
 coordNames=(coord1 coord2 coord3 coord4)		# Master and slave use the same name
-coordPorts=(20004 20005 20004 20005)			# Master and slave use the same port
-poolerPorts=(20010 20011 20010 20011)			# Master and slave use the same pooler port
+coordPorts=(20004 20005 20004 20005)			# Master ports
+poolerPorts=(20010 20011 20010 20011)			# Master pooler ports
 coordPgHbaEntries=(192.168.1.0/24)				# Assumes that all the coordinator (master/slave) accepts
 												# the same connection
 												# This entry allows only $pgxcOwner to connect.
@@ -168,6 +168,8 @@ coordSlave=y			# Specify y if you configure at least one coordiantor slave.  Oth
 						# empty values.
 coordSlaveSync=y		# Specify to connect with synchronized mode.
 coordSlaveServers=(node07 node08 node09 node06)			# none means this slave is not available
+coordSlavePorts=(20004 20005 20004 20005)			# Master ports
+coordSlavePoolerPorts=(20010 20011 20010 20011)			# Master pooler ports
 coordSlaveDirs=($coordSlaveDir $coordSlaveDir $coordSlaveDir $coordSlaveDir)
 coordArchLogDirs=($coordArchLogDir $coordArchLogDir $coordArchLogDir $coordArchLogDir)
 
@@ -230,9 +232,9 @@ datanodeArchLogDir=$HOME/pgxc/nodes/datanode_archlog
 # without this feature.
 primaryDatanode=datanode1				# Primary Node.
 datanodeNames=(datanode1 datanode2 datanode3 datanode4)
-datanodePorts=(20008 20009 20008 20009)	# Master and slave use the same port!
+datanodePorts=(20008 20009 20008 20009)	# Master ports
 #ifdef XCP
-datanodePoolerPorts=(20012 20013 20012 20013)	# Master and slave use the same port!
+datanodePoolerPorts=(20012 20013 20012 20013)	# Master pooler ports
 #endif
 datanodePgHbaEntries=(192.168.1.0/24)	# Assumes that all the coordinator (master/slave) accepts
 										# the same connection
@@ -263,6 +265,8 @@ datanodeSlave=y			# Specify y if you configure at least one coordiantor slave.  
 						# then datanodeSlave value will be set to n and all the following values will be set to
 						# empty values.
 datanodeSlaveServers=(node07 node08 node09 node06)	# value none means this slave is not available
+datanodeSlavePorts=(20008 20009 20008 20009)	# value none means this slave is not available
+datanodeSlavePoolerPorts=(20012 20013 20012 20013)	# value none means this slave is not available
 datanodeSlaveSync=y		# If datanode slave is connected in synchronized mode
 datanodeSlaveDirs=($datanodeSlaveDir $datanodeSlaveDir $datanodeSlaveDir $datanodeSlaveDir)
 datanodeArchLogDirs=( $datanodeArchLogDir $datanodeArchLogDir $datanodeArchLogDir $datanodeArchLogDir )

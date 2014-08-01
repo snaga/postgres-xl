@@ -311,12 +311,15 @@ cmd_t *prepare_initCoordinatorSlave(char *nodeName)
 			"# Added to initialize the slave, %s\n"
 			"hot_standby = on\n"
 			"port = %s\n"
+			"pooler_port = %s\n"
 			"wal_level = minimal\n"
 			"archive_mode = off\n"
 			"archive_command = ''\n"
 			"max_wal_senders = 0\n"
 			"# End of Addition\n",
-			timeStampString(timestamp, MAXTOKEN), aval(VAR_coordPorts)[idx]);
+			timeStampString(timestamp, MAXTOKEN),
+			aval(VAR_coordSlavePorts)[idx],
+			aval(VAR_coordSlavePoolerPorts)[idx]);
 	fclose(f);
 	cmdPgConf->localStdin = Strdup(localStdin);
 	snprintf(newCommand(cmdPgConf), MAXLINE,
@@ -774,7 +777,7 @@ cmd_t *prepare_killCoordinatorSlave(char *nodeName)
 	{
 		elog(WARNING, "WARNING: pid for coordinator slave \"%s\" was not found.  Remove socket only.\n", nodeName);
 		snprintf(newCommand(cmd), MAXLINE,
-			 "rm -f /tmp/.s.'*'%d'*'", atoi(aval(VAR_coordPorts)[idx]));
+			 "rm -f /tmp/.s.'*'%d'*'", atoi(aval(VAR_coordSlavePorts)[idx]));
 	}
 	return(cmd);
 }
@@ -877,7 +880,7 @@ cmd_t *prepare_cleanCoordinatorSlave(char *nodeName)
 	snprintf(newCommand(cmd), MAXLINE,
 			 "rm -rf %s;mkdir -p %s;chmod 0700 %s; rm -f /tmp/.s.*%d*; rm -f /tmp/.s.*%d*",
 			 aval(VAR_coordSlaveDirs)[idx], aval(VAR_coordSlaveDirs)[idx], aval(VAR_coordSlaveDirs)[idx],
-			 atoi(aval(VAR_coordPorts)[idx]), atoi(aval(VAR_poolerPorts)[idx]));
+			 atoi(aval(VAR_coordSlavePorts)[idx]), atoi(aval(VAR_coordSlavePoolerPorts)[idx]));
 	return cmd;
 }
 
@@ -983,6 +986,8 @@ int add_coordinatorMaster(char *name, char *host, int port, int pooler, char *di
 	assign_arrayEl(VAR_coordMasterDirs, idx, dir, NULL);
 	assign_arrayEl(VAR_coordMaxWALSenders, idx, aval(VAR_coordMaxWALSenders)[0], "-1");	/* Could be vulnerable */
 	assign_arrayEl(VAR_coordSlaveServers, idx, "none", NULL);
+	assign_arrayEl(VAR_coordSlavePorts, idx, "none", NULL);
+	assign_arrayEl(VAR_coordSlavePoolerPorts, idx, "none", NULL);
 	assign_arrayEl(VAR_coordSlaveDirs, idx, "none", NULL);
 	assign_arrayEl(VAR_coordArchLogDirs, idx, "none", NULL);
 	assign_arrayEl(VAR_coordSpecificExtraConfig, idx, "none", NULL);
@@ -1020,6 +1025,8 @@ int add_coordinatorMaster(char *name, char *host, int port, int pooler, char *di
 	fprintAval(f, VAR_coordMaxWALSenders);
 	fprintSval(f, VAR_coordSlave);
 	fprintAval(f, VAR_coordSlaveServers);
+	fprintAval(f, VAR_coordSlavePorts);
+	fprintAval(f, VAR_coordSlavePoolerPorts);
 	fprintAval(f, VAR_coordSlaveDirs);
 	fprintAval(f, VAR_coordArchLogDirs);
 	fprintAval(f, VAR_coordSpecificExtraConfig);
@@ -1149,10 +1156,12 @@ int add_coordinatorMaster(char *name, char *host, int port, int pooler, char *di
 	return 0;
 }
 
-int add_coordinatorSlave(char *name, char *host, char *dir, char *archDir)
+int add_coordinatorSlave(char *name, char *host, int port, int pooler_port, char *dir, char *archDir)
 {
 	int idx;
 	FILE *f;
+	char port_s[MAXTOKEN+1];
+	char pooler_s[MAXTOKEN+1];
 
 	/* Check if the name is valid coordinator */
 	if ((idx = coordIdx(name)) < 0)
@@ -1176,7 +1185,7 @@ int add_coordinatorSlave(char *name, char *host, char *dir, char *archDir)
 	 * We don't check the name conflict here because acquiring valid coordiinator index means that
 	 * there's no name conflict.
 	 */
-	if (checkPortConflict(host, atoi(aval(VAR_coordPorts)[idx])))
+	if (checkPortConflict(host, port))
 	{
 		elog(ERROR, "ERROR: the port %s has already been used in the host %s.\n",  aval(VAR_coordPorts)[idx], host);
 		return 1;
@@ -1192,6 +1201,10 @@ int add_coordinatorSlave(char *name, char *host, char *dir, char *archDir)
 		elog(ERROR, "ERROR: Coordinator master %s is not running.\n", name);
 		return 1;
 	}
+
+	snprintf(port_s, MAXTOKEN, "%d", port);
+	snprintf(pooler_s, MAXTOKEN, "%d", pooler_port);
+	
 	/* Prepare the resources (directories) */
 	doImmediate(host, NULL, "rm -rf %s; mkdir -p %s;chmod 0700 %s", dir, dir, dir);
 	doImmediate(host, NULL, "rm -rf %s; mkdir -p %s;chmod 0700 %s", archDir, archDir, archDir);
@@ -1234,6 +1247,8 @@ int add_coordinatorSlave(char *name, char *host, char *dir, char *archDir)
 	/* Need an API to expand the array to desired size */
 	if ((extendVar(VAR_coordSlaveServers, idx, "none") != 0) ||
 		(extendVar(VAR_coordSlaveDirs, idx, "none")  != 0) ||
+		(extendVar(VAR_coordSlavePorts, idx, "none")  != 0) ||
+		(extendVar(VAR_coordSlavePoolerPorts, idx, "none")  != 0) ||
 		(extendVar(VAR_coordArchLogDirs, idx, "none") != 0))
 	{
 		elog(PANIC, "PANIC: Internal error, inconsitent coordinator information\n");
@@ -1242,6 +1257,8 @@ int add_coordinatorSlave(char *name, char *host, char *dir, char *archDir)
 	if (!isVarYes(VAR_coordSlave))
 		assign_sval(VAR_coordSlave, "y");
 	assign_arrayEl(VAR_coordSlaveServers, idx, host, NULL);
+	assign_arrayEl(VAR_coordSlavePorts, idx, port_s, NULL);
+	assign_arrayEl(VAR_coordSlavePoolerPorts, idx, pooler_s, NULL);
 	assign_arrayEl(VAR_coordSlaveDirs, idx, dir, NULL);
 	assign_arrayEl(VAR_coordArchLogDirs, idx, archDir, NULL);
 	/* Update the configuration file and backup it */
@@ -1258,6 +1275,8 @@ int add_coordinatorSlave(char *name, char *host, char *dir, char *archDir)
 			timeStampString(date, MAXTOKEN+1));
 	fprintSval(f, VAR_coordSlave);
 	fprintAval(f, VAR_coordSlaveServers);
+	fprintAval(f, VAR_coordSlavePorts);
+	fprintAval(f, VAR_coordSlavePoolerPorts);
 	fprintAval(f, VAR_coordArchLogDirs);
 	fprintAval(f, VAR_coordSlaveDirs);
 	fprintf(f, "%s", "#----End of reconfiguration -------------------------\n");
@@ -1294,12 +1313,15 @@ int add_coordinatorSlave(char *name, char *host, char *dir, char *archDir)
 			"# Added to initialize the slave, %s\n"
 			"hot_standby = on\n"
 			"port = %d\n"
+			"pooler_port = %d\n"
 			"wal_level = minimal\n"		/* WAL level --- minimal.   No cascade slave so far. */
 			"archive_mode = off\n"		/* No archive mode */
 			"archive_command = ''\n"	/* No archive mode */
 			"max_wal_senders = 0\n"		/* Minimum WAL senders */
 			"# End of Addition\n",
-			timeStampString(date, MAXTOKEN), atoi(aval(VAR_coordPorts)[idx]));
+			timeStampString(date, MAXTOKEN),
+			atoi(aval(VAR_coordSlavePorts)[idx]),
+			atoi(aval(VAR_coordSlavePoolerPorts)[idx]));
 	pclose(f);
 	/* Update the slave recovery.conf */
 	if ((f = pgxc_popen_w(host, "cat >> %s/recovery.conf", dir)) == NULL)
@@ -1467,6 +1489,8 @@ int remove_coordinatorMaster(char *name, int clean_opt)
 	assign_arrayEl(VAR_coordMasterServers, idx, "none", NULL);
 	assign_arrayEl(VAR_coordMaxWALSenders, idx, "0", "0");
 	assign_arrayEl(VAR_coordSlaveServers, idx, "none", NULL);
+	assign_arrayEl(VAR_coordSlavePorts, idx, "none", NULL);
+	assign_arrayEl(VAR_coordSlavePoolerPorts, idx, "none", NULL);
 	assign_arrayEl(VAR_coordSlaveDirs, idx, "none", NULL);
 	assign_arrayEl(VAR_coordArchLogDirs, idx, "none", NULL);
 	assign_arrayEl(VAR_coordSpecificExtraConfig, idx, "none", NULL);
@@ -1493,6 +1517,8 @@ int remove_coordinatorMaster(char *name, int clean_opt)
 	fprintAval(f, VAR_coordMasterServers);
 	fprintAval(f, VAR_coordMaxWALSenders);
 	fprintAval(f, VAR_coordSlaveServers);
+	fprintAval(f, VAR_coordSlavePorts);
+	fprintAval(f, VAR_coordSlavePoolerPorts);
 	fprintAval(f, VAR_coordSlaveDirs);
 	fprintAval(f, VAR_coordArchLogDirs);
 	fprintAval(f, VAR_coordSpecificExtraConfig);
@@ -1524,7 +1550,7 @@ int remove_coordinatorSlave(char *name, int clean_opt)
 		return 1;
 	}
 	AddMember(nodelist, name);
-	if (pingNode(aval(VAR_coordSlaveServers)[idx], aval(VAR_coordPorts)[idx]) == 0)
+	if (pingNode(aval(VAR_coordSlaveServers)[idx], aval(VAR_coordSlavePorts)[idx]) == 0)
 		stop_coordinator_slave(nodelist, "immediate");
 	{
 		FILE *f;
@@ -1552,6 +1578,8 @@ int remove_coordinatorSlave(char *name, int clean_opt)
 	 * Maintain variables
 	 */
 	assign_arrayEl(VAR_coordSlaveServers, idx, "none", NULL);
+	assign_arrayEl(VAR_coordSlavePorts, idx, "none", NULL);
+	assign_arrayEl(VAR_coordSlavePoolerPorts, idx, "none", NULL);
 	assign_arrayEl(VAR_coordSlaveDirs, idx, "none", NULL);
 	assign_arrayEl(VAR_coordArchLogDirs, idx, "none", NULL);
 	handle_no_slaves();
@@ -1571,6 +1599,8 @@ int remove_coordinatorSlave(char *name, int clean_opt)
 			timeStampString(date, MAXTOKEN));
 	fprintSval(f, VAR_coordSlave);
 	fprintAval(f, VAR_coordSlaveServers);
+	fprintAval(f, VAR_coordSlavePorts);
+	fprintAval(f, VAR_coordSlavePoolerPorts);
 	fprintAval(f, VAR_coordSlaveDirs);
 	fprintAval(f, VAR_coordArchLogDirs);
 	fclose(f);
@@ -1813,7 +1843,7 @@ cmd_t *prepare_stopCoordinatorSlave(char *nodeName, char *immediate)
 		elog(WARNING, "WARNING: %s is not a coordinator.\n", nodeName);
 		return(NULL);
 	}
-	if (pingNode(aval(VAR_coordMasterServers)[idx], aval(VAR_coordPorts)[idx]) == 0)
+	if (pingNode(aval(VAR_coordMasterServers)[idx], aval(VAR_coordSlavePorts)[idx]) == 0)
 	{
 		/* Master is running.  Need to switch log shipping to asynchronous mode. */
 		cmd = cmdMasterReload = initCmd(aval(VAR_coordMasterServers)[idx]);
@@ -1933,6 +1963,12 @@ static int failover_oneCoordinator(int coordIdx)
 	char *gtmPort;
 	FILE *f;
 	char timestamp[MAXTOKEN+1];
+
+#ifdef XCP	
+	char cmd[MAXLINE];
+	int	 cmdlen;
+	bool dnReconfigured;
+#endif	
 	
 #define checkRc() do{if(WEXITSTATUS(rc_local) > rc) rc = WEXITSTATUS(rc_local);}while(0)
 
@@ -1985,7 +2021,11 @@ static int failover_oneCoordinator(int coordIdx)
 	
 	/* Update the configuration variable */
 	var_assign(&(aval(VAR_coordMasterServers)[coordIdx]), Strdup(aval(VAR_coordSlaveServers)[coordIdx]));
+	var_assign(&(aval(VAR_coordPorts)[coordIdx]), Strdup(aval(VAR_coordSlavePorts)[coordIdx]));
+	var_assign(&(aval(VAR_poolerPorts)[coordIdx]), Strdup(aval(VAR_coordSlavePoolerPorts)[coordIdx]));
 	var_assign(&(aval(VAR_coordSlaveServers)[coordIdx]), Strdup("none"));
+	var_assign(&(aval(VAR_coordSlavePorts)[coordIdx]), Strdup("none"));
+	var_assign(&(aval(VAR_coordSlavePoolerPorts)[coordIdx]), Strdup("none"));
 	var_assign(&(aval(VAR_coordMasterDirs)[coordIdx]), Strdup(aval(VAR_coordSlaveDirs)[coordIdx]));
 	var_assign(&(aval(VAR_coordSlaveDirs)[coordIdx]), Strdup("none"));
 
@@ -1998,14 +2038,22 @@ static int failover_oneCoordinator(int coordIdx)
 			"#=====================================================\n"
 			"# Updated due to the coordinator failover, %s, %s\n"
 			"coordMasterServers=( %s )\n"
+			"coordPorts =( %s )\n"
+			"poolerPorts =( %s )\n"
 			"coordMasterDirs=( %s )\n"
 			"coordSlaveServers=( %s )\n"
+			"coordSlavePorts=( %s )\n"
+			"coordSlavePoolerPorts=( %s )\n"
 			"coordSlaveDirs=( %s )\n"
 			"# End of the update\n",
 			aval(VAR_coordNames)[coordIdx], timeStampString(timestamp, MAXTOKEN),
 			listValue(VAR_coordMasterServers),
+			listValue(VAR_coordPorts),
+			listValue(VAR_poolerPorts),
 			listValue(VAR_coordMasterDirs),
 			listValue(VAR_coordSlaveServers),
+			listValue(VAR_coordSlavePorts),
+			listValue(VAR_coordSlavePoolerPorts),
 			listValue(VAR_coordSlaveDirs));
 	fclose(f);
 
@@ -2015,6 +2063,44 @@ static int failover_oneCoordinator(int coordIdx)
 		rc_local = doConfigBackup();
 		checkRc();
 	}
+
+#ifdef XCP	
+	cmdlen = 0;
+	cmd[0] = '\0';
+	/*
+	 * Reconfigure datanodes with the new datanode. We prepare the commands and
+	 * pass them to the first coordinator we reconfigure later
+	 */
+	for (jj = 0; aval(VAR_datanodeNames)[jj]; jj++)
+	{
+		int len;
+
+		if (is_none(aval(VAR_datanodeMasterServers)[jj]))
+			continue;
+			
+		if (pingNode(aval(VAR_datanodeMasterServers)[jj], aval(VAR_datanodePorts)[jj]) != 0)
+		{
+			elog(ERROR, "Datanode %s is not running.  Skip reconfiguration for this datanode.\n",
+				 aval(VAR_coordNames)[jj]);
+			continue;
+		}
+		
+		len = snprintf(cmd + cmdlen, MAXLINE - cmdlen, "EXECUTE DIRECT ON (%s) 'ALTER NODE %s WITH (HOST=''%s'', PORT=%s)';\n"
+				"EXECUTE DIRECT ON (%s) 'select pgxc_pool_reload()';\n",
+								 aval(VAR_datanodeNames)[jj],
+								 aval(VAR_coordNames)[coordIdx],
+								 aval(VAR_coordMasterServers)[coordIdx],
+								 aval(VAR_coordPorts)[coordIdx],
+								 aval(VAR_datanodeNames)[jj]);
+		if (len > (MAXLINE - cmdlen))
+		{
+			elog(ERROR, "Datanode command exceeds the maximum allowed length");
+			return -1;
+		}
+		cmdlen += len;
+	}
+	dnReconfigured = false;
+#endif
 
 	/*
 	 * Reconfigure coordinators with new coordinator
@@ -2043,8 +2129,15 @@ static int failover_oneCoordinator(int coordIdx)
 		fprintf(f,
 				"ALTER NODE %s WITH (HOST='%s', PORT=%s);\n"
 				"select pgxc_pool_reload();\n"
+#ifdef XCP				
+				"%s"
+#endif				
 				"\\q\n",
-				aval(VAR_coordNames)[coordIdx], aval(VAR_coordMasterServers)[coordIdx], aval(VAR_coordPorts)[coordIdx]);
+				aval(VAR_coordNames)[coordIdx], aval(VAR_coordMasterServers)[coordIdx], aval(VAR_coordPorts)[coordIdx]
+#ifdef XCP				
+				,dnReconfigured ? "" : cmd
+#endif				
+				);
 		pclose(f);
 	}
 	return(rc);
@@ -2169,7 +2262,8 @@ int show_config_coordSlave(int flag, int idx, char *hostname)
 	if (outBuf[0])
 		elog(NOTICE, "%s", outBuf);
 	elog(NOTICE,"    Nodename: '%s', port: %s, pooler port: %s\n",
-		 aval(VAR_coordNames)[idx], aval(VAR_coordPorts)[idx], aval(VAR_poolerPorts)[idx]);
+		 aval(VAR_coordNames)[idx], aval(VAR_coordSlavePorts)[idx],
+		 aval(VAR_coordSlavePoolerPorts)[idx]);
 	elog(NOTICE, "    Dir: '%s', Archive Log Dir: '%s'\n",
 		 aval(VAR_coordSlaveDirs)[idx], aval(VAR_coordArchLogDirs)[idx]);
 	unlockLogFile();

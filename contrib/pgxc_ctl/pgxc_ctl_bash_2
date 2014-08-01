@@ -82,6 +82,8 @@ function print_values
 	echo coordSlave $coordSlave
 	echo coordSlaveSync $coordSlaveSync
 	print_array coordSlaveServers
+	print_array coordSlavePorts
+	print_array coordSlavePoolerPorts
 	print_array coordSlaveDirs
 	print_array coordArchLogDirs
 

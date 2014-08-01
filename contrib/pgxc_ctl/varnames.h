@@ -69,6 +69,8 @@
 /* Coordinators slave */
 #define VAR_coordSlave		"coordSlave"
 #define VAR_coordSlaveServers	"coordSlaveServers"
+#define VAR_coordSlavePorts	"coordSlavePorts"
+#define VAR_coordSlavePoolerPorts	"coordSlavePoolerPorts"
 #define VAR_coordSlaveSync	"coordSlaveSync"
 #define VAR_coordSlaveDirs	"coordSlaveDirs"
 #define VAR_coordArchLogDirs	"coordArchLogDirs"

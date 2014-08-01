@@ -929,9 +929,11 @@ static void do_add_command(char *line)
 		{
 			GetAndSet(name, "ERROR: please specify the name of the coordinator slave\n");
 			GetAndSet(host, "ERROR: please specify the host for the coordinator slave\n");
+			GetAndSet(port, "ERROR: please specify the port number for the coordinator slave\n");
+			GetAndSet(pooler, "ERROR: please specify the pooler port number for the coordinator slave.\n");
 			GetAndSet(dir, "ERROR: please specify the working director for coordinator slave\n");
 			GetAndSet(archDir, "ERROR: please specify WAL archive directory for coordinator slave\n");
-			add_coordinatorSlave(name, host, dir, archDir);
+			add_coordinatorSlave(name, host, atoi(port), atoi(pooler), dir, archDir);
 			freeAndReset(name);
 			freeAndReset(host);
 			freeAndReset(dir);

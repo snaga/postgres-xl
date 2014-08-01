@@ -53,7 +53,7 @@ extern cmd_t *prepare_stopCoordinatorMaster(char *nodeName, char *immediate);
 extern cmd_t *prepare_stopCoordinatorSlave(char *nodeName, char *immediate);
 
 extern int add_coordinatorMaster(char *name, char *host, int port, int pooler, char *dir);
-extern int add_coordinatorSlave(char *name, char *host, char *dir, char *archDir);
+extern int add_coordinatorSlave(char *name, char *host, int port, int pooler, char *dir, char *archDir);
 extern int remove_coordinatorMaster(char *name, int clean_opt);
 extern int remove_coordinatorSlave(char *name, int clean_opt);
 
