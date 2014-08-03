@@ -19,9 +19,18 @@ typedef struct pgxc_ctl_var {
 	struct pgxc_ctl_var *next;
 	struct pgxc_ctl_var *prev;
 	char	*varname;
-	int		val_size;
-	int		val_used;
-	char	**val;
+	int		val_size;		/*
+							 * current size of the allocated array including
+							 * place to store the NULL pointer as an
+							 * end-of-array marker
+							 */
+
+	int		val_used;		/* currently used values */
+
+	char	**val;			/* 
+							 * max (val_size - 1) values and NULL as the last
+							 * element
+							 */
 } pgxc_ctl_var;
 
 

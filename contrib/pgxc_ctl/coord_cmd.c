@@ -974,6 +974,23 @@ int add_coordinatorMaster(char *name, char *host, int port, int pooler, char *di
 	/*
 	 * Now reconfigure
 	 */
+	/* Need an API to expand the array to desired size */
+	if ((extendVar(VAR_coordNames, idx + 1, "none") != 0) ||
+		(extendVar(VAR_coordMasterServers, idx + 1, "none")  != 0) ||
+		(extendVar(VAR_coordPorts, idx + 1, "none")  != 0) ||
+		(extendVar(VAR_poolerPorts, idx + 1, "none")  != 0) ||
+		(extendVar(VAR_coordMasterDirs, idx + 1, "none")  != 0) ||
+		(extendVar(VAR_coordMaxWALSenders, idx + 1, "none")  != 0) ||
+		(extendVar(VAR_coordSlaveServers, idx + 1, "none")  != 0) ||
+		(extendVar(VAR_coordSlavePorts, idx + 1, "none")  != 0) ||
+		(extendVar(VAR_coordSlaveDirs, idx + 1, "none")  != 0) ||
+		(extendVar(VAR_coordArchLogDirs, idx + 1, "none")  != 0) ||
+		(extendVar(VAR_coordSpecificExtraConfig, idx + 1, "none")  != 0) ||
+		(extendVar(VAR_coordSpecificExtraPgHba, idx + 1, "none") != 0))
+	{
+		elog(PANIC, "PANIC: Internal error, inconsitent coordinator information\n");
+		return 1;
+	}
 	/*
 	 * 000 We need another way to configure specific pg_hba.conf and max_wal_senders.
 	 */
@@ -1245,11 +1262,11 @@ int add_coordinatorSlave(char *name, char *host, int port, int pooler_port, char
 	pclose(f);
 	/* Reconfigure pgxc_ctl configuration with the new slave */
 	/* Need an API to expand the array to desired size */
-	if ((extendVar(VAR_coordSlaveServers, idx, "none") != 0) ||
-		(extendVar(VAR_coordSlaveDirs, idx, "none")  != 0) ||
-		(extendVar(VAR_coordSlavePorts, idx, "none")  != 0) ||
-		(extendVar(VAR_coordSlavePoolerPorts, idx, "none")  != 0) ||
-		(extendVar(VAR_coordArchLogDirs, idx, "none") != 0))
+	if ((extendVar(VAR_coordSlaveServers, idx + 1, "none") != 0) ||
+		(extendVar(VAR_coordSlaveDirs, idx + 1, "none")  != 0) ||
+		(extendVar(VAR_coordSlavePorts, idx + 1, "none")  != 0) ||
+		(extendVar(VAR_coordSlavePoolerPorts, idx + 1, "none")  != 0) ||
+		(extendVar(VAR_coordArchLogDirs, idx + 1, "none") != 0))
 	{
 		elog(PANIC, "PANIC: Internal error, inconsitent coordinator information\n");
 		return 1;

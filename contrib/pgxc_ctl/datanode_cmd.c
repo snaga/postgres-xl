@@ -974,6 +974,30 @@ int add_datanodeMaster(char *name, char *host, int port, char *dir, char *restor
 		elog(ERROR, "ERROR: sorry found some inconflicts in datanode master configuration.\n");
 		return 1;
 	}
+
+	if ((extendVar(VAR_datanodeNames, idx + 1, "none") != 0) ||
+		(extendVar(VAR_datanodeMasterServers, idx + 1, "none")  != 0) ||
+		(extendVar(VAR_datanodePorts, idx + 1, "none")  != 0) ||
+#ifdef XCP		
+		(extendVar(VAR_datanodePoolerPorts, idx + 1, "none")  != 0) ||
+#endif		
+		(extendVar(VAR_datanodeMasterDirs, idx + 1, "none")  != 0) ||
+		(extendVar(VAR_datanodeMaxWALSenders, idx + 1, "none")  != 0) ||
+		(extendVar(VAR_datanodeSlaveServers, idx + 1, "none")  != 0) ||
+		(extendVar(VAR_datanodeSlavePorts, idx + 1, "none")  != 0) ||
+#ifdef XCP		
+		(extendVar(VAR_datanodeSlavePoolerPorts, idx + 1, "none")  != 0) ||
+#endif		
+		(extendVar(VAR_datanodeSlaveDirs, idx + 1, "none")  != 0) ||
+		(extendVar(VAR_datanodeArchLogDirs, idx + 1, "none")  != 0) ||
+		(extendVar(VAR_datanodeSpecificExtraConfig, idx + 1, "none")  != 0) ||
+		(extendVar(VAR_datanodeSpecificExtraPgHba, idx + 1, "none") != 0))
+	{
+		elog(PANIC, "PANIC: Internal error, inconsitent datanode information\n");
+		return 1;
+	}
+
+
 	/*
 	 * Now reconfigure
 	 */
@@ -1282,18 +1306,20 @@ int add_datanodeSlave(char *name, char *host, int port, int pooler, char *dir, c
 			timeStampString(date, MAXPATH),
 			sval(VAR_pgxcOwner), getIpAddress(host));
 	pclose(f);
-	/* Reconfigure pgxc_ctl configuration with the new slave */
-#if 0
 	/* Need an API to expand the array to desired size */
-	if ((extendVar(VAR_datanodeSlaveServers, idx, "none") != 0) ||
-		(extendVar(VAR_datanodeSlaveDirs, idx, "none")  != 0) ||
-		(extendVar(VAR_datanodeArchLogDirs, idx, "none") != 0))
+	if ((extendVar(VAR_datanodeSlaveServers, idx + 1, "none") != 0) ||
+		(extendVar(VAR_datanodeSlavePorts, idx + 1, "none")  != 0) ||
+#ifdef XCP		
+		(extendVar(VAR_datanodeSlavePoolerPorts, idx + 1, "none")  != 0) ||
+#endif		
+		(extendVar(VAR_datanodeSlaveDirs, idx + 1, "none")  != 0) ||
+		(extendVar(VAR_datanodeArchLogDirs, idx + 1, "none") != 0))
 	{
 		elog(PANIC, "PANIC: Internal error, inconsitent datanode information\n");
 		return 1;
 	}
-#endif
 
+	/* Reconfigure pgxc_ctl configuration with the new slave */
 	snprintf(port_s, MAXTOKEN, "%d", port);
 #ifdef XCP
 	snprintf(pooler_s, MAXTOKEN, "%d", pooler);

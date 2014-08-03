@@ -387,6 +387,10 @@ int IfExists(char *name, char *value)
 	return FALSE;
 }
 
+/*
+ * Extend the variable values array to newSize (plus 1 for store the
+ * end-of-array marker
+ */ 
 int extendVar(char *name, int newSize, char *def_value)
 {
 	pgxc_ctl_var *target;
@@ -398,24 +402,28 @@ int extendVar(char *name, int newSize, char *def_value)
 		return -1;
 	if (def_value == NULL)
 		def_value = "none";
-	if (target->val_size < newSize)
+
+	/* 
+	 * If the allocated array is not already big enough to store newSize + 1
+	 * elements, we must extend it newSize + 1
+	 */
+	if (target->val_size <= newSize)
 	{
 		old_val = target->val;
 		old_size = target->val_size;
-		target->val = Malloc0(sizeof(char *) * (newSize +1));
+		target->val = Malloc0(sizeof(char *) * (newSize + 1));
 		memcpy(target->val, old_val, sizeof(char *) * old_size);
-		target->val_size = newSize;
+		target->val_size = newSize + 1;
 		Free(old_val);
-		for (ii = target->val_used; ii < newSize; ii++)
-			(target->val)[ii] = Strdup(def_value);
-		target->val_used = newSize;
 	}
-	else if (target->val_used < newSize)
-	{
-		for (ii = target->val_used; ii < newSize; ii++)
-			(target->val)[ii] = Strdup(def_value);
-		target->val_used = newSize;
-	}
+
+	for (ii = target->val_used; ii < newSize; ii++)
+		(target->val)[ii] = Strdup(def_value);
+
+	/* Store NULL in the last element to mark the end-of-array */
+	(target->val)[newSize] = NULL;
+	target->val_used = newSize;
+	
 	return 0;
 }
 
