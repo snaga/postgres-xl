@@ -2137,6 +2137,16 @@ void do_command(FILE *inf, FILE *outf)
 	char *wkline = NULL;
 	char buf[MAXLINE+1];
 	int rc;
+	char histfile[MAXPATH + 20];
+
+#define HISTFILE	".pgxc_ctl_history"
+	
+	histfile[0] = '\0';
+	if (pgxc_ctl_home[0] != '\0')
+	{
+		snprintf(histfile, MAXPATH + 20, "%s/%s", pgxc_ctl_home, HISTFILE);
+		read_history(histfile);
+	}
 
 	for (;;)
 	{
@@ -2166,7 +2176,11 @@ void do_command(FILE *inf, FILE *outf)
 		rc = do_singleLine(buf, wkline);
 		freeAndReset(wkline);
 		if (rc)	/* "q" command was found */
+		{
+			if (histfile[0] != '\0')
+				write_history(histfile);
 			return;
+		}
 	}
 }
 
