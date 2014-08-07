@@ -1732,6 +1732,9 @@ static void do_clean_command(char *line)
 	}
 	if (TestToken("all"))
 	{
+		elog(INFO, "Stopping all components before cleaning\n");
+		stop_all("immediate");
+
 		elog(INFO, "Cleaning all the directories and sockets.\n");
 		clean_gtm_master();
 		if (isVarYes(VAR_gtmSlave))
@@ -1750,19 +1753,27 @@ static void do_clean_command(char *line)
 		GetToken();
 		if ((token == NULL) || TestToken("all"))
 		{
-			elog(INFO, "Cleaning GTM slave/master directories and sockets.\n");
+			elog(INFO, "Stopping and cleaning GTM slave/master \n");
+			stop_gtm_master();
+			if (isVarYes(VAR_gtmSlave))
+				stop_gtm_slave();
+
 			clean_gtm_master();
 			if (isVarYes(VAR_gtmSlave))
 				clean_gtm_slave();
 		}
 		else if (TestToken("master"))
 		{
+			stop_gtm_master();
 			clean_gtm_master();
 		}
 		else if (TestToken("slave"))
 		{
 			if (isVarYes(VAR_gtmSlave))
+			{
+				stop_gtm_slave();
 				clean_gtm_slave();
+			}
 			else
 				elog(ERROR, "ERROR: gtm slave is not configured.\n");
 		}
@@ -1771,18 +1782,23 @@ static void do_clean_command(char *line)
 	}
 	else if (TestToken("gtm_proxy"))
 	{
-		elog(INFO, "Cleaning specified gtm_proxy.\n");
+		elog(INFO, "Stopping and cleaning specified gtm_proxy.\n");
 		GetToken();
 		if (!isVarYes(VAR_gtmProxy))
 			elog(ERROR, "ERROR: gtm proxy is not configured.\n");
 		else if ((token == NULL) || TestToken("all"))
+		{
+			stop_gtm_proxy_all();
 			clean_gtm_proxy_all();
+		}
 		else
 		{
 			char **nodeList = NULL;
 			do
 				AddMember(nodeList, token);
 			while(GetToken());
+
+			stop_gtm_proxy(nodeList);
 			clean_gtm_proxy(nodeList);
 			CleanArray(nodeList);
 		}
@@ -1792,20 +1808,28 @@ static void do_clean_command(char *line)
 		GetToken();
 		if (token == NULL)
 		{
-			elog(INFO, "Clearing coordinator master and slave.\n");
+			elog(INFO, "Stopping and cleaning coordinator master and slave.\n");
+			stop_coordinator_master_all("immediate");
+			if (isVarYes(VAR_coordSlave))
+				stop_coordinator_slave_all("immediate");
+
 			clean_coordinator_master_all();
 			if (isVarYes(VAR_coordSlave))
 				clean_coordinator_slave_all();
 		}
 		else if (TestToken("all"))
 		{
-			elog(INFO, "Clearing coordinator master and slave.\n");
+			elog(INFO, "Stopping and cleaning coordinator master and slave.\n");
 			GetToken();
 			if (token == NULL)
 			{
+				stop_coordinator_master_all("immediate");
 				clean_coordinator_master_all();
 				if (isVarYes(VAR_coordSlave))
+				{
+					stop_coordinator_slave_all("immediate");
 					clean_coordinator_slave_all();
+				}
 			}
 			else
 			{
@@ -1813,31 +1837,39 @@ static void do_clean_command(char *line)
 				do
 					AddMember(nodeList, token);
 				while(GetToken());
+				stop_coordinator_master(nodeList, "immediate");
 				clean_coordinator_master(nodeList);
 				if (isVarYes(VAR_coordSlave))
+				{
+					stop_coordinator_slave(nodeList,"immediate");
 					clean_coordinator_slave(nodeList);
+				}
 				CleanArray(nodeList);
 			}
 		}
 		else if (TestToken("master"))
 		{
-			elog(INFO, "Cleaning specified coordinator master.\n");
+			elog(INFO, "Stopping and cleaning specified coordinator master.\n");
 			GetToken();
 			if (token == NULL)
+			{
+				stop_coordinator_master_all("immediate");
 				clean_coordinator_master_all();
+			}
 			else
 			{
 				char **nodeList = NULL;
 				do
 					AddMember(nodeList, token);
 				while (GetToken());
+				stop_coordinator_master(nodeList, "immediate");
 				clean_coordinator_master(nodeList);
 				CleanArray(nodeList);
 			}
 		}
 		else if (TestToken("slave"))
 		{
-			elog(INFO, "Cleaning specified coordinator slave.\n");
+			elog(INFO, "Stopping and cleaning specified coordinator slave.\n");
 			if (!isVarYes(VAR_coordSlave))
 			{
 				elog(ERROR, "ERROR: Coordinator slave is not configured.\n");
@@ -1845,13 +1877,17 @@ static void do_clean_command(char *line)
 			}
 			GetToken();
 			if (token == NULL)
+			{
+				stop_coordinator_slave_all("immediate");
 				clean_coordinator_slave_all();
+			}
 			else
 			{
 				char **nodeList = NULL;
 				do
 					AddMember(nodeList, token);
 				while (GetToken());
+				stop_coordinator_slave(nodeList, "immediate");
 				clean_coordinator_slave(nodeList);
 				CleanArray(nodeList);
 			}
@@ -1859,13 +1895,17 @@ static void do_clean_command(char *line)
 		else
 		{
 			char **nodeList = NULL;
-			elog(INFO, "Cleaning specified coordinator.\n");
+			elog(INFO, "Stopping and cleaning specified coordinator.\n");
 			do
 				AddMember(nodeList, token);
 			while (GetToken());
+			stop_coordinator_master(nodeList, "immediate");
 			clean_coordinator_master(nodeList);
 			if (isVarYes(VAR_coordSlave))
+			{
+				stop_coordinator_slave(nodeList, "immediate");
 				clean_coordinator_slave(nodeList);
+			}
 			CleanArray(nodeList);
 		}
 	}
@@ -1874,31 +1914,43 @@ static void do_clean_command(char *line)
 		GetToken();
 		if (token == NULL)
 		{
-			elog(INFO, "Cleaning all the datanodes.\n");
+			elog(INFO, "Stopping and cleaning all the datanodes.\n");
+			stop_datanode_master_all("immediate");
 			clean_datanode_master_all();
 			if (isVarYes(VAR_datanodeSlave))
+			{
+				stop_datanode_slave_all("immediate");
 				clean_datanode_slave_all();
+			}
 		}
 		else if (TestToken("all"))
 		{
 			GetToken();
 			if (token == NULL)
 			{
-				elog(INFO, "Cleaning all the datanodes.\n");
+				elog(INFO, "Stoppong and cleaning all the datanodes.\n");
+				stop_datanode_master_all("immediate");
 				clean_datanode_master_all();
 				if (isVarYes(VAR_datanodeSlave))
+				{
+					stop_datanode_slave_all("immediate");
 					clean_datanode_slave_all();
+				}
 			}
 			else
 			{
 				char **nodeList = NULL;
-				elog(INFO, "Cleaning specified datanodes\n");
+				elog(INFO, "Stopping and cleaning specified datanodes\n");
 				do
 					AddMember(nodeList, token);
 				while(GetToken());
+				stop_datanode_master(nodeList, "immediate");
 				clean_datanode_master(nodeList);
 				if (isVarYes(VAR_datanodeSlave))
+				{
+					stop_datanode_slave(nodeList, "immediate");
 					clean_datanode_slave(nodeList);
+				}
 			}
 		}
 		else if (TestToken("master"))
@@ -1906,23 +1958,25 @@ static void do_clean_command(char *line)
 			GetToken();
 			if (token == NULL)
 			{
-				elog(INFO, "Cleaning all the datanode masters.\n");
+				elog(INFO, "Stopping and cleaning all the datanode masters.\n");
+				stop_datanode_master_all("immediate");
 				clean_datanode_master_all();
 			}
 			else
 			{
 				char **nodeList = NULL;
-				elog(INFO, "Cleaning specified datanode masters.\n");
+				elog(INFO, "Stopping and cleaning specified datanode masters.\n");
 				do
 					AddMember(nodeList, token);
 				while (GetToken());
+				stop_datanode_master(nodeList, "immediate");
 				clean_datanode_master(nodeList);
 				CleanArray(nodeList);
 			}
 		}
 		else if (TestToken("slave"))
 		{
-			elog(INFO, "Cleaning specified datanode slaves.\n");
+			elog(INFO, "Stopping and cleaning specified datanode slaves.\n");
 			if (!isVarYes(VAR_datanodeSlave))
 			{
 				elog(ERROR, "ERROR: Datanode slave is not configured.\n");
@@ -1930,13 +1984,17 @@ static void do_clean_command(char *line)
 			}
 			GetToken();
 			if (token == NULL)
+			{
+				stop_datanode_slave_all("immediate");
 				clean_datanode_slave_all();
+			}
 			else
 			{
 				char **nodeList = NULL;
 				do
 					AddMember(nodeList, token);
 				while (GetToken());
+				stop_datanode_slave(nodeList, "immediate");
 				clean_datanode_slave(nodeList);
 				CleanArray(nodeList);
 			}
@@ -1947,15 +2005,19 @@ static void do_clean_command(char *line)
 			do
 				AddMember(nodeList, token);
 			while (GetToken());
+			stop_datanode_master(nodeList, "immediate");
 			clean_datanode_master(nodeList);
 			if (isVarYes(VAR_datanodeSlave))
+			{
+				stop_datanode_slave(nodeList, "immediate");
 				clean_datanode_slave(nodeList);
+			}
 			CleanArray(nodeList);
 		}
 	}
 	else
 	{
-		elog(INFO, "Cleaning specifieid nodes.\n");
+		elog(INFO, "Stopping and cleaning specifieid nodes.\n");
 		do
 		{
 			switch(getNodeType(token))
@@ -1964,34 +2026,50 @@ static void do_clean_command(char *line)
 					elog(ERROR, "ERROR: %s is not found, skipping\n", token);
 					continue;
 				case NodeType_GTM:
-					elog(INFO, "Cleaning GTM.\n");
+					elog(INFO, "Stopping and cleaning GTM master.\n");
 					if (cmdList == NULL)
 						cmdList = initCmdList();
+					addCmd(cmdList, prepare_stopGtmMaster());
 					addCmd(cmdList, prepare_cleanGtmMaster());
 					if (isVarYes(VAR_gtmSlave))
+					{
+						elog(INFO, "Stopping and cleaning GTM slave.\n");
+						addCmd(cmdList, prepare_stopGtmSlave());
 						addCmd(cmdList, prepare_cleanGtmSlave());
+					}
 					continue;
 				case NodeType_GTM_PROXY:
-					elog(INFO, "Cleaning GTM proxy %s.\n", token);
+					elog(INFO, "Stopping and cleaning GTM proxy %s.\n", token);
 					if (cmdList == NULL)
 						cmdList = initCmdList();
+					addCmd(cmdList, prepare_stopGtmProxy(token));
 					addCmd(cmdList, prepare_cleanGtmProxy(token));
 					continue;
 				case NodeType_COORDINATOR:
-					elog(INFO, "Cleaning coordinator %s\n", token);
+					elog(INFO, "Stopping and cleaning coordinator master %s\n", token);
 					if (cmdList == NULL)
 						cmdList = initCmdList();
+					addCmd(cmdList, prepare_stopCoordinatorMaster(token, "immediate"));
 					addCmd(cmdList, prepare_cleanCoordinatorMaster(token));
 					if (isVarYes(VAR_coordSlave))
+					{
+						elog(INFO, "Stopping and cleaning coordinator slave %s\n", token);
+						addCmd(cmdList, prepare_stopCoordinatorSlave(token, "immediate"));
 						addCmd(cmdList, prepare_cleanCoordinatorSlave(token));
+					}
 					continue;
 				case NodeType_DATANODE:
-					elog(INFO, "Cleaning datanode %s\n", token);
+					elog(INFO, "Stopping and cleaning datanode master %s\n", token);
 					if (cmdList == NULL)
 						cmdList = initCmdList();
+					addCmd(cmdList, prepare_stopDatanodeMaster(token, "immediate"));
 					addCmd(cmdList, prepare_cleanDatanodeMaster(token));
 					if (isVarYes(VAR_coordSlave))
+					{
+						elog(INFO, "Stopping and cleaning datanode slave %s\n", token);
+						addCmd(cmdList, prepare_stopDatanodeSlave(token, "immediate"));
 						addCmd(cmdList, prepare_cleanDatanodeSlave(token));
+					}
 					continue;
 				case NodeType_SERVER:
 					elog(ERROR, "ERROR: clearing host is not supported yet. Skipping\n");
