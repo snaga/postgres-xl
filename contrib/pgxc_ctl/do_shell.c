@@ -60,6 +60,8 @@ static void prepareStdout(cmdList_t *cmdList);
  */
 jmp_buf *whereToJumpDoShell = NULL;
 jmp_buf dcJmpBufDoShell;
+jmp_buf *whereToJumpMainLoop = NULL;
+jmp_buf dcJmpBufMainLoop;
 pqsigfunc old_HandlerDoShell = NULL;
 void do_shell_SigHandler(int signum);
 
@@ -443,6 +445,11 @@ int doCmdList(cmdList_t *cmds)
 			}
 		}
 		elog(NOTICE, "%s:%d Finish by interrupt\n", __FUNCTION__, __LINE__);
+		if (whereToJumpMainLoop)
+		{
+			elog(NOTICE, "Control reaches to the mainloop\n");
+			longjmp(*whereToJumpMainLoop, 1);
+		}
 		return 2;
 	}
 	/*
@@ -501,6 +508,12 @@ int doCmdList(cmdList_t *cmds)
 			freeAndReset(cmds->cmds[jj]->remoteStdout);
 		}
 		elog(NOTICE, "%s:%d Finish by interrupt\n", __FUNCTION__, __LINE__);
+
+		if (whereToJumpMainLoop)
+		{
+			elog(NOTICE, "Control reaches to the mainloop\n");
+			longjmp(*whereToJumpMainLoop, 1);
+		}
 		return(2);
 	}
 	signal(SIGINT, old_HandlerDoShell);

@@ -2226,6 +2226,19 @@ void do_command(FILE *inf, FILE *outf)
 		read_history(histfile);
 	}
 
+	/*
+	 * Set the long jump path so that we can come out straight here in case of
+	 * an error. There is not much to reinitialize except may be freeing up the
+	 * wkline buffer and resetting the long jump buffer pointer. But if
+	 * anything else needs to reset, that should happen in the following block
+	 */
+	if (setjmp(dcJmpBufMainLoop) != 0)
+	{
+		whereToJumpMainLoop = NULL;
+		if (wkline)
+			freeAndReset(wkline);
+	}
+
 	for (;;)
 	{
 		if (wkline)
@@ -2251,7 +2264,11 @@ void do_command(FILE *inf, FILE *outf)
 		}
 		trimNl(buf);
 		writeLogOnly("PGXC %s\n", buf);
+
+		whereToJumpMainLoop = &dcJmpBufMainLoop;
 		rc = do_singleLine(buf, wkline);
+		whereToJumpMainLoop = NULL;
+
 		freeAndReset(wkline);
 		if (rc)	/* "q" command was found */
 		{

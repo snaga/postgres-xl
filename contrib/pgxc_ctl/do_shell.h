@@ -11,6 +11,11 @@
 #ifndef DO_SHELL_H
 #define DO_SHELL_H
 
+#include <setjmp.h>
+
+extern jmp_buf *whereToJumpMainLoop;
+extern jmp_buf dcJmpBufMainLoop;
+
 extern void dcSigHandler(int signum);
 typedef enum FileType { STDIN, STDOUT, STDERR, GENERAL } FileType;
 typedef void (*pqsigfunc) (int);
