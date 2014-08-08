@@ -1243,6 +1243,7 @@ int add_datanodeSlave(char *name, char *host, int port, int pooler, char *dir, c
 #ifdef XCP
     char pooler_s[MAXTOKEN+1];
 #endif
+	int kk;
 
 	/* Check if the name is valid datanode */
 	if ((idx = datanodeIdx(name)) < 0)
@@ -1314,10 +1315,18 @@ int add_datanodeSlave(char *name, char *host, int port, int pooler, char *dir, c
 	}
 	fprintf(f, 
 			"#================================================\n"
-			"# Additional entry by adding the slave, %s\n"
+			"# Additional entry by adding the slave, %s\n",
+			timeStampString(date, MAXPATH));
+
+	for (kk = 0; aval(VAR_datanodePgHbaEntries)[kk]; kk++)
+	{
+		fprintf(f, "host replication %s %s trust\n",
+				sval(VAR_pgxcOwner), aval(VAR_datanodePgHbaEntries)[kk]);
+	}
+
+	fprintf(f,
 			"host replication %s %s/32 trust\n"
 			"# End of addition ===============================\n",
-			timeStampString(date, MAXPATH),
 			sval(VAR_pgxcOwner), getIpAddress(host));
 	pclose(f);
 	/* Need an API to expand the array to desired size */
@@ -1381,12 +1390,12 @@ int add_datanodeSlave(char *name, char *host, int port, int pooler, char *dir, c
 	 * Beacse we need to issue pgxc_pool_reload() at all the coordinators, we need to give up all the
 	 * transactions in the whole cluster.
 	 *
-	 * It is much better to shutdow the target coordinator master fast because it does not affect
+	 * It is much better to shutdow the target datanode master fast because it does not affect
 	 * transactions this coordinator is not involved.
 	 */
-	doImmediate(aval(VAR_coordMasterServers)[idx], NULL, 
+	doImmediate(aval(VAR_datanodeMasterServers)[idx], NULL, 
 				"pg_ctl stop -Z datanode -D %s -m fast", aval(VAR_datanodeMasterDirs)[idx]);
-	doImmediate(aval(VAR_coordMasterServers)[idx], NULL, 
+	doImmediate(aval(VAR_datanodeMasterServers)[idx], NULL, 
 				"pg_ctl start -Z datanode -D %s", aval(VAR_datanodeMasterDirs)[idx]);
 	/* pg_basebackup */
 	doImmediate(host, NULL, "pg_basebackup -p %s -h %s -D %s -x",

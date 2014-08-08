@@ -1181,6 +1181,7 @@ int add_coordinatorSlave(char *name, char *host, int port, int pooler_port, char
 	FILE *f;
 	char port_s[MAXTOKEN+1];
 	char pooler_s[MAXTOKEN+1];
+	int kk;
 
 	/* Check if the name is valid coordinator */
 	if ((idx = coordIdx(name)) < 0)
@@ -1256,10 +1257,18 @@ int add_coordinatorSlave(char *name, char *host, int port, int pooler_port, char
 	}
 	fprintf(f, 
 			"#================================================\n"
-			"# Additional entry by adding the slave, %s\n"
+			"# Additional entry by adding the slave, %s\n",
+			timeStampString(date, MAXPATH));
+
+	for (kk = 0; aval(VAR_coordPgHbaEntries)[kk]; kk++)
+	{
+		fprintf(f, "host replication %s %s trust\n",
+				sval(VAR_pgxcOwner), aval(VAR_coordPgHbaEntries)[kk]);
+	}
+
+	fprintf(f,
 			"host replication %s %s/32 trust\n"
 			"# End of addition ===============================\n",
-			timeStampString(date, MAXPATH),
 			sval(VAR_pgxcOwner), getIpAddress(host));
 	pclose(f);
 	/* Reconfigure pgxc_ctl configuration with the new slave */
