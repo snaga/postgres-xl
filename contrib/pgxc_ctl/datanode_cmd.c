@@ -67,7 +67,7 @@ cmd_t *prepare_initDatanodeMaster(char *nodeName)
 
 	if ((idx = datanodeIdx(nodeName)) < 0)
 		return(NULL);
-	/* Build each coordinator's initialize command */
+	/* Build each datanode's initialize command */
 	cmd = cmdInitdb = initCmd(aval(VAR_datanodeMasterServers)[idx]);
 	snprintf(newCommand(cmdInitdb), MAXLINE,
 			 "rm -rf %s; mkdir -p %s; initdb --nodename %s -D %s",
@@ -121,7 +121,7 @@ cmd_t *prepare_initDatanodeMaster(char *nodeName)
 	if (isVarYes(VAR_datanodeSlave) && !is_none(aval(VAR_datanodeSlaveServers)[idx]))
 	{
 		cmd_t *cmd_cleanDir, *cmd_PgConf;
-		/* This coordinator has a slave */
+		/* This datanode has a slave */
 
 		/* Build archive log target */
 		appendCmdEl(cmdInitdb, (cmd_cleanDir = initCmd(aval(VAR_datanodeSlaveServers)[idx])));
@@ -249,6 +249,13 @@ cmd_t *prepare_initDatanodeSlave(char *nodeName)
 	/* Check if the datanode master is running */
 	if (pingNode(aval(VAR_datanodeMasterServers)[idx], aval(VAR_datanodePorts)[idx]) != 0)
 		startMaster = TRUE;
+
+	if (!doesExist(VAR_datanodeSlaveServers, idx) || is_none(aval(VAR_datanodeSlaveServers)[idx]))
+	{
+		elog(WARNING, "WARNING: slave not configured for datanode %s",
+				nodeName);
+		return NULL;
+	}
 
 	/* Build slave's directory -1- */
 	cmd = cmdBuildDir = initCmd(aval(VAR_datanodeSlaveServers)[idx]);
@@ -435,6 +442,13 @@ cmd_t *prepare_startDatanodeSlave(char *nodeName)
 		return(NULL);
 	}
 	
+	if (!doesExist(VAR_datanodeSlaveServers, idx) || is_none(aval(VAR_datanodeSlaveServers)[idx]))
+	{
+		elog(WARNING, "WARNING: slave not configured for datanode %s",
+				nodeName);
+	   return(NULL);
+	}
+
 	cmd = cmdStartDatanodeSlave = initCmd(aval(VAR_datanodeSlaveServers)[idx]);
 	snprintf(newCommand(cmdStartDatanodeSlave), MAXLINE,
 			 "pg_ctl start -Z datanode -D %s",
@@ -927,10 +941,10 @@ int add_datanodeMaster(char *name, char *host, int port, char *dir, char *restor
 	char **confFiles = NULL;
 	char *only_globals = "-g";
 
-	/* Check if all the coordinators are running */
+	/* Check if all the datanodes are running */
 	if (!check_AllDatanodeRunning())
 	{
-		elog(ERROR, "ERROR: Some of the coordinator masters are not running. Cannot add new one.\n");
+		elog(ERROR, "ERROR: Some of the datanode  masters are not running. Cannot add new one.\n");
 		return 1;
 	}
 	/* Check if there's no conflict with the current configuration */
@@ -1482,13 +1496,13 @@ int remove_datanodeMaster(char *name, int clean_opt)
 	char **namelist = NULL;
 	char date[MAXTOKEN+1];
 
-	/* Check if the datanodeinator is configured */
+	/* Check if the datanode is configured */
 	if ((idx = datanodeIdx(name)) < 0)
 	{
 		elog(ERROR, "ERROR: Coordinator %s is not configured.\n", name);
 		return 1;
 	}
-	/* Check if all the other datanodeinators are running */
+	/* Check if all the other datanodes are running */
 	for (ii = 0; aval(VAR_datanodeNames)[ii]; ii++)
 	{
 		if ((ii != idx) && !is_none(aval(VAR_datanodeNames)[ii]) && (pingNode(aval(VAR_datanodeMasterServers)[ii], aval(VAR_datanodePorts)[ii]) != 0))
@@ -1501,18 +1515,18 @@ int remove_datanodeMaster(char *name, int clean_opt)
 	if (doesExist(VAR_datanodeSlaveServers, idx) && !is_none(aval(VAR_datanodeSlaveServers)[idx]))
 		remove_datanodeSlave(name, clean_opt);
 #if 0
-	/* Stop the datanodeinator master if running */
+	/* Stop the datanode master if running */
 	if (pingNode(aval(VAR_datanodeMasterServers)[idx], aval(VAR_datanodePorts)[idx]) == 0)
 	{
 		AddMember(namelist, name);
 		stop_datanode_master(namelist, "fast");
 		CleanArray(namelist);
 	}
-	/* Cleanup the datanodeinator master resource if specified */
+	/* Cleanup the datanode master resource if specified */
 	if (clean_opt)
 		doImmediate(aval(VAR_datanodeMasterServers)[idx], NULL, "rm -rf %s", aval(VAR_datanodeMasterDirs)[idx]);
 #endif
-	/* Issue "drop node" at all the other datanodeinators */
+	/* Issue "drop node" at all the other datanodes */
 	for (ii = 0; aval(VAR_coordNames)[ii]; ii++)
 	{
 		if (doesExist(VAR_coordNames, ii) && !is_none(aval(VAR_coordNames)[ii]))
@@ -1547,14 +1561,14 @@ int remove_datanodeMaster(char *name, int clean_opt)
 		}
 	}
 #if 1
-	/* Stop the datanodeinator master if running */
+	/* Stop the datanode master if running */
 	if (pingNode(aval(VAR_datanodeMasterServers)[idx], aval(VAR_datanodePorts)[idx]) == 0)
 	{
 		AddMember(namelist, name);
 		stop_datanode_master(namelist, "fast");
 		CleanArray(namelist);
 	}
-	/* Cleanup the datanodeinator master resource if specified */
+	/* Cleanup the datanode master resource if specified */
 	if (clean_opt)
 		doImmediate(aval(VAR_datanodeMasterServers)[idx], NULL, "rm -rf %s", aval(VAR_datanodeMasterDirs)[idx]);
 #endif
@@ -2089,7 +2103,7 @@ int kill_datanode_slave(char **nodeList)
 }
 
 /*
- * Checks if all the coordinators are running
+ * Checks if all the datanodes are running
  *
  * Returns FALSE if any of them are not running.
  */

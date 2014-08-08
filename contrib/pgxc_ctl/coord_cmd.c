@@ -451,10 +451,8 @@ cmd_t *prepare_configureNode(char *nodeName)
 		if (is_none(aval(VAR_coordNames)[ii]))
 			continue;
 		if ((targetIdx = coordIdx(aval(VAR_coordNames)[ii])) < 0)
-		{
-			elog(ERROR, "ERROR: internal error.  Could not get coordinator idex for %s\n", aval(VAR_coordNames)[ii]);
 			continue;
-		}
+
 		if (!is_none(aval(VAR_coordMasterServers)[ii]))
 		{
 			if (idx != targetIdx)
@@ -476,15 +474,19 @@ cmd_t *prepare_configureNode(char *nodeName)
 	{
 		int dnIdx;
 
+		if (is_none(aval(VAR_datanodeNames)[ii]))
+			continue;
+
 		if ((dnIdx = datanodeIdx(aval(VAR_datanodeNames)[ii])) < 0)
 		{
-			elog(ERROR, "ERROR: inernal error. Could not get datanode index for %s.\n", aval(VAR_datanodeNames)[ii]);
 			fclose(f);
 			cleanCmd(cmd);
 			return NULL;
 		}
-		if (is_none(aval(VAR_datanodeNames)[ii]) || is_none(aval(VAR_datanodeMasterServers)[dnIdx]))
+
+		if (is_none(aval(VAR_datanodeMasterServers)[dnIdx]))
 			continue;
+
 		if (sval(VAR_primaryDatanode) && (strcmp(sval(VAR_primaryDatanode), aval(VAR_datanodeNames)[dnIdx]) == 0))
 		{
 			/* Primary Node */
@@ -555,10 +557,7 @@ static cmd_t *prepare_configureDataNode(char *nodeName)
 		if (is_none(aval(VAR_coordNames)[ii]))
 			continue;
 		if ((targetIdx = coordIdx(aval(VAR_coordNames)[ii])) < 0)
-		{
-			elog(ERROR, "ERROR: internal error.  Could not get coordinator idex for %s\n", aval(VAR_coordNames)[ii]);
 			continue;
-		}
 		if (!is_none(aval(VAR_coordMasterServers)[ii]))
 		{
 			/* Register outside coordinator */
@@ -575,14 +574,17 @@ static cmd_t *prepare_configureDataNode(char *nodeName)
 	{
 		int dnIdx;
 
+		if (is_none(aval(VAR_datanodeNames)[ii]))
+			continue;
+
 		if ((dnIdx = datanodeIdx(aval(VAR_datanodeNames)[ii])) < 0)
 		{
-			elog(ERROR, "ERROR: inernal error. Could not get datanode index for %s.\n", aval(VAR_datanodeNames)[ii]);
 			fclose(f);
 			cleanCmd(cmd);
 			return NULL;
 		}
-		if (is_none(aval(VAR_datanodeNames)[ii]) || is_none(aval(VAR_datanodeMasterServers)[dnIdx]))
+		
+		if (is_none(aval(VAR_datanodeMasterServers)[dnIdx]))
 			continue;
 
 		// See if this data node is on the same host as a coordinator
