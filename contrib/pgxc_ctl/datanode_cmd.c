@@ -252,7 +252,7 @@ cmd_t *prepare_initDatanodeSlave(char *nodeName)
 
 	if (!doesExist(VAR_datanodeSlaveServers, idx) || is_none(aval(VAR_datanodeSlaveServers)[idx]))
 	{
-		elog(WARNING, "WARNING: slave not configured for datanode %s",
+		elog(WARNING, "WARNING: slave not configured for datanode %s\n",
 				nodeName);
 		return NULL;
 	}
@@ -444,7 +444,7 @@ cmd_t *prepare_startDatanodeSlave(char *nodeName)
 	
 	if (!doesExist(VAR_datanodeSlaveServers, idx) || is_none(aval(VAR_datanodeSlaveServers)[idx]))
 	{
-		elog(WARNING, "WARNING: slave not configured for datanode %s",
+		elog(WARNING, "WARNING: slave not configured for datanode %s\n",
 				nodeName);
 	   return(NULL);
 	}
