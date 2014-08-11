@@ -2107,14 +2107,24 @@ static void do_configure_command(char *line)
 
 	if (!GetToken() || TestToken("all"))
 	{
-		configure_nodes(aval(VAR_coordNames));
+		configure_nodes_all();
 	}
 	else
 	{
+		if (!TestToken("datanode") && !TestToken("coordinator"))
+		{
+			elog(ERROR, "ERROR: must specify either coordinator or datanode\n");
+			return;
+		}
 		do
 			AddMember(nodeList, token);
 		while (GetToken());
-		configure_nodes(nodeList);
+		
+		if (TestToken("datanode"))
+			configure_datanodes(nodeList);
+		else
+			configure_nodes(nodeList);
+
 		CleanArray(nodeList);
 	}
 }

@@ -35,7 +35,6 @@
 
 
 static int failover_oneCoordinator(int coordIdx);
-static int configure_datanodes(char **nodeList);
 static cmd_t *prepare_configureDataNode(char *nodeName);
 
 static char date[MAXTOKEN+1];
@@ -395,7 +394,7 @@ int configure_nodes(char **nodeList)
 	return(rc);
 }
 
-static int configure_datanodes(char **nodeList)
+int configure_datanodes(char **nodeList)
 {
 	char **actualNodeList;
 	int ii;
