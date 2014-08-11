@@ -60,6 +60,7 @@ static void start_all(void);
 static void do_stop_command(char *line);
 static void stop_all(char *immediate);
 static int show_Resource(char *datanodeName, char *databasename, char *username);
+static void do_show_help(char *line);
 
 static void do_echo_command(char * line)
 {
@@ -2612,6 +2613,10 @@ int do_singleLine(char *buf, char *wkline)
 	{
 		doImmediateRaw("%s", wkline);
 	}
+	else if (TestToken("help"))
+	{
+		do_show_help(line);
+	}
 	else
 	{
 		doImmediateRaw("%s", wkline);
@@ -2619,8 +2624,330 @@ int do_singleLine(char *buf, char *wkline)
 	}
 	return 0;
 }
-		
 
-					   
+static void
+show_all_help()
+{
+	printf("You are using pgxc_ctl, the configuration utility for PGXL\n"
+		   "Type:\n"
+		   "	help <command>\n"
+		   "	where <command> is either add, Createdb, Createuser, clean,\n"
+		   "		configure, deploy, failover, init, kill, log, monitor,\n"
+		   "		prepare, q, reconnect, remove, set, show, start, \n"
+		   "		stop or unregister\n");
+}
 
+static void
+do_show_help(char *line)
+{
+	char *token;
 
+	GetToken();
+	if ((token == NULL) || TestToken("all"))
+	{
+		show_all_help();
+		return;
+	}
+
+	if (TestToken("add"))
+	{
+		printf(
+				"\n"
+				"add gtm slave name host port dir\n"
+				"add gtm_proxy name host port dir\n"
+				"add coordinator master name host port pooler dir\n"
+				"add coordinator slave name host dir archDir\n"
+				"add datanode master name host port dir\n"
+				"add datanode slave name host dir archDir\n"
+				"\n"
+				"Add the specified node to your postgres-xc cluster:\n"
+				"For more details, please see the pgxc_ctl documentation\n"
+				"\n"
+			  );
+	}
+	else if (TestToken("Createdb"))
+	{
+		printf(
+				"\n"
+				"Createdb [ - coordinator ] createdb_option ...\n"
+				"\n"
+				"Invokes createdb utility to create a new database using specified coordinator\n"
+				"For more details, please see the pgxc_ctl documentation\n"
+				"\n"
+			  );
+	}
+	else if (TestToken("Createuser"))
+	{
+		printf(
+				"\n"
+				"Createuser[ - coordinator ] createuser_option ...\n"
+				"\n"
+				"Invokes createuser utility to create a new user using specified coordinator\n"
+				"For more details, please see the pgxc_ctl documentation\n"
+				"\n"
+			  );
+	}
+	else if (TestToken("clean"))
+	{
+		printf(
+				"\n"
+				"clean all\n"
+				"clean gtm [all | master | slave]\n"
+				"clean gtm_proxy [all | nodename ... ]\n"
+				"clean coordinator [[all | master | slave ] [nodename ... ]]\n"
+				"clean datanode [[all | master | slave ] [nodename ... ]]\n"
+				"\n"
+				"Stop specified node in immediate mode and clean all resources including data directory\n"
+				"For more details, please see the pgxc_ctl documentation\n"
+				"\n"
+				);
+	}
+	else if (TestToken("configure"))
+	{
+		printf("\n"
+				"configure all\n"
+				"configure datanode nodename ...\n"
+				"configure coordinator nodename ...\n"
+				"\n"
+				"Configure specified node with the node information and reload pooler information\n"
+				"For more details, please see the pgxc_ctl documentation\n"
+				"\n"
+			  );
+	}
+	else if (TestToken("deploy"))
+	{
+		printf(
+				"\n"
+				"deploy [ all | host ... ]\n"
+				"\n"
+				"Deploys postgres-xc binaries and other installation material to specified hosts\n"
+				"For more details, please see the pgxc_ctl documentation\n"
+				"\n"
+			  );
+	}
+	else if (TestToken("failover"))
+	{
+		printf(
+				"\n"
+				"failover [ gtm | coordinator nodename | datanode nodename | nodename ]\n"
+				"\n"
+				"Failover specified node to its master\n"
+				"For more details, please see the pgxc_ctl documentation\n"
+				"\n"
+			  );
+	}
+	else if (TestToken("init"))
+	{
+		printf(
+				"\n"
+				"init all\n"
+				"init nodename ...\n"
+				"init gtm [ master | slave | all ]\n"
+				"init gtm_proxy [ all | nodename ... ]\n"
+				"init coordinator nodename ...\n"
+				"init coordinator [ master | slave ] [ all | nodename ... ]\n"
+				"init datanode nodename ...\n"
+				"init datanode [ master | slave ] [ all | nodename ... ]\n"
+				"\n"
+				"Initializes specified nodes\n"
+				"For more details, please see the pgxc_ctl documentation\n"
+				"\n"
+			  );
+
+	}
+	else if (TestToken("kill"))
+	{
+		printf(
+				"\n"
+				"kill all\n"
+				"kill nodename ...\n"
+				"kill gtm [ master | slave | all ]\n"
+				"kill gtm_proxy [ all | nodename ... ]\n"
+				"kill coordinator nodename ...\n"
+				"kill coordinator [ master | slave ] [ all | nodename ... ]\n"
+				"kill datanode nodename ...\n"
+				"kill datanode [ master | slave ] [ all | nodename ... ]\n"
+				"\n"
+				"Kills specified node:\n"
+				"For more details, please see the pgxc_ctl documentation\n"
+				"\n"
+			  );
+
+	}
+	else if (TestToken("log"))
+	{
+		printf(
+				"\n"
+				"log [ variable | var ] varname\n"
+				"log [ message | msg ] message_body\n"
+				"\n"
+				"Prints the specified contents to the log file\n"
+				"For more details, please see the pgxc_ctl documentation\n"
+				"\n"
+			  );
+	}
+	else if (TestToken("monitor"))
+	{
+		printf(
+				"\n"
+				"monitor all\n"
+				"monitor nodename ...\n"
+				"monitor gtm [ master | slave | all ]\n"
+				"monitor gtm_proxy [ all | nodename ... ]\n"
+				"monitor coordinator nodename ...\n"
+				"monitor coordinator [ master | slave ] [ all | nodename ... ]\n"
+				"monitor datanode nodename ...\n"
+				"monitor datanode [ master | slave ] [ all | nodename ...  ]\n"
+				"\n"
+				"Monitors if specified nodes are running\n"
+				"For more details, please see the pgxc_ctl documentation\n"
+				"\n"
+			  );
+	}
+	else if (TestToken("prepare"))
+	{
+		printf(
+				"\n"
+				"prepare [ path ]\n"
+				"\n"
+				"Write pgxc_ctl configuration file template to the specified file\n"
+				"For more details, please see the pgxc_ctl documentation\n"
+				"\n"
+			  );
+	}
+	else if (TestToken("Psql"))
+	{
+		printf(
+				"\n"
+				"Psql [ - coordinator ] psql_option ... \n"
+				"\n"
+				"Invokes psql targetted to specified coordinator\n"
+				"For more details, please see the pgxc_ctl documentation\n"
+				"\n"
+				);
+	}
+	else if (TestToken("q"))
+	{
+		printf(
+				"\n"
+				"q | quit | exit\n"
+				"\n"
+				"Exits pgxc_ctl\n"
+				"For more details, please see the pgxc_ctl documentation\n"
+				"\n"
+				);
+	}
+	else if (TestToken("reconnect"))
+	{
+		printf(
+				"\n"
+				"reconnect gtm_proxy [ all | nodename ... ]\n"
+				"\n"
+				"Reconnects specified gtm_proxy to new gtm\n"
+				"For more details, please see the pgxc_ctl documentation\n"
+				"\n"
+				);
+	}
+	else if (TestToken("remove"))
+	{
+		printf(
+				"\n"
+				"remove gtm slave\n"
+				"remove gtm_proxy nodename [ clean ]\n"
+				"remove coordinator [ master| slave ] nodename [ clean ]\n"
+				"remove datanode [ master| slave ] nodename [ clean ]\n"
+				"\n"
+				"Removes the specified node from the cluster\n"
+				"For more details, please see the pgxc_ctl documentation\n"
+				"\n"
+				);
+	}
+	else if (TestToken("set"))
+	{
+		printf(
+				"\n"
+				"set varname value ...\n"
+				"\n"
+				"Set variable value\n"
+				"For more details, please see the pgxc_ctl documentation\n"
+				"\n"
+				);
+	}
+	else if (TestToken("show"))
+	{
+		printf(
+				"\n"
+				"show [ configuration | configure | config ] [ all | basic ]\n"
+				"show [ configuration | configure | config ] host hostname ... \n"
+				"show [ configuration | configure | config ] gtm [ all | master | slave ]\n"
+				"show [ configuration | configure | config ] gtm_proxy [ all | gtm_proxy_name ... ]\n"
+				"show [ configuration | configure | config ] [ coordinator | datanode ] [ all | master | slave ] nodename ...\n"
+				"\n"
+				"Shows postgres-xc configuration\n"
+				"\n"
+				"show resource datanode datanodename [ databasename [ username ] ]\n"
+				"\n"
+				"Shows table names specified datanode is involved\n"
+				"\n"
+				"show [ variable | var ] [ all | varname ... ]\n"
+				"\n"
+				"Displays configuration or variable name and its value\n"
+				"For more details, please see the pgxc_ctl documentation\n"
+			  );
+	}
+	else if (TestToken("start"))
+	{
+		printf(
+				"\n"
+				"start all\n"
+				"start nodename ...\n"
+				"start gtm [ master | slave | all ]\n"
+				"start gtm_proxy [ all | nodename ... ]\n"
+				"start coordinator nodename ...\n"
+				"start coordinator [ master | slave ] [ all | nodename ... ]\n"
+				"start datanode nodename ...\n"
+				"start datanode [ master | slave ] [ all | nodename ... ]\n"
+				"\n"
+				"Starts specified node\n"
+				"For more details, please see the pgxc_ctl documentation\n"
+				"\n"
+			  );
+	}
+	else if (TestToken("stop"))
+	{
+		printf(
+				"\n"
+				"stop all\n"
+				"stop nodename ...\n"
+				"stop gtm [ master | slave | all ]\n"
+				"stop gtm_proxy [ all | nodename ... ]\n"
+				"stop coordinator nodename ... [ -m [ smart | fast | immediate ] \n"
+				"stop coordinator [ master | slave ] [ all | nodename ... ] [ -m [ smart | fast | immediate ] \n"
+				"stop datanode nodename ... [ -m [ smart | fast | immediate ] \n"
+				"stop datanode [ master | slave ] [ all | nodename ... ] [ -m [ smart | fast | immediate ]\n"
+				"\n"
+				"Stops specified node\n"
+				"For more details, please see the pgxc_ctl documentation\n"
+				"\n"
+			  );
+	}
+	else if (TestToken("unregister"))
+	{
+		printf(
+				"\n"
+				"unregister unregister_option ...\n"
+				"\n"
+				"Unregisteres specified node from the gtm\n"
+				"For more details, please see the pgxc_ctl documentation\n"
+				"\n"
+				);
+	}
+	else
+	{
+		printf(
+				"\n"
+				"Unrecognized command: such commands are sent to shell for execution\n"
+				"\n"
+			  );
+	}
+}
