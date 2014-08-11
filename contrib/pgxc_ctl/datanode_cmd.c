@@ -921,9 +921,11 @@ static int failover_oneDatanode(int datanodeIdx)
  *
  *-----------------------------------------------------------------------*/
 #ifdef XCP
-int add_datanodeMaster(char *name, char *host, int port, int pooler, char *dir, char *restore_dname)
+int add_datanodeMaster(char *name, char *host, int port, int pooler, char *dir,
+		char *restore_dname, char *extraConf, char *extraPgHbaConf)
 #else
-int add_datanodeMaster(char *name, char *host, int port, char *dir, char *restore_dname)
+int add_datanodeMaster(char *name, char *host, int port, char *dir,
+		char *restore_dname, char *extraConf, char *extraPgHbaConf)
 #endif
 {
 	FILE *f, *lockf;
@@ -939,6 +941,7 @@ int add_datanodeMaster(char *name, char *host, int port, char *dir, char *restor
 	char **nodelist = NULL;
 	int ii, jj, restore_dnode_idx;
 	char **confFiles = NULL;
+	char **pgHbaConfFiles = NULL;
 	char *only_globals = "-g";
 
 	/* Check if all the datanodes are running */
@@ -1037,18 +1040,26 @@ int add_datanodeMaster(char *name, char *host, int port, char *dir, char *restor
 #endif
 	assign_arrayEl(VAR_datanodeSlaveDirs, idx, "none", NULL);
 	assign_arrayEl(VAR_datanodeArchLogDirs, idx, "none", NULL);
-	assign_arrayEl(VAR_datanodeSpecificExtraConfig, idx, "none", NULL);
-	assign_arrayEl(VAR_datanodeSpecificExtraPgHba, idx, "none", NULL);
+	assign_arrayEl(VAR_datanodeSpecificExtraConfig, idx, extraConf, NULL);
+	assign_arrayEl(VAR_datanodeSpecificExtraPgHba, idx, extraPgHbaConf, NULL);
 	/*
 	 * Update the configuration file and backup it
 	 */
 	/*
 	 * Take care of exrtra conf file
 	 */
-	if (doesExist(VAR_datanodeExtraConfig, 0) && !is_none(sval(VAR_coordExtraConfig)))
+	if (doesExist(VAR_datanodeExtraConfig, 0) && !is_none(sval(VAR_datanodeExtraConfig)))
 		AddMember(confFiles, sval(VAR_datanodeExtraConfig));
 	if (doesExist(VAR_datanodeSpecificExtraConfig, idx) && !is_none(aval(VAR_datanodeSpecificExtraConfig)[idx]))
 		AddMember(confFiles, aval(VAR_datanodeSpecificExtraConfig)[idx]);
+
+	/*
+	 * Take care of exrtra conf pg_hba file
+	 */
+	if (doesExist(VAR_datanodeExtraPgHba, 0) && !is_none(sval(VAR_datanodeExtraPgHba)))
+		AddMember(pgHbaConfFiles, sval(VAR_datanodeExtraPgHba));
+	if (doesExist(VAR_datanodeSpecificExtraPgHba, idx) && !is_none(aval(VAR_datanodeSpecificExtraPgHba)[idx]))
+		AddMember(pgHbaConfFiles, aval(VAR_datanodeSpecificExtraPgHba)[idx]);
 	/*
 	 * Main part
 	 */
@@ -1120,6 +1131,11 @@ int add_datanodeMaster(char *name, char *host, int port, char *dir, char *restor
 	if ((f = pgxc_popen_w(host, "cat >> %s/pg_hba.conf", dir)))
 	{
 		int kk;
+		
+		fprintf(f, "#===========================================\n");
+		fprintf(f, "# Added at initialization.\n");
+
+		appendFiles(f, pgHbaConfFiles);
 		for (kk = 0; aval(VAR_datanodePgHbaEntries)[kk]; kk++)
 		{
 			fprintf(f,"host all %s %s trust\n",	sval(VAR_pgxcOwner), aval(VAR_datanodePgHbaEntries)[kk]);

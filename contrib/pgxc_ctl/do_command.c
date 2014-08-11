@@ -853,6 +853,8 @@ static void do_add_command(char *line)
 	char *dir;
 	char *archDir;
 	char *dnode;
+	char *extraConf;
+	char *extraPgHbaConf;
 
 	if (!GetToken())
 	{
@@ -918,7 +920,10 @@ static void do_add_command(char *line)
 			GetAndSet(port, "ERROR: please specify the port number for the coordinator master\n");
 			GetAndSet(pooler, "ERROR: please specify the pooler port number for the coordinator master.\n");
 			GetAndSet(dir, "ERROR: please specify the working director for the coordinator master\n");
-			add_coordinatorMaster(name, host, atoi(port), atoi(pooler), dir);
+			GetAndSet(extraConf, "ERROR: please specify file to read extra configuration. Specify 'none' if nothig extra to be added.\n");
+			GetAndSet(extraPgHbaConf, "ERROR: please specify file to read extra pg_hba configuration. Specify 'none' if nothig extra to be added.\n");
+			add_coordinatorMaster(name, host, atoi(port), atoi(pooler), dir,
+					extraConf, extraPgHbaConf);
 			freeAndReset(name);
 			freeAndReset(host);
 			freeAndReset(port);
@@ -956,10 +961,14 @@ static void do_add_command(char *line)
 #endif
 			GetAndSet(dir, "ERROR: please specify the working director for the datanode master\n");
 			GetAndSet(dnode, "ERROR: please specify name of existing datanode of which this will be a copy of. Specify 'none' for a bare datanode\n");
+			GetAndSet(extraConf, "ERROR: please specify file to read extra configuration. Specify 'none' if nothig extra to be added.\n");
+			GetAndSet(extraPgHbaConf, "ERROR: please specify file to read extra pg_hba configuration. Specify 'none' if nothig extra to be added.\n");
 #ifdef XCP
-			add_datanodeMaster(name, host, atoi(port), atoi(pooler), dir, dnode);
+			add_datanodeMaster(name, host, atoi(port), atoi(pooler), dir,
+					dnode, extraConf, extraPgHbaConf);
 #else
-			add_datanodeMaster(name, host, atoi(port), dir, dnode);
+			add_datanodeMaster(name, host, atoi(port), dir, dnode, extraConf,
+					extraPgHbaConf);
 #endif
 			freeAndReset(name);
 			freeAndReset(host);

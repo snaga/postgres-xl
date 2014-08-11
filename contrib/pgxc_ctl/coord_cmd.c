@@ -922,7 +922,8 @@ int clean_coordinator_slave_all(void)
  * Add command
  *
  *-----------------------------------------------------------------------*/
-int add_coordinatorMaster(char *name, char *host, int port, int pooler, char *dir)
+int add_coordinatorMaster(char *name, char *host, int port, int pooler,
+		char *dir, char *extraConf, char *extraPgHbaConf)
 {
 	FILE *f, *lockf;
 	int size, idx;
@@ -935,6 +936,7 @@ int add_coordinatorMaster(char *name, char *host, int port, int pooler, char *di
 	char **nodelist = NULL;
 	int ii, jj;
 	char **confFiles = NULL;
+	char **pgHbaConfFiles = NULL;
 
 	/* Check if all the coordinator masters are running */
 	if (!check_AllCoordRunning())
@@ -1009,8 +1011,8 @@ int add_coordinatorMaster(char *name, char *host, int port, int pooler, char *di
 	assign_arrayEl(VAR_coordSlavePoolerPorts, idx, "none", NULL);
 	assign_arrayEl(VAR_coordSlaveDirs, idx, "none", NULL);
 	assign_arrayEl(VAR_coordArchLogDirs, idx, "none", NULL);
-	assign_arrayEl(VAR_coordSpecificExtraConfig, idx, "none", NULL);
-	assign_arrayEl(VAR_coordSpecificExtraPgHba, idx, "none", NULL);
+	assign_arrayEl(VAR_coordSpecificExtraConfig, idx, extraConf, NULL);
+	assign_arrayEl(VAR_coordSpecificExtraPgHba, idx, extraPgHbaConf, NULL);
 	handle_no_slaves();
 	/*
 	 * Update the configuration file and backup it
@@ -1022,6 +1024,15 @@ int add_coordinatorMaster(char *name, char *host, int port, int pooler, char *di
 		AddMember(confFiles, sval(VAR_coordExtraConfig));
 	if (doesExist(VAR_coordSpecificExtraConfig, idx) && !is_none(aval(VAR_coordSpecificExtraConfig)[idx]))
 		AddMember(confFiles, aval(VAR_coordSpecificExtraConfig)[idx]);
+
+	/*
+	 * Take care of extra pg_hba conf file
+	 */
+	if (doesExist(VAR_coordExtraPgHba, 0) && !is_none(sval(VAR_coordExtraPgHba)))
+		AddMember(pgHbaConfFiles, sval(VAR_coordExtraPgHba));
+	if (doesExist(VAR_coordSpecificExtraPgHba, idx) && !is_none(aval(VAR_coordSpecificExtraPgHba)[idx]))
+		AddMember(pgHbaConfFiles, aval(VAR_coordSpecificExtraPgHba)[idx]);
+	
 	/*
 	 * Main part
 	 */
@@ -1084,6 +1095,11 @@ int add_coordinatorMaster(char *name, char *host, int port, int pooler, char *di
 	if ((f = pgxc_popen_w(host, "cat >> %s/pg_hba.conf", dir)))
 	{
 		int kk;
+		
+		fprintf(f, "#===========================================\n");
+		fprintf(f, "# Added at initialization.\n");
+
+		appendFiles(f, pgHbaConfFiles);
 		for (kk = 0; aval(VAR_coordPgHbaEntries)[kk]; kk++)
 		{
 			fprintf(f,"host all %s %s trust\n",	sval(VAR_pgxcOwner), aval(VAR_coordPgHbaEntries)[kk]);

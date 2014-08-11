@@ -1562,9 +1562,12 @@ PGXC$ prepare config my_config.conf
    <varlistentry>
     <term><literal>add gtm slave <replaceable class="parameter">name</replaceable> <replaceable class="parameter">host</replaceable> <replaceable class="parameter">port</replaceable> <replaceable class="parameter">dir</replaceable></literal></term>
     <term><literal>add gtm_proxy <replaceable class="parameter">name</replaceable> <replaceable class="parameter">host</replaceable> <replaceable class="parameter">port</replaceable> <replaceable class="parameter">dir</replaceable></literal></term>
-    <term><literal>add coordinator master <replaceable class="parameter">name</replaceable> <replaceable class="parameter">host</replaceable> <replaceable class="parameter">port</replaceable> <replaceable class="parameter">pooler</replaceable> <replaceable class="parameter">dir</replaceable></literal></term>
+    <term><literal>add coordinator master <replaceable class="parameter">name</replaceable> <replaceable class="parameter">host</replaceable> <replaceable class="parameter">port</replaceable> <replaceable class="parameter">pooler</replaceable> <replaceable class="parameter">dir</replaceable>< <replaceable class="parameter">extraServerConf</replaceable> <replaceable class="parameter">extraPgHbaConf</replaceable>/literal></term>
     <term><literal>add coordinator slave <replaceable class="parameter">name</replaceable> <replaceable class="parameter">host</replaceable> <replaceable class="parameter">dir</replaceable> <replaceable class="parameter">archDir</replaceable></literal></term>
     <term><literal>add datanode master <replaceable class="parameter">name</replaceable> <replaceable class="parameter">host</replaceable> <replaceable class="parameter">port</replaceable> <replaceable class="parameter">dir</replaceable></literal></term>
+    <term><literal>add datanode master <replaceable class="parameter">name</replaceable> <replaceable class="parameter">host</replaceable> <replaceable class="parameter">port</replaceable> <replaceable class="parameter">dir</replaceable> <replaceable
+class="parameter">extraServerConf</replaceable> <replaceable
+class="parameter">extraPgHbaConf</replaceable></literal></term>
     <term><literal>add datanode slave <replaceable class="parameter">name</replaceable> <replaceable class="parameter">host</replaceable> <replaceable class="parameter">dir</replaceable> <replaceable class="parameter">archDir</replaceable></literal></term>
     <listitem>
      <para>
@@ -1572,8 +1575,10 @@ PGXC$ prepare config my_config.conf
       Each node need host name and its work directory.  gtm slave,
       gtm_proxy, coordinator master and datanode master need its own port
       to listen to.  Coordinator needs its pooler port to pool
-      connections to datanodes.  Coordinator and datanode slave need a
-      directory to receive WAL segments from their master.
+	  connections to datanodes.  Coordinator and datanode slave need a
+	  directory to receive WAL segments from their master. While adding coordinator
+	  master and datanode master, extra server configuration and extra pg_hba
+	  configuration can be specified in a file.
      </para>
      <para>
       When you add coordinator and datanode master, node information at
