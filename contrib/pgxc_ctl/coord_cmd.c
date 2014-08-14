@@ -977,6 +977,7 @@ int add_coordinatorMaster(char *name, char *host, int port, int pooler,
 	/*
 	 * Now reconfigure
 	 */
+
 	/* Need an API to expand the array to desired size */
 	if ((extendVar(VAR_coordNames, idx + 1, "none") != 0) ||
 		(extendVar(VAR_coordMasterServers, idx + 1, "none")  != 0) ||
@@ -1043,7 +1044,7 @@ int add_coordinatorMaster(char *name, char *host, int port, int pooler,
 	}
 	fprintf(f, 
 			"#===================================================\n"
-			"# pgxc configuration file updated due to GTM slave addition\n"
+			"# pgxc configuration file updated due to coordinator master addition\n"
 			"#        %s\n",
 			timeStampString(date, MAXTOKEN+1));
 	fprintAval(f, VAR_coordNames);
@@ -1193,6 +1194,7 @@ int add_coordinatorMaster(char *name, char *host, int port, int pooler,
 int add_coordinatorSlave(char *name, char *host, int port, int pooler_port, char *dir, char *archDir)
 {
 	int idx;
+	int size;
 	FILE *f;
 	char port_s[MAXTOKEN+1];
 	char pooler_s[MAXTOKEN+1];
@@ -1286,13 +1288,16 @@ int add_coordinatorSlave(char *name, char *host, int port, int pooler_port, char
 			"# End of addition ===============================\n",
 			sval(VAR_pgxcOwner), getIpAddress(host));
 	pclose(f);
+
+	size = arraySizeName(VAR_coordNames);
+
 	/* Reconfigure pgxc_ctl configuration with the new slave */
 	/* Need an API to expand the array to desired size */
-	if ((extendVar(VAR_coordSlaveServers, idx + 1, "none") != 0) ||
-		(extendVar(VAR_coordSlaveDirs, idx + 1, "none")  != 0) ||
-		(extendVar(VAR_coordSlavePorts, idx + 1, "none")  != 0) ||
-		(extendVar(VAR_coordSlavePoolerPorts, idx + 1, "none")  != 0) ||
-		(extendVar(VAR_coordArchLogDirs, idx + 1, "none") != 0))
+	if ((extendVar(VAR_coordSlaveServers, size, "none") != 0) ||
+		(extendVar(VAR_coordSlaveDirs, size, "none")  != 0) ||
+		(extendVar(VAR_coordSlavePorts, size, "none")  != 0) ||
+		(extendVar(VAR_coordSlavePoolerPorts, size, "none")  != 0) ||
+		(extendVar(VAR_coordArchLogDirs, size, "none") != 0))
 	{
 		elog(PANIC, "PANIC: Internal error, inconsitent coordinator information\n");
 		return 1;
@@ -1549,7 +1554,7 @@ int remove_coordinatorMaster(char *name, int clean_opt)
 	}
 	fprintf(f, 
 			"#================================================================\n"
-			"# pgxc configuration file updated due to coodinator master removal\n"
+			"# pgxc configuration file updated due to coordinator master removal\n"
 			"#        %s\n",
 			timeStampString(date, MAXTOKEN+1));
 	fprintSval(f, VAR_coordSlave);
@@ -1637,7 +1642,7 @@ int remove_coordinatorSlave(char *name, int clean_opt)
 	}
 	fprintf(f, 
 			"#================================================================\n"
-			"# pgxc configuration file updated due to coodinator slave removal\n"
+			"# pgxc configuration file updated due to coordinator slave removal\n"
 			"#        %s\n",
 			timeStampString(date, MAXTOKEN));
 	fprintSval(f, VAR_coordSlave);

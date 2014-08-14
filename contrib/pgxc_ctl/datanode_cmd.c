@@ -1254,6 +1254,7 @@ int add_datanodeMaster(char *name, char *host, int port, char *dir,
 int add_datanodeSlave(char *name, char *host, int port, int pooler, char *dir, char *archDir)
 {
 	int idx;
+	int size;
 	FILE *f;
 	char port_s[MAXTOKEN+1];
 #ifdef XCP
@@ -1345,14 +1346,21 @@ int add_datanodeSlave(char *name, char *host, int port, int pooler, char *dir, c
 			"# End of addition ===============================\n",
 			sval(VAR_pgxcOwner), getIpAddress(host));
 	pclose(f);
+
+	/* 
+	 * Extend the slave arrays to store the same number of entries as the
+	 * datanode masters
+	 */
+	size = arraySizeName(VAR_datanodeNames);
+	
 	/* Need an API to expand the array to desired size */
-	if ((extendVar(VAR_datanodeSlaveServers, idx + 1, "none") != 0) ||
-		(extendVar(VAR_datanodeSlavePorts, idx + 1, "none")  != 0) ||
+	if ((extendVar(VAR_datanodeSlaveServers, size, "none") != 0) ||
+		(extendVar(VAR_datanodeSlavePorts, size, "none")  != 0) ||
 #ifdef XCP		
-		(extendVar(VAR_datanodeSlavePoolerPorts, idx + 1, "none")  != 0) ||
+		(extendVar(VAR_datanodeSlavePoolerPorts, size, "none")  != 0) ||
 #endif		
-		(extendVar(VAR_datanodeSlaveDirs, idx + 1, "none")  != 0) ||
-		(extendVar(VAR_datanodeArchLogDirs, idx + 1, "none") != 0))
+		(extendVar(VAR_datanodeSlaveDirs, size, "none")  != 0) ||
+		(extendVar(VAR_datanodeArchLogDirs, size, "none") != 0))
 	{
 		elog(PANIC, "PANIC: Internal error, inconsitent datanode information\n");
 		return 1;
@@ -1622,7 +1630,7 @@ int remove_datanodeMaster(char *name, int clean_opt)
 	}
 	fprintf(f, 
 			"#================================================================\n"
-			"# pgxc configuration file updated due to coodinator master removal\n"
+			"# pgxc configuration file updated due to datanode master removal\n"
 			"#        %s\n",
 			timeStampString(date, MAXTOKEN+1));
 	fprintSval(f, VAR_datanodeSlave);
@@ -1710,7 +1718,7 @@ int remove_datanodeSlave(char *name, int clean_opt)
 	}
 	fprintf(f, 
 			"#================================================================\n"
-			"# pgxc configuration file updated due to coodinator slave removal\n"
+			"# pgxc configuration file updated due to datanode slave removal\n"
 			"#        %s\n",
 			timeStampString(date, MAXTOKEN+1));
 	fprintSval(f, VAR_datanodeSlave);

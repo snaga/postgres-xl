@@ -420,9 +420,12 @@ int extendVar(char *name, int newSize, char *def_value)
 	for (ii = target->val_used; ii < newSize; ii++)
 		(target->val)[ii] = Strdup(def_value);
 
-	/* Store NULL in the last element to mark the end-of-array */
-	(target->val)[newSize] = NULL;
-	target->val_used = newSize;
+	if (target->val_used < newSize)
+	{
+		target->val_used = newSize;
+		/* Store NULL in the last element to mark the end-of-array */
+		(target->val)[newSize] = NULL;
+	}
 	
 	return 0;
 }
