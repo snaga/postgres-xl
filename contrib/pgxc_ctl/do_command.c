@@ -2577,6 +2577,7 @@ int do_singleLine(char *buf, char *wkline)
 		Free(cmdLine);
 		return 0;
 	}
+#ifndef XCP	
 	else if (TestToken("unregister"))
 	{
 		/*
@@ -2585,6 +2586,7 @@ int do_singleLine(char *buf, char *wkline)
 		unregisterFromGtm(line);
 		return 0;
 	}
+#endif	
 	else if (TestToken("test"))
 	{
 		do_test(line);

@@ -2032,9 +2032,11 @@ static int failover_oneCoordinator(int coordIdx)
 	else
 		elog(NOTICE, "Filover coordinator %s using GTM itself\n",
 			 aval(VAR_coordNames)[coordIdx]);
-		
+
+#ifndef XCP	
 	/* Unregister the coordinator from GTM */
 	unregister_coordinator(aval(VAR_coordNames)[coordIdx]);
+#endif	
 
 	/* Promote the slave */
 	rc_local = doImmediate(aval(VAR_coordSlaveServers)[coordIdx], NULL,

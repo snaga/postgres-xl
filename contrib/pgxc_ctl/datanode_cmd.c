@@ -736,8 +736,10 @@ static int failover_oneDatanode(int datanodeIdx)
 		elog(NOTICE, "Filover database %s using GTM itself\n",
 			 aval(VAR_datanodeNames)[datanodeIdx]);
 
+#ifndef XCP	
 	/* Unregister the datanode */
 	unregister_datanode(aval(VAR_datanodeNames)[datanodeIdx]);
+#endif	
 
 	/* Promote the slave */
 	rc_local = doImmediate(aval(VAR_datanodeSlaveServers)[datanodeIdx], NULL,
