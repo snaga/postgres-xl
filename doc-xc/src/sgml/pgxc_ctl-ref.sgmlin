@@ -56,7 +56,7 @@ $ make
    <application>pgxc_ctl</application>.  
    Also please note that <application>Postgres-XL</application> top
    level make and make install command does not take care of pgxc_ctl.
-   You should build and install the separately.
+   You should build and install it separately.
   </para>
 
   <para>
@@ -100,7 +100,7 @@ $ make install
 
   <para>
    You do not have to create this directory manually.   
-   <application>Pgxc_ctl</application> will create the directory when
+   <application>pgxc_ctl</application> will create the directory when
    it is invoked for the first time. 
    Please note that you need appropriate privilege to create
    <literal>$PGXC_CTL_HOME</literal>. 
@@ -119,7 +119,7 @@ $ make install
    The default name and the location is
    <literal>$PGXC_CTL_HOME/pgxc_ctl.conf</literal>. 
    When you change Postgres-XL cluster configuration using pgxc_ctl
-   commands, this file will bel updated.
+   commands, this file will be updated.
    Depending upon your configuration,
    <application>pgxc_ctl</application> will back up this file
    according to your configuration.
@@ -330,7 +330,7 @@ pgxc [options ... ] [pgxc_command]
       <listitem>
       <para>
        Specifies where to read pgxc_ctl commands.
-       There's not corresponding variables in the initialization file.
+       There's no corresponding variable in the initialization file.
        Default is the standard input.
       </para>
       </listitem>
@@ -377,7 +377,7 @@ pgxc [options ... ] [pgxc_command]
       <listitem>
       <para>
        Specifies to run <application>pgxc_ctl</application> without
-       printing messages as much as possible.
+       printing many messages.
        This value can also be set as variable
        <literal>verbose</literal> in the initialization file.
        You can setup level of messages <literal>logMessage</literal>
@@ -681,7 +681,7 @@ $
    </para>
 
    <para>
-    Also, coordinator needs additional port for connection pooling to
+    Also, coordinator and datanode needs additional port for connection pooling to
     other nodes.
    </para>
 
@@ -706,31 +706,12 @@ $
       </para>
      </listitem>
      
-     <listitem>
-      <para>
-       Coordinator master and coordinator slave must share the same
-       port, at different hosts.
-      </para>
-     </listitem>
-
-     <listitem>
-      <para>
-       Datanode master and datanode slave must share the same port, at
-       different hosts. 
-      </para>
-     </listitem>
     </itemizedlist>
    </para>
 
    <para>
-    Please note that the last two are not required by
-    <application>Postgres-XL</application> but requirement of
-    <application>pgxc_ctl</application>.
-   </para>
-
-   <para>
     GTM, coordinators and datanodes can configure their slave.
-    <application>Pgxc_ctl</application> does not support cascaded
+    <application>pgxc_ctl</application> does not support cascaded
     slave or more than one slave for coordinator and datanode.
     It is not a restriction of <application>postgres-XL</application>,
     it is a restriction of <application>pgxc_ctl</application>.
@@ -1256,8 +1237,17 @@ PGXC$ prepare config my_config.conf
       <listitem>
        <para>
         Array of the listening port number for each coordinator.
-          Please note that <application>pgxc_ctl</application> supposed that a master and its
-          slave uses the same port number.
+       </para>
+      </listitem>
+     </varlistentry>
+    
+     <varlistentry>
+      <term><option>poolerPorts</option></term>
+      <listitem>
+       <para>
+        Array of the port number for each pooler.  Pooler takes
+          care of the connection between coordinator and datanode and
+          needs separate port.
        </para>
       </listitem>
      </varlistentry>
@@ -1307,24 +1297,32 @@ PGXC$ prepare config my_config.conf
      </varlistentry>
     
      <varlistentry>
+      <term><option>coordSlavePorts</option></term>
+      <listitem>
+       <para>
+        Array of the listening port number for each coordinator slave.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>coordSlavePoolerPorts</option></term>
+      <listitem>
+       <para>
+        Array of the port number for each pooler.  Pooler takes
+          care of the connection between coordinator and datanode and
+          needs separate port.
+       </para>
+      </listitem>
+     </varlistentry>
+    
+     <varlistentry>
       <term><option>coordSpecificExtraConfig</option></term>
       <listitem>
        <para>
         Array of the filename which contains extra
           configuration values for each coordinator.   Specify <literal>none</literal>
           if you don't have such file.
-       </para>
-      </listitem>
-     </varlistentry>
-    
-     <varlistentry>
-      <term><option>poolerPorts</option></term>
-      <listitem>
-       <para>
-        Array of the port number for each pooler.  Pooler takes
-          care of the connection between coordinator and datanode and
-          needs separate port.   Please note that a master and its
-          slave uses the same pooler port number.
        </para>
       </listitem>
      </varlistentry>
@@ -1455,8 +1453,18 @@ PGXC$ prepare config my_config.conf
       <term><option>datanodePorts</option></term>
       <listitem>
        <para>
-        Array of the listening port number for each datanode
-          (master and slave use the same port).
+        Array of the listening port number for each datanode.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>datanodePoolerPorts</option></term>
+      <listitem>
+       <para>
+        Array of the port number for each pooler.  Pooler takes
+          care of the connection between datanode and datanode and
+          needs separate port.
        </para>
       </listitem>
      </varlistentry>
@@ -1499,6 +1507,26 @@ PGXC$ prepare config my_config.conf
         Array of the hostname where slave of each 
           datanode runs.  Specify <literal>none</literal> if you don't configure the
           slave for specific coordinator.
+       </para>
+      </listitem>
+     </varlistentry>
+    
+     <varlistentry>
+      <term><option>datanodeSlavePorts</option></term>
+      <listitem>
+       <para>
+        Array of the listening port number for each datanode slave.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>datanodeSlavePoolerPorts</option></term>
+      <listitem>
+       <para>
+        Array of the port number for each pooler.  Pooler takes
+          care of the connection between datanode and datanode and
+          needs separate port.
        </para>
       </listitem>
      </varlistentry>
@@ -1563,18 +1591,15 @@ PGXC$ prepare config my_config.conf
     <term><literal>add gtm slave <replaceable class="parameter">name</replaceable> <replaceable class="parameter">host</replaceable> <replaceable class="parameter">port</replaceable> <replaceable class="parameter">dir</replaceable></literal></term>
     <term><literal>add gtm_proxy <replaceable class="parameter">name</replaceable> <replaceable class="parameter">host</replaceable> <replaceable class="parameter">port</replaceable> <replaceable class="parameter">dir</replaceable></literal></term>
     <term><literal>add coordinator master <replaceable class="parameter">name</replaceable> <replaceable class="parameter">host</replaceable> <replaceable class="parameter">port</replaceable> <replaceable class="parameter">pooler</replaceable> <replaceable class="parameter">dir</replaceable>< <replaceable class="parameter">extraServerConf</replaceable> <replaceable class="parameter">extraPgHbaConf</replaceable>/literal></term>
-    <term><literal>add coordinator slave <replaceable class="parameter">name</replaceable> <replaceable class="parameter">host</replaceable> <replaceable class="parameter">dir</replaceable> <replaceable class="parameter">archDir</replaceable></literal></term>
-    <term><literal>add datanode master <replaceable class="parameter">name</replaceable> <replaceable class="parameter">host</replaceable> <replaceable class="parameter">port</replaceable> <replaceable class="parameter">dir</replaceable></literal></term>
-    <term><literal>add datanode master <replaceable class="parameter">name</replaceable> <replaceable class="parameter">host</replaceable> <replaceable class="parameter">port</replaceable> <replaceable class="parameter">dir</replaceable> <replaceable
-class="parameter">extraServerConf</replaceable> <replaceable
-class="parameter">extraPgHbaConf</replaceable></literal></term>
-    <term><literal>add datanode slave <replaceable class="parameter">name</replaceable> <replaceable class="parameter">host</replaceable> <replaceable class="parameter">dir</replaceable> <replaceable class="parameter">archDir</replaceable></literal></term>
+    <term><literal>add coordinator slave <replaceable class="parameter">name</replaceable> <replaceable class="parameter">host</replaceable> <replaceable class="parameter">port</replaceable> <replaceable class="parameter">pooler</replaceable> <replaceable class="parameter">dir</replaceable> <replaceable class="parameter">archDir</replaceable></literal></term>
+    <term><literal>add datanode master <replaceable class="parameter">name</replaceable> <replaceable class="parameter">host</replaceable>  <replaceable class="parameter">port</replaceable> <replaceable class="parameter">pooler</replaceable> <replaceable class="parameter">dir</replaceable> <replaceable class="parameter">extraServerConf</replaceable> <replaceable class="parameter">extraPgHbaConf</replaceable></literal></term>
+    <term><literal>add datanode slave <replaceable class="parameter">name</replaceable> <replaceable class="parameter">host</replaceable>  <replaceable class="parameter">port</replaceable> <replaceable class="parameter">pooler</replaceable> <replaceable class="parameter">dir</replaceable> <replaceable class="parameter">archDir</replaceable></literal></term>
     <listitem>
      <para>
       Add the specified node to your Postgres-XL cluster.
       Each node need host name and its work directory.  gtm slave,
-      gtm_proxy, coordinator master and datanode master need its own port
-      to listen to.  Coordinator needs its pooler port to pool
+      gtm_proxy, coordinator master/slave and datanode master/slave need its own port
+      to listen to.  Coordinator and datanode also need pooler port to pool
 	  connections to datanodes.  Coordinator and datanode slave need a
 	  directory to receive WAL segments from their master. While adding coordinator
 	  master and datanode master, extra server configuration and extra pg_hba
@@ -1724,7 +1749,7 @@ class="parameter">extraPgHbaConf</replaceable></literal></term>
    </varlistentry>
 
    <varlistentry>
-    <term><literal>Psql [ - <replaceable class="parameter">coordinator</replaceable> ] <replaceable class="parameter"> psql_option ... </replaceable></literal></term>
+    <term><literal>psql [ - <replaceable class="parameter">coordinator</replaceable> ] <replaceable class="parameter"> psql_option ... </replaceable></literal></term>
     <term><literal></literal></term>
     <listitem>
      <para>
