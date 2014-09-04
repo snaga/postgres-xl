@@ -603,7 +603,7 @@ keep_going:						/* We will come back to here until there is
 
 		case CONNECTION_STARTED:
 			{
-				int			optval;
+				int			optval = 0;
 				size_t optlen = sizeof(optval);
 
 				/*
