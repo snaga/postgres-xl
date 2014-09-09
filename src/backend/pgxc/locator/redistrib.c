@@ -561,7 +561,11 @@ distrib_copy_from(RedistribState *distribState, ExecNodes *exec_nodes)
 		Datum	value = (Datum) 0;
 		bool	is_null = true;
 
-		/* Get message from the tuplestore */
+		/* 
+		 * Get message from the tuplestore
+		 *
+		 * The trailing \n is already removed while storing the message.
+		 */
 		data = tuplestore_getmessage(store, &len);
 		if (!data)
 			break;
@@ -573,9 +577,8 @@ distrib_copy_from(RedistribState *distribState, ExecNodes *exec_nodes)
 
 			/*
 			 * Split message on an array of fields.
-			 * Last \n is not included in converted message.
 			 */
-			fields = CopyOps_RawDataToArrayField(tupdesc, data, len - 1);
+			fields = CopyOps_RawDataToArrayField(tupdesc, data, len);
 
 			Assert(partIdx >= 0);
 			/* Determine partitioning value */
