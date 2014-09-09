@@ -2940,6 +2940,9 @@ DoInvalidateRemoteHandles(void)
 		handle->inStart = handle->inEnd = handle->inCursor = 0;
 		handle->outEnd = 0;
 	}
+
+	InitMultinodeExecutor(true);
+
 	return result;
 }
 #endif
