@@ -54,7 +54,12 @@ PostgreSQL documentation
 
   <para>
    As with other cluster components, the recommended method of
+<!## XC>
    configuring and managing them is with the <xref linkend="pgxc-ctl"> utility.
+<!## end>
+<!## XL>
+   configuring and managing them is with the <xref linkend="pgxc_ctl"> utility.
+<!## end>
  </para>
 
  </refsect1>

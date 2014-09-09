@@ -59,6 +59,14 @@ to the main documentation.  Don't use <xref>.
   <![%standalone-ignore;[chapter]]>
   and read the packager's instructions instead.)
  </para>
+
+ <para>
+  <emphasis>
+   Note that the preferred method of configuring a cluster after installation is
+   to use the <xref linkend="pgxc_ctl"> utility. It should save administrators
+   a lot of time in debugging misconfigured clusters.
+  </emphasis>
+ </para>
 <!## end>
 
  <sect1 id="install-short">
@@ -120,8 +128,25 @@ su - postgres
 </synopsis>
 <!## end>
 <!## XL>
+ <para>
+  <emphasis>Note that the preferred method of configuring a cluster after installation is
+  to use the <xref linkend="pgxc_ctl"> utility. It should save administrators
+  time in debugging misconfigured clusters.</emphasis>
+  Nonetheless, for completeness, manual configuration steps also appear
+  later in this section.
+<synopsis>
+gmake
+su
+gmake install
+adduser postgres
+pgxc_ctl prepare
+(edit ~/pgxc_ctl/pgxc_ctl.conf)
+pgxc_ctl init all
+</synopsis>
+ </para>
+
   <para>
-    The following short installation allows to install a simple cluster on a local machine with
+    If, unfortunately, not using <xref linkend="pgxc_ctl">, the following short installation allows to install a simple cluster on a local machine with
     1 Coordinator, 2 Datanodes and 1 GTM. When installing a more complex cluster, you might
     change the number of Coordinators and Datanodes, and might have to start nodes on different
     servers.
@@ -612,7 +637,7 @@ su - postgres
 &xlonly;
   <para>
    The <productname>Postgres-XL</> &version; sources can be obtained from
-   its <ulink url="http://postgres-xl.sourceforge.net/">Web site</ulink> or 
+   its <ulink url="http://www.postgres-xl.org/">website</ulink> or 
    <ulink url="http://sourceforge.net/projects/postgres-xl/">development site</ulink>.
    After you have obtained the file, unpack it:
 <screen>
@@ -2094,6 +2119,11 @@ Postgres-XL, contrib and HTML documentation successfully made. Ready to install.
     directories in advance and arrange for appropriate permissions to
     be granted.
    </para>
+<!## XL>
+   <para>
+   The preceding just installs base Postgres-XL. You should also build and install the <xref linkend="pgxc_ctl"> utility, found in a subdirectory off of the contrib directory.  <xref linkend="pgxc_ctl"> should then be used to configure the cluster.
+   </para>
+<!## end>
 
    <para>
 <!## PG>

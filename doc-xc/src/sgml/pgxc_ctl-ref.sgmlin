@@ -3,11 +3,11 @@ doc/src/sgml/ref/pgxc_ctl-ref.sgml
 PostgreSQL documentation
 -->
 
-<sect1 id="pgxc-ctl" xreflabel="pgxc-ctl">
+<sect1 id="pgxc_ctl" xreflabel="pgxc_ctl">
 
 <title>pgxc_ctl</title>
 
-<indexterm zone="pgxc-ctl">
+<indexterm zone="pgxc_ctl">
  <primary>pgxc_ctl</primary>
 </indexterm>
 
@@ -35,16 +35,12 @@ PostgreSQL documentation
    <application>pgxc_ctl</application> source code comes with Postgres-XL source code tarball.
    The latest version of the source code will be available at its home repository,
 <programlisting>
-http://  pgxc_ctl
+http://sourceforge.net/p/postgres-xl/postgres-xl/ci/master/tree/
 </programlisting>
-   If you would like to use the latest version from pgxc_ctl home repository,
-   get the source code tarball and expand it in the source's contrib
-   directory of your Postgres-XL build environment.  
-   If you are using pgxc_ctl in Postgres-XL tarball, you don't have to do this.
   </para>
 
   <para>
-   Before building pgxc_ctl, you should build Postgres-XL binary, like
+   Before building pgxc_ctl, you should build the Postgres-XL binary, like
 <programlisting>
 $ cd <replaceable>your Postgres-XL build directory</replaceable>
 $ ./configure <replaceable>your configuration option</replaceable>
@@ -78,6 +74,55 @@ $ make install
    <application>pgxc_ctl</application> and other nodes are running,
    you should setup ssh-agent authentication to avoid typing password
    each time pgcx_ctl issues ssh.
+  </para>
+
+ </sect2>
+
+ <sect2>
+  <title>Preparing the environment for execution</title>
+
+  <para>
+   <application>pgxc_ctl</application> will execute various commands where it
+   needs to find <application>Postgres-XL</application> binaries, such pg_ctl. 
+   Some of these commands will be executed via a remote shell.  It is therefore important
+   that the PATH environment variable be configured properly where these commands
+   will run, typically in the <literal>.bashrc</literal> file, such as
+
+<programlisting>
+export PATH=$PATH:/usr/postgres-xl-9.2/bin
+</programlisting>
+  </para>
+
+  <para>
+   Failure to do this may result in <literal>"command not found"</literal> errors.
+  </para>
+
+  <para>
+   <application>pgxc_ctl</application> will invoke commands on both remote and
+   local systems via ssh. If <literal>authorized_keys</literal> has not been
+   configured, the user will be prompted to re-enter passwords many times,
+   which can be an annoyance.
+  </para>
+
+  <para>
+   Instead, one can configure ssh keys. From the user's home directory, 
+   create a .ssh direcotry, generate a key, and copy it to the remote systems.
+   Example steps appear below. This is not meant to be a detailed discussion
+   of ssh keys, please consult other sources for more details.
+
+<programlisting>
+mkdir ~/.ssh
+chmod 700 ~/.ssh
+cd ~/.ssh
+ssh-keygen -t rsa
+cat id_rsa.pub >> authorized_keys
+chmod 600 authorized_keys
+</programlisting>
+
+    Then, for each remote host, execute a command like
+<programlisting>
+scp -p authorized_keys pgxl@remotehost:.ssh/
+</programlisting>
   </para>
 
  </sect2>
@@ -1590,7 +1635,7 @@ PGXC$ prepare config my_config.conf
    <varlistentry>
     <term><literal>add gtm slave <replaceable class="parameter">name</replaceable> <replaceable class="parameter">host</replaceable> <replaceable class="parameter">port</replaceable> <replaceable class="parameter">dir</replaceable></literal></term>
     <term><literal>add gtm_proxy <replaceable class="parameter">name</replaceable> <replaceable class="parameter">host</replaceable> <replaceable class="parameter">port</replaceable> <replaceable class="parameter">dir</replaceable></literal></term>
-    <term><literal>add coordinator master <replaceable class="parameter">name</replaceable> <replaceable class="parameter">host</replaceable> <replaceable class="parameter">port</replaceable> <replaceable class="parameter">pooler</replaceable> <replaceable class="parameter">dir</replaceable>< <replaceable class="parameter">extraServerConf</replaceable> <replaceable class="parameter">extraPgHbaConf</replaceable>/literal></term>
+    <term><literal>add coordinator master <replaceable class="parameter">name</replaceable> <replaceable class="parameter">host</replaceable> <replaceable class="parameter">port</replaceable> <replaceable class="parameter">pooler</replaceable> <replaceable class="parameter">dir</replaceable>< <replaceable class="parameter">extraServerConf</replaceable> <replaceable class="parameter">extraPgHbaConf</replaceable></literal></term>
     <term><literal>add coordinator slave <replaceable class="parameter">name</replaceable> <replaceable class="parameter">host</replaceable> <replaceable class="parameter">port</replaceable> <replaceable class="parameter">pooler</replaceable> <replaceable class="parameter">dir</replaceable> <replaceable class="parameter">archDir</replaceable></literal></term>
     <term><literal>add datanode master <replaceable class="parameter">name</replaceable> <replaceable class="parameter">host</replaceable>  <replaceable class="parameter">port</replaceable> <replaceable class="parameter">pooler</replaceable> <replaceable class="parameter">dir</replaceable> <replaceable class="parameter">extraServerConf</replaceable> <replaceable class="parameter">extraPgHbaConf</replaceable></literal></term>
     <term><literal>add datanode slave <replaceable class="parameter">name</replaceable> <replaceable class="parameter">host</replaceable>  <replaceable class="parameter">port</replaceable> <replaceable class="parameter">pooler</replaceable> <replaceable class="parameter">dir</replaceable> <replaceable class="parameter">archDir</replaceable></literal></term>

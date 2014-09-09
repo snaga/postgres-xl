@@ -66,10 +66,10 @@
   <para>
    The steps to configure a <productname>Postgres-XL</productname> 
    cluster can be cumbersome. It is highly recommended that you make use 
-   of a utility called <xref linkend="pgxc-ctl"> to make this task easier,
+   of a utility called <xref linkend="pgxc_ctl"> to make this task easier,
    and you can skip a lot of the content in this chapter. 
    That said, you may read on to understand how to manually configure
-   the cluster, which essentially describes the steps that <xref linkend="pgxc-ctl"> does.
+   the cluster, which essentially describes the steps that <xref linkend="pgxc_ctl"> does.
   </para>
 <!## end>
   <para>
