@@ -2111,16 +2111,22 @@ static void do_configure_command(char *line)
 	}
 	else
 	{
-		if (!TestToken("datanode") && !TestToken("coordinator"))
+		bool is_datanode;
+
+		if (TestToken("datanode"))
+			is_datanode = true;
+		else if (TestToken("coordinator"))
+			is_datanode = false;
+		else
 		{
 			elog(ERROR, "ERROR: must specify either coordinator or datanode\n");
 			return;
 		}
-		do
+
+		while (GetToken())
 			AddMember(nodeList, token);
-		while (GetToken());
 		
-		if (TestToken("datanode"))
+		if (is_datanode)
 			configure_datanodes(nodeList);
 		else
 			configure_nodes(nodeList);
