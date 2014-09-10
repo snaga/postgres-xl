@@ -1874,14 +1874,13 @@ PGXC$ prepare config my_config.conf
    </varlistentry>
 
    <varlistentry>
-    <term><literal>stop all</literal></term>
-    <term><literal>stop <replaceable class="parameter">nodename ...</replaceable></literal></term>
+    <term><literal>stop [ -m smart | fast | immediate ] all</literal></term>
     <term><literal>stop gtm [ master | slave | all ]</literal></term>
     <term><literal>stop gtm_proxy [ all | <replaceable class="parameter">nodename ...</replaceable> ]</literal></term>
-    <term><literal>stop coordinator <replaceable class="parameter">nodename ...</replaceable> [ -m [ smart | fast | immediate ] </literal></term>
-    <term><literal>stop coordinator [ master | slave ] [ all | <replaceable class="parameter">nodename ...</replaceable> ] [ -m [ smart | fast | immediate ] </literal></term>
-    <term><literal>stop datanode <replaceable class="parameter">nodename ...</replaceable> [ -m [ smart | fast | immediate ] </literal></term>
-    <term><literal>stop datanode [ master | slave ] [ all | <replaceable class="parameter">nodename ...</replaceable> ] [ -m [ smart | fast | immediate ] </literal></term>
+    <term><literal>stop [ -m smart | fast | immediate ] coordinator <replaceable class="parameter">nodename ...</replaceable> </literal></term>
+    <term><literal>stop [ -m smart | fast | immediate ] coordinator [ master | slave ] [ all | <replaceable class="parameter">nodename ...</replaceable> ]  </literal></term>
+    <term><literal>stop [ -m smart | fast | immediate ] datanode <replaceable class="parameter">nodename ...</replaceable>  </literal></term>
+    <term><literal>stop [ -m smart | fast | immediate ] datanode [ master | slave ] [ all | <replaceable class="parameter">nodename ...</replaceable> ]  </literal></term>
     <listitem>
      <para>
       Stops specified node.  For datanode and coordinator, you can

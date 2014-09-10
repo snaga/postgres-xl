@@ -816,13 +816,12 @@ static void do_start_command(char *line)
 }
 
 /*
- * Stop command ... stop nodename, start all,
- *					 stop gtm [master|slave|all],
- *					 stop gtm_proxy [nodename|all] ...
- *					 stop coordinator [nodename ... |master [all | nodenames ... ] | slave [all | nodenames ... ] |all]
- *					 stop datanode [nodename ... |master [all | nodenames ... ] | slave [all | nodenames ... ] |all]
+ * Stop command ... stop [-m smart | fast | immediate] all
+ *					 stop gtm [master | slave | all],
+ *					 stop gtm_proxy [ nodename | all] ...
+ *					 stop [-m smart | fast | immediate ] coordinator [nodename ... | master [all | nodenames ... ] | slave [all | nodenames ... ] |all]
+ *					 stop [-m smart | fast | immediate ] datanode [nodename ... | master [all | nodenames ... ] | slave [all | nodenames ... ] |all]
  *
- *	Can insert -m immediate option at any place.
  */
 static void stop_all(char *immediate)
 {
@@ -1191,6 +1190,7 @@ static void do_stop_command(char *line)
 		}
 	}
 	else if (TestToken("coordinator"))
+	{
 		if (!GetToken() || TestToken("all"))
 		{
 			stop_coordinator_master_all(m_Option);
@@ -1232,7 +1232,9 @@ static void do_stop_command(char *line)
 				stop_coordinator_slave(nodeList, m_Option);
 			clean_array(nodeList);
 		}
+	}
 	else if (TestToken("datanode"))
+	{
 		if (!GetToken() || TestToken("all"))
 		{
 			stop_datanode_master_all(m_Option);
@@ -1273,6 +1275,7 @@ static void do_stop_command(char *line)
 			if (isVarYes(VAR_datanodeSlave))
 				stop_datanode_slave(nodeList, m_Option);
 		}
+	}
 	else
 		elog(ERROR, "ERROR: invalid option for stop command.\n");
 	return;
@@ -2673,12 +2676,12 @@ do_show_help(char *line)
 				"\n"
 				"add gtm slave name host port dir\n"
 				"add gtm_proxy name host port dir\n"
-				"add coordinator master name host port pooler dir\n"
-				"add coordinator slave name host dir archDir\n"
-				"add datanode master name host port dir\n"
-				"add datanode slave name host dir archDir\n"
+				"add coordinator master name host port pooler dir extra_conf extra_pghba\n"
+				"add coordinator slave name host port pooler dir archDir\n"
+				"add datanode master name host port pooler dir extra_conf extra_pghba\n"
+				"add datanode slave name host port pooler dir archDir\n"
 				"\n"
-				"Add the specified node to your postgres-xc cluster:\n"
+				"Add the specified node to your postgres-xl cluster:\n"
 				"For more details, please see the pgxc_ctl documentation\n"
 				"\n"
 			  );
@@ -2738,7 +2741,7 @@ do_show_help(char *line)
 				"\n"
 				"deploy [ all | host ... ]\n"
 				"\n"
-				"Deploys postgres-xc binaries and other installation material to specified hosts\n"
+				"Deploys postgres-xl binaries and other installation material to specified hosts\n"
 				"For more details, please see the pgxc_ctl documentation\n"
 				"\n"
 			  );
@@ -2901,7 +2904,7 @@ do_show_help(char *line)
 				"show [ configuration | configure | config ] gtm_proxy [ all | gtm_proxy_name ... ]\n"
 				"show [ configuration | configure | config ] [ coordinator | datanode ] [ all | master | slave ] nodename ...\n"
 				"\n"
-				"Shows postgres-xc configuration\n"
+				"Shows postgres-xl configuration\n"
 				"\n"
 				"show resource datanode datanodename [ databasename [ username ] ]\n"
 				"\n"
@@ -2935,14 +2938,13 @@ do_show_help(char *line)
 	{
 		printf(
 				"\n"
-				"stop all\n"
-				"stop nodename ...\n"
+				"stop [ -m smart | fast | immediate ] all\n"
 				"stop gtm [ master | slave | all ]\n"
 				"stop gtm_proxy [ all | nodename ... ]\n"
-				"stop coordinator nodename ... [ -m [ smart | fast | immediate ] \n"
-				"stop coordinator [ master | slave ] [ all | nodename ... ] [ -m [ smart | fast | immediate ] \n"
-				"stop datanode nodename ... [ -m [ smart | fast | immediate ] \n"
-				"stop datanode [ master | slave ] [ all | nodename ... ] [ -m [ smart | fast | immediate ]\n"
+				"stop [ -m smart | fast | immediate ] coordinator nodename ... \n"
+				"stop [ -m smart | fast | immediate ] coordinator [ master | slave ] [ all | nodename ... ] \n"
+				"stop [ -m smart | fast | immediate ] datanode nodename ... \n"
+				"stop [ -m smart | fast | immediate ] datanode [ master | slave ] [ all | nodename ... ] \n"
 				"\n"
 				"Stops specified node\n"
 				"For more details, please see the pgxc_ctl documentation\n"
