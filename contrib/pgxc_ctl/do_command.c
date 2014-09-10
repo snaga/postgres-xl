@@ -2277,7 +2277,7 @@ void do_command(FILE *inf, FILE *outf)
 				wkline = Strdup("q\n");
 				putchar('\n');
 			}
-			else
+			else if (wkline[0] != '\0')
 				add_history(wkline);
 			strncpy(buf, wkline, MAXLINE);
 		}
