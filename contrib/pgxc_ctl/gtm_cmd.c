@@ -755,6 +755,11 @@ int add_gtmProxy(char *name, char *host, int port, char *dir)
 	{
 		assign_sval(VAR_gtmProxy, Strdup("y"));
 		reset_var(VAR_gtmProxyNames);
+		reset_var(VAR_gtmProxyServers);
+		reset_var(VAR_gtmProxyPorts);
+		reset_var(VAR_gtmProxyDirs);
+		reset_var(VAR_gtmPxySpecificExtraConfig);
+		reset_var(VAR_gtmPxyExtraConfig);
 	}
 	add_val(find_var(VAR_gtmProxyNames), Strdup(name));
 	add_val(find_var(VAR_gtmProxyServers), Strdup(host));
