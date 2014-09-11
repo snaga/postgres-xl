@@ -347,7 +347,7 @@ int init_coordinator_slave(char **nodeList)
 	 */
 	for (ii = 0; actualNodeList[ii]; ii++)
 	{
-		elog(INFO, "Initializa the coordinator slave %s.\n", actualNodeList[ii]);
+		elog(INFO, "Initialize the coordinator slave %s.\n", actualNodeList[ii]);
 		if ((cmd = prepare_initCoordinatorSlave(actualNodeList[ii])))
 			addCmd(cmdList, cmd);
 	}
@@ -750,7 +750,7 @@ int kill_coordinator_master(char **nodeList)
  */
 int kill_coordinator_slave_all(void)
 {
-	elog(INFO, "Killing all the cooridinator slaves.\n");
+	elog(INFO, "Killing all the coordinator slaves.\n");
 	return(kill_coordinator_slave(aval(VAR_coordNames)));
 }
 
@@ -800,7 +800,7 @@ int kill_coordinator_slave(char **nodeList)
 	actualNodeList = makeActualNodeList(nodeList);
 	for (ii = 0; actualNodeList[ii]; ii++)
 	{
-		elog(INFO, "Killing coordinatlr slave %s.\n", actualNodeList[ii]);
+		elog(INFO, "Killing coordinator slave %s.\n", actualNodeList[ii]);
 		if ((cmd = prepare_killCoordinatorSlave(actualNodeList[ii])))
 			addCmd(cmdList, cmd);
 	}
@@ -912,7 +912,7 @@ int clean_coordinator_slave(char **nodeList)
 
 int clean_coordinator_slave_all(void)
 {
-	elog(INFO, "Cleaning all the cooridnator slaves resources.\n");
+	elog(INFO, "Cleaning all the coordinator slave resources.\n");
 	return(clean_coordinator_slave(aval(VAR_coordNames)));
 }
 
@@ -971,7 +971,7 @@ int add_coordinatorMaster(char *name, char *host, int port, int pooler,
 		(arraySizeName(VAR_coordSpecificExtraConfig) != size) ||
 		(arraySizeName(VAR_coordSpecificExtraPgHba) != size))
 	{
-		elog(ERROR, "ERROR: sorry found some inconflicts in coordinator master configuration.");
+		elog(ERROR, "ERROR: Found some conflicts in coordinator master configuration.");
 		return 1;
 	}
 	/*
@@ -992,7 +992,7 @@ int add_coordinatorMaster(char *name, char *host, int port, int pooler,
 		(extendVar(VAR_coordSpecificExtraConfig, idx + 1, "none")  != 0) ||
 		(extendVar(VAR_coordSpecificExtraPgHba, idx + 1, "none") != 0))
 	{
-		elog(PANIC, "PANIC: Internal error, inconsitent coordinator information\n");
+		elog(PANIC, "PANIC: Internal error, inconsistent coordinator information\n");
 		return 1;
 	}
 	/*
@@ -1206,10 +1206,10 @@ int add_coordinatorSlave(char *name, char *host, int port, int pooler_port, char
 		elog(ERROR, "ERROR: Specified coordiantor %s is not configured.\n", name);
 		return 1;
 	}
-	/* Check if the coordinator slave is not configred */
+	/* Check if the coordinator slave is not configured */
 	if (isVarYes(VAR_coordSlave) && doesExist(VAR_coordSlaveServers, idx) && !is_none(aval(VAR_coordSlaveServers)[idx]))
 	{
-		elog(ERROR, "ERROR: Slave for the coordinator %s has already been condigired.\n", name);
+		elog(ERROR, "ERROR: Slave for the coordinator %s has already been configured.\n", name);
 		return 1;
 	}
 	/* Check if the resource does not conflict */
@@ -1249,7 +1249,7 @@ int add_coordinatorSlave(char *name, char *host, int port, int pooler_port, char
 	/* Update the configuration and backup the configuration file */
 	if ((f = pgxc_popen_w(aval(VAR_coordMasterServers)[idx], "cat >> %s/postgresql.conf", aval(VAR_coordMasterDirs)[idx])) == NULL)
 	{
-		elog(ERROR, "ERROR: Cannot open coordnator master's configuration file, %s/postgresql.conf, %s\n",
+		elog(ERROR, "ERROR: Cannot open coordinator master's configuration file, %s/postgresql.conf, %s\n",
 			 aval(VAR_coordMasterDirs)[idx], strerror(errno));
 		return 1;
 	}
@@ -1299,7 +1299,7 @@ int add_coordinatorSlave(char *name, char *host, int port, int pooler_port, char
 		(extendVar(VAR_coordSlavePoolerPorts, size, "none")  != 0) ||
 		(extendVar(VAR_coordArchLogDirs, size, "none") != 0))
 	{
-		elog(PANIC, "PANIC: Internal error, inconsitent coordinator information\n");
+		elog(PANIC, "PANIC: Internal error, inconsistent coordinator information\n");
 		return 1;
 	}
 	if (!isVarYes(VAR_coordSlave))
@@ -1684,7 +1684,7 @@ cmd_t *prepare_startCoordinatorMaster(char *nodeName)
 	 */
 	if (pingNode(aval(VAR_coordMasterServers)[idx], aval(VAR_coordPorts)[idx]) == 0)
 	{
-		elog(ERROR, "ERROR: target coordinator master %s is already running now.   Skip initilialization.\n",
+		elog(ERROR, "ERROR: target coordinator master %s is already running now.   Skip initialization.\n",
 			 nodeName);
 		return(NULL);
 	}
@@ -1744,7 +1744,7 @@ cmd_t *prepare_startCoordinatorSlave(char *nodeName)
 	 */
 	if (pingNode(aval(VAR_coordMasterServers)[idx], aval(VAR_coordPorts)[idx]) != 0)
 	{
-		elog(ERROR, "ERROR: Coordinator Master %s is not runnig now. Cannot start the slave.\n",
+		elog(ERROR, "ERROR: Coordinator master %s is not running now. Cannot start the slave.\n",
 			 aval(VAR_coordNames)[idx]);
 		return(NULL);
 	}
@@ -1891,7 +1891,12 @@ cmd_t *prepare_stopCoordinatorSlave(char *nodeName, char *immediate)
 		elog(WARNING, "WARNING: %s is not a coordinator.\n", nodeName);
 		return(NULL);
 	}
-	if (pingNode(aval(VAR_coordMasterServers)[idx], aval(VAR_coordSlavePorts)[idx]) == 0)
+	if (!doesExist(VAR_coordSlaveServers, idx) || is_none(aval(VAR_coordSlaveServers)[idx]))
+	{
+		elog(WARNING, "coordinator %s does not have a slave. Skipping.\n", nodeName);
+		return(NULL);
+	}
+	if (pingNode(aval(VAR_coordMasterServers)[idx], aval(VAR_coordPorts)[idx]) == 0)
 	{
 		/* Master is running.  Need to switch log shipping to asynchronous mode. */
 		cmd = cmdMasterReload = initCmd(aval(VAR_coordMasterServers)[idx]);
@@ -1966,7 +1971,7 @@ int failover_coordinator(char **nodeList)
 	int ii;
 	int rc = 0;
 
-	elog(INFO, "Failover coordiantors.\n");
+	elog(INFO, "Failover coordinators.\n");
 	if (!isVarYes(VAR_coordSlave))
 	{
 		elog(ERROR, "ERROR: Coordinator slaves are not configured.\n");
@@ -2030,7 +2035,7 @@ static int failover_oneCoordinator(int coordIdx)
 		elog(NOTICE, "Failover coordinator %s using gtm %s\n",
 			 aval(VAR_coordNames)[coordIdx], aval(VAR_gtmProxyNames)[gtmPxyIdx]);
 	else
-		elog(NOTICE, "Filover coordinator %s using GTM itself\n",
+		elog(NOTICE, "Failover coordinator %s using GTM itself\n",
 			 aval(VAR_coordNames)[coordIdx]);
 
 #ifndef XCP	

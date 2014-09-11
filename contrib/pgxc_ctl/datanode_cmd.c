@@ -516,7 +516,7 @@ cmd_t *prepare_stopDatanodeMaster(char *nodeName, char *immediate)
 	
 	if ((idx = datanodeIdx(nodeName)) < 0)
 	{
-		elog(WARNING, "WARNING: %s is not a datande. Skipping\n", nodeName);
+		elog(WARNING, "WARNING: %s is not a datanode. Skipping\n", nodeName);
 		return(NULL);
 	}
 	cmdStopDatanodeMaster = initCmd(aval(VAR_datanodeMasterServers)[idx]);
@@ -733,7 +733,7 @@ static int failover_oneDatanode(int datanodeIdx)
 		elog(NOTICE, "Failover datanode %s using gtm %s\n",
 			 aval(VAR_datanodeNames)[datanodeIdx], aval(VAR_gtmProxyNames)[gtmPxyIdx]);
 	else
-		elog(NOTICE, "Filover database %s using GTM itself\n",
+		elog(NOTICE, "Failover datanode %s using GTM itself\n",
 			 aval(VAR_datanodeNames)[datanodeIdx]);
 
 #ifndef XCP	
@@ -990,7 +990,7 @@ int add_datanodeMaster(char *name, char *host, int port, char *dir,
 		(arraySizeName(VAR_datanodeSpecificExtraConfig) != size) ||
 		(arraySizeName(VAR_datanodeSpecificExtraPgHba) != size))
 	{
-		elog(ERROR, "ERROR: sorry found some inconflicts in datanode master configuration.\n");
+		elog(ERROR, "ERROR: Found some conflicts in datanode master configuration.\n");
 		return 1;
 	}
 
@@ -1012,7 +1012,7 @@ int add_datanodeMaster(char *name, char *host, int port, char *dir,
 		(extendVar(VAR_datanodeSpecificExtraConfig, idx + 1, "none")  != 0) ||
 		(extendVar(VAR_datanodeSpecificExtraPgHba, idx + 1, "none") != 0))
 	{
-		elog(PANIC, "PANIC: Internal error, inconsitent datanode information\n");
+		elog(PANIC, "PANIC: Internal error, inconsistent datanode information\n");
 		return 1;
 	}
 
@@ -1267,13 +1267,13 @@ int add_datanodeSlave(char *name, char *host, int port, int pooler, char *dir, c
 	/* Check if the name is valid datanode */
 	if ((idx = datanodeIdx(name)) < 0)
 	{
-		elog(ERROR, "ERROR: Specified datanodeiantor %s is not configured.\n", name);
+		elog(ERROR, "ERROR: Specified datanode %s is not configured.\n", name);
 		return 1;
 	}
-	/* Check if the datanode slave is not configred */
+	/* Check if the datanode slave is not configured */
 	if (isVarYes(VAR_datanodeSlave) && doesExist(VAR_datanodeSlaveServers, idx) && !is_none(aval(VAR_datanodeSlaveServers)[idx]))
 	{
-		elog(ERROR, "ERROR: Slave for the datanode %s has already been condigired.\n", name);
+		elog(ERROR, "ERROR: Slave for the datanode %s has already been configured.\n", name);
 		return 1;
 	}
 	/* Check if the resource does not conflict */
@@ -1309,7 +1309,7 @@ int add_datanodeSlave(char *name, char *host, int port, int pooler, char *dir, c
 	/* Update the configuration and backup the configuration file */
 	if ((f = pgxc_popen_w(aval(VAR_datanodeMasterServers)[idx], "cat >> %s/postgresql.conf", aval(VAR_datanodeMasterDirs)[idx])) == NULL)
 	{
-		elog(ERROR, "ERROR: Cannot open datanodenator master's configuration file, %s/postgresql.conf",
+		elog(ERROR, "ERROR: Cannot open datanode master's configuration file, %s/postgresql.conf",
 			 aval(VAR_datanodeMasterDirs)[idx]);
 		return 1;
 	}
@@ -1364,7 +1364,7 @@ int add_datanodeSlave(char *name, char *host, int port, int pooler, char *dir, c
 		(extendVar(VAR_datanodeSlaveDirs, size, "none")  != 0) ||
 		(extendVar(VAR_datanodeArchLogDirs, size, "none") != 0))
 	{
-		elog(PANIC, "PANIC: Internal error, inconsitent datanode information\n");
+		elog(PANIC, "PANIC: Internal error, inconsistent datanode information\n");
 		return 1;
 	}
 
@@ -1777,7 +1777,7 @@ int clean_datanode_master(char **nodeList)
 	actualNodeList = makeActualNodeList(nodeList);
 	for (ii = 0; actualNodeList[ii]; ii++)
 	{
-		elog(INFO, "Cleaning datanode %s maseter resources.\n", actualNodeList[ii]);
+		elog(INFO, "Cleaning datanode %s master resources.\n", actualNodeList[ii]);
 		if ((cmd = prepare_cleanDatanodeMaster(actualNodeList[ii])))
 			addCmd(cmdList, cmd);
 	}

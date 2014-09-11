@@ -273,7 +273,7 @@ static void do_failover_command(char *line)
 	else if (TestToken("datanode"))
 	{
 		if (!isVarYes(VAR_datanodeSlave))
-			elog(ERROR, "ERROR: datanode slave is not configired.\n");
+			elog(ERROR, "ERROR: datanode slave is not configured.\n");
 		else if (!GetToken())
 			elog(ERROR, "ERROR: please specify failover datanode command option.\n");
 		else
@@ -910,7 +910,7 @@ static void do_add_command(char *line)
 		 */
 		if (!GetToken() || (!TestToken("master") && !TestToken("slave")))
 		{
-			elog(ERROR, "ERROR: please speify master or slave.\n");
+			elog(ERROR, "ERROR: please specify master or slave.\n");
 			return;
 		}
 		if (TestToken("master"))
@@ -948,7 +948,7 @@ static void do_add_command(char *line)
 	{
 		if (!GetToken() || (!TestToken("master") && !TestToken("slave")))
 		{
-			elog(ERROR, "ERROR: please speify master or slave.\n");
+			elog(ERROR, "ERROR: please specify master or slave.\n");
 			return;
 		}
 		if (TestToken("master"))
@@ -1044,7 +1044,7 @@ static void do_remove_command(char *line)
 	{
 		if (!GetToken() || (!TestToken("master") && !TestToken("slave")))
 		{
-			elog(ERROR, "ERROR: please speify master or slave.\n");
+			elog(ERROR, "ERROR: please specify master or slave.\n");
 			return;
 		}
 		if (TestToken("master"))
@@ -1076,7 +1076,7 @@ static void do_remove_command(char *line)
 	{
 		if (!GetToken() || (!TestToken("master") && !TestToken("slave")))
 		{
-			elog(ERROR, "ERROR: please speify master or slave.\n");
+			elog(ERROR, "ERROR: please specify master or slave.\n");
 			return;
 		}
 		if (TestToken("master"))
@@ -1105,7 +1105,7 @@ static void do_remove_command(char *line)
 		}
 	}
 	else
-		elog(ERROR, "ERROR:Add command argument %s is invalid.\n", token);
+		elog(ERROR, "ERROR: invalid argument %s to add command.\n", token);
 	return;
 }
 		
@@ -1941,7 +1941,7 @@ static void do_clean_command(char *line)
 			GetToken();
 			if (token == NULL)
 			{
-				elog(INFO, "Stoppong and cleaning all the datanodes.\n");
+				elog(INFO, "Stopping and cleaning all the datanodes.\n");
 				stop_datanode_master_all("immediate");
 				clean_datanode_master_all();
 				if (isVarYes(VAR_datanodeSlave))
