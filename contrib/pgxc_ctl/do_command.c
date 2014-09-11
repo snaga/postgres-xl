@@ -2678,7 +2678,7 @@ do_show_help(char *line)
 				"add gtm_proxy name host port dir\n"
 				"add coordinator master name host port pooler dir extra_conf extra_pghba\n"
 				"add coordinator slave name host port pooler dir archDir\n"
-				"add datanode master name host port pooler dir extra_conf extra_pghba\n"
+				"add datanode master name host port pooler dir restore_datanode_name extra_conf extra_pghba\n"
 				"add datanode slave name host port pooler dir archDir\n"
 				"\n"
 				"Add the specified node to your postgres-xl cluster:\n"
