@@ -1099,7 +1099,7 @@ int add_datanodeMaster(char *name, char *host, int port, char *dir,
 
 	/* Now add the master */
 
-	gtmPxyIdx = getEffectiveGtmProxyIdxFromServerName(name);
+	gtmPxyIdx = getEffectiveGtmProxyIdxFromServerName(host);
 	gtmHost = (gtmPxyIdx > 0) ? aval(VAR_gtmProxyServers)[gtmPxyIdx] : sval(VAR_gtmMasterServer);
 	gtmPort = (gtmPxyIdx > 0) ? aval(VAR_gtmProxyPorts)[gtmPxyIdx] : sval(VAR_gtmMasterPort);
 
