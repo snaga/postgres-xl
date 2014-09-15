@@ -1773,7 +1773,7 @@ cmd_t *prepare_startCoordinatorSlave(char *nodeName)
 			aval(VAR_coordNames)[idx]);
 	fclose(f);
 		
-	/* Reloae postgresql.conf change */
+	/* Reload postgresql.conf change */
 	appendCmdEl(cmdPgCtlStart, (cmdMasterReload = initCmd(aval(VAR_coordMasterServers)[idx])));
 	snprintf(newCommand(cmdMasterReload), MAXLINE,
 			 "pg_ctl reload -Z coordinator -D %s",

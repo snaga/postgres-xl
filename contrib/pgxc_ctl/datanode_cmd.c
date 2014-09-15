@@ -424,7 +424,7 @@ int start_datanode_slave_all(void)
 
 cmd_t *prepare_startDatanodeSlave(char *nodeName)
 {
-	cmd_t *cmd, *cmdStartDatanodeSlave, *cmdMasterToSyncMode;
+	cmd_t *cmd, *cmdStartDatanodeSlave, *cmdMasterToSyncMode, *cmdMasterReload;
 	FILE *f;
 	int idx;
 	char timestamp[MAXTOKEN+1];
@@ -473,6 +473,12 @@ cmd_t *prepare_startDatanodeSlave(char *nodeName)
 			timeStampString(timestamp, MAXTOKEN),
 			aval(VAR_datanodeNames)[idx]);
 	fclose(f);
+
+	/* Reload postgresql.conf change */
+	appendCmdEl(cmdStartDatanodeSlave, (cmdMasterReload = initCmd(aval(VAR_datanodeMasterServers)[idx])));
+	snprintf(newCommand(cmdMasterReload), MAXLINE,
+			 "pg_ctl reload -Z datanode -D %s",
+			 aval(VAR_datanodeMasterDirs)[idx]);
 	return(cmd);
 }
 
@@ -1320,10 +1326,13 @@ int add_datanodeSlave(char *name, char *host, int port, int pooler, char *dir, c
 			"archive_mode = on\n"
 			"archive_command = 'rsync %%p %s@%s:%s/%%f'\n"
 			"max_wal_senders = %d\n"
+			"synchronous_commit = on\n"
+			"synchronous_standby_names = '%s'\n"
 			"# End of Addition\n",
 			timeStampString(date, MAXPATH),
 			sval(VAR_pgxcUser), host, archDir,
-			getDefaultWalSender(FALSE));
+			getDefaultWalSender(FALSE),
+			name);
 	pclose(f);
 	/* pg_hba.conf for replication */
 	if ((f = pgxc_popen_w(aval(VAR_datanodeMasterServers)[idx], "cat >> %s/pg_hba.conf", aval(VAR_datanodeMasterDirs)[idx])) == NULL)
