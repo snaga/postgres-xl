@@ -138,6 +138,11 @@ int add_gtmSlave(char *name, char *host, int port, char *dir)
 		elog(ERROR, "ERROR: GTM slave is already configured.\n");
 		return 1;
 	}
+	if (is_none(name))
+	{
+		elog(ERROR, "ERROR: Cannot add gtm slave with the name \"none\".\n");
+		return 1;
+	}
 	if (is_none(host))
 	{
 		elog(ERROR, "ERROR: Cannot add gtm slave with the name \"none\".\n");
@@ -148,13 +153,14 @@ int add_gtmSlave(char *name, char *host, int port, char *dir)
 		elog(ERROR, "ERROR: Cannot add gtm slave with the directory \"none\".\n");
 		return 1;
 	}
-	if (checkSpecificResourceConflict(name, host, port, dir, TRUE))
+	if (checkSpecificResourceConflict(name, host, port, dir, FALSE))
 	{
 		elog(ERROR, "ERROR: New specified name:%s, host:%s, port:%d and dir:\"%s\" conflicts with existing node.\n",
 			 name, host, port, dir);
 		return 1;
 	}
 	assign_sval(VAR_gtmSlave, Strdup("y"));
+	assign_sval(VAR_gtmSlaveName, Strdup(name));
 	assign_sval(VAR_gtmSlaveServer, Strdup(host));
 	snprintf(port_s, MAXTOKEN, "%d", port);
 	assign_sval(VAR_gtmSlavePort, Strdup(port_s));
@@ -172,6 +178,7 @@ int add_gtmSlave(char *name, char *host, int port, char *dir)
 			"#        %s\n", 
 			timeStampString(date, MAXTOKEN+1));
 	fprintSval(f, VAR_gtmSlave);
+	fprintSval(f, VAR_gtmSlaveName);
 	fprintSval(f, VAR_gtmSlaveServer);
 	fprintSval(f, VAR_gtmSlavePort);
 	fprintSval(f, VAR_gtmSlaveDir);
@@ -206,6 +213,8 @@ int remove_gtmSlave(bool clean_opt)
 	/* Reconfigure */
 	reset_var(VAR_gtmSlave);
 	assign_sval(VAR_gtmSlave, Strdup("n"));
+	reset_var(VAR_gtmSlaveName);
+	assign_sval(VAR_gtmSlaveName, Strdup("none"));
 	reset_var(VAR_gtmSlaveServer);
 	assign_sval(VAR_gtmSlaveServer, Strdup("none"));
 	reset_var(VAR_gtmSlavePort);
@@ -293,7 +302,7 @@ cmd_t *prepare_initGtmSlave(void)
 			"active_host = '%s'\n"
 			"active_port = %d\n"
 			"# End of addition\n",
-			sval(VAR_gtmSlavePort), sval(VAR_gtmName),
+			sval(VAR_gtmSlavePort), sval(VAR_gtmSlaveName),
 			sval(VAR_gtmMasterServer), atoi(sval(VAR_gtmMasterPort)));
 	fclose(f);
 	return (cmdInitGtm);
@@ -1342,7 +1351,7 @@ int show_config_gtmSlave(int flag, char *hostname)
 		strncat(lineBuf, "\n", MAXLINE);
 	lockLogFile();
 	elog(NOTICE, "%s", lineBuf);
-	print_simple_node_info(sval(VAR_gtmName), sval(VAR_gtmSlavePort), sval(VAR_gtmSlaveDir),
+	print_simple_node_info(sval(VAR_gtmSlaveName), sval(VAR_gtmSlavePort), sval(VAR_gtmSlaveDir),
 						   sval(VAR_gtmExtraConfig), sval(VAR_gtmSlaveSpecificExtraConfig));
 	unlockLogFile();
 	return 0;

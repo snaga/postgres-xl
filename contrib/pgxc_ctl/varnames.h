@@ -29,10 +29,9 @@
 #define VAR_configBackupFile	"configBackupFile"
 #define VAR_allServers		"allServers"
 
-/* GTM overall */
-#define VAR_gtmName			"gtmName"
 
 /* GTM master */
+#define VAR_gtmName	"gtmName"
 #define VAR_gtmMasterServer	"gtmMasterServer"
 #define VAR_gtmMasterPort	"gtmMasterPort"
 #define VAR_gtmMasterDir	"gtmMasterDir"
@@ -41,6 +40,7 @@
 
 /* GTM slave */
 #define VAR_gtmSlave 		"gtmSlave"
+#define VAR_gtmSlaveName	"gtmSlaveName"
 #define VAR_gtmSlaveServer	"gtmSlaveServer"
 #define VAR_gtmSlavePort	"gtmSlavePort"
 #define VAR_gtmSlaveDir		"gtmSlaveDir"

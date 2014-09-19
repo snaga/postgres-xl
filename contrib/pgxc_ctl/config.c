@@ -824,7 +824,8 @@ static void verifyResource(void)
 					   VAR_gtmMasterPort, 
 					   VAR_gtmMasterDir, 
 					   NULL};
-	char *GtmSlaveVars[] = {VAR_gtmSlaveServer, 
+	char *GtmSlaveVars[] = {VAR_gtmSlaveName,
+							VAR_gtmSlaveServer, 
 							VAR_gtmSlavePort, 
 							VAR_gtmSlaveDir, 
 							NULL};
@@ -925,7 +926,7 @@ static void verifyResource(void)
 	/* GTM and GTM slave */
 	if (isVarYes(VAR_gtmSlave))
 		checkResourceConflict(VAR_gtmName, VAR_gtmMasterServer, VAR_gtmMasterPort, NULL, VAR_gtmMasterDir,
-							  VAR_gtmName, VAR_gtmSlaveServer, VAR_gtmSlavePort, NULL, VAR_gtmSlaveDir, TRUE, FALSE);
+							  VAR_gtmSlaveName, VAR_gtmSlaveServer, VAR_gtmSlavePort, NULL, VAR_gtmSlaveDir, TRUE, FALSE);
 	/* GTM and GTM Proxy, if any */
 	if (isVarYes(VAR_gtmProxy))
 		checkResourceConflict(VAR_gtmName, VAR_gtmMasterServer, VAR_gtmMasterPort, NULL, VAR_gtmMasterDir,
@@ -951,28 +952,34 @@ static void verifyResource(void)
 	 */
 	if (isVarYes(VAR_gtmSlave))
 	{
+		/* GTM slave and GTM master, if any */
+		if (isVarYes(VAR_gtmProxy))
+			checkResourceConflict(VAR_gtmSlaveName, VAR_gtmSlaveServer, VAR_gtmSlavePort, NULL, VAR_gtmSlaveDir,
+								  VAR_gtmName, VAR_gtmMasterServer,
+								  VAR_gtmMasterPort, NULL, VAR_gtmMasterDir, 
+								  TRUE, TRUE);
 		/* GTM slave and GTM Proxy, if any */
 		if (isVarYes(VAR_gtmProxy))
-			checkResourceConflict(VAR_gtmName, VAR_gtmSlaveServer, VAR_gtmSlavePort, NULL, VAR_gtmSlaveDir,
+			checkResourceConflict(VAR_gtmSlaveName, VAR_gtmSlaveServer, VAR_gtmSlavePort, NULL, VAR_gtmSlaveDir,
 								  VAR_gtmProxyNames, VAR_gtmProxyServers, VAR_gtmProxyPorts, NULL, VAR_gtmProxyDirs, 
 								  TRUE, TRUE);
 		/* GTM slave and coordinator masters */
-		checkResourceConflict(VAR_gtmName, VAR_gtmSlaveServer, VAR_gtmSlavePort, NULL, VAR_gtmSlaveDir,
+		checkResourceConflict(VAR_gtmSlaveName, VAR_gtmSlaveServer, VAR_gtmSlavePort, NULL, VAR_gtmSlaveDir,
 							  VAR_coordNames, VAR_coordMasterServers, VAR_coordPorts, VAR_poolerPorts, VAR_coordMasterDirs,
 							  TRUE, TRUE);
 		/* GTM slave and coordinator slaves, if any */
 		if (isVarYes(VAR_coordSlave))
-			checkResourceConflict(VAR_gtmName, VAR_gtmSlaveServer, VAR_gtmSlavePort, NULL, VAR_gtmSlaveDir,
+			checkResourceConflict(VAR_gtmSlaveName, VAR_gtmSlaveServer, VAR_gtmSlavePort, NULL, VAR_gtmSlaveDir,
 								  VAR_coordNames, VAR_coordSlaveServers,
 								  VAR_coordSlavePorts, VAR_coordSlavePoolerPorts, VAR_coordSlaveDirs,
 								  TRUE, TRUE);
 		/* GTM slave and datanode masters */
-		checkResourceConflict(VAR_gtmName, VAR_gtmSlaveServer, VAR_gtmSlavePort, NULL, VAR_gtmSlaveDir,
+		checkResourceConflict(VAR_gtmSlaveName, VAR_gtmSlaveServer, VAR_gtmSlavePort, NULL, VAR_gtmSlaveDir,
 							  VAR_datanodeNames, VAR_datanodeMasterServers, VAR_datanodePorts, NULL, VAR_datanodeMasterDirs,
 							  TRUE, TRUE);
 		/* GTM slave and datanode slave, if any */
 		if (isVarYes(VAR_datanodeSlave))
-			checkResourceConflict(VAR_gtmName, VAR_gtmSlaveServer, VAR_gtmSlavePort, NULL, VAR_gtmSlaveDir,
+			checkResourceConflict(VAR_gtmSlaveName, VAR_gtmSlaveServer, VAR_gtmSlavePort, NULL, VAR_gtmSlaveDir,
 								  VAR_datanodeNames, VAR_datanodeSlaveServers, VAR_datanodeSlavePorts, NULL, VAR_datanodeSlaveDirs,
 								  TRUE, TRUE);
 	}

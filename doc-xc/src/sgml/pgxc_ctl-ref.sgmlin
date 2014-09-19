@@ -941,7 +941,7 @@ PGXC$ prepare config my_config.conf
       <term><option>gtmName</option></term>
       <listitem>
        <para>
-        Node name of GTM.
+        Node name of GTM master.
        </para>
       </listitem>
      </varlistentry>
@@ -1007,7 +1007,16 @@ PGXC$ prepare config my_config.conf
        </para>
       </listitem>
      </varlistentry>
-    
+
+     <varlistentry>
+      <term><option>gtmSlaveName</option></term>
+      <listitem>
+       <para>
+        Node name of GTM slave.
+       </para>
+      </listitem>
+     </varlistentry>
+
      <varlistentry>
       <term><option>gtmSlaveDir</option></term>
       <listitem>
