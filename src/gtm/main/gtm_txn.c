@@ -231,7 +231,8 @@ GTM_HandleToTransactionInfo(GTM_TransactionHandle handle)
 	if (!gtm_txninfo->gti_in_use)
 	{
 		ereport(WARNING,
-				(ERANGE, errmsg("Invalid transaction handle, txn_info not in use")));
+				(ERANGE, errmsg("Invalid transaction handle (%d), txn_info not in use",
+								handle)));
 		return NULL;
 	}
 
@@ -272,8 +273,9 @@ GTM_RemoveTransInfoMulti(GTM_TransactionInfo *gtm_txninfo[], int txn_count)
 											   GTMTransactions.gt_latestCompletedXid))
 			GTMTransactions.gt_latestCompletedXid = gtm_txninfo[ii]->gti_gxid;
 
-		elog(DEBUG1, "GTM_RemoveTransInfoMulti: removing transaction id %u, %lu",
-				gtm_txninfo[ii]->gti_gxid, gtm_txninfo[ii]->gti_thread_id);
+		elog(DEBUG1, "GTM_RemoveTransInfoMulti: removing transaction id %u, %lu, handle (%d)",
+				gtm_txninfo[ii]->gti_gxid, gtm_txninfo[ii]->gti_thread_id,
+				gtm_txninfo[ii]->gti_handle);
 
 		/*
 		 * Now mark the transaction as aborted and mark the structure as not-in-use
@@ -328,8 +330,9 @@ GTM_RemoveAllTransInfos(int backend_id)
 												   GTMTransactions.gt_latestCompletedXid))
 				GTMTransactions.gt_latestCompletedXid = gtm_txninfo->gti_gxid;
 
-			elog(DEBUG1, "GTM_RemoveAllTransInfos: removing transaction id %u, %lu:%lu",
-					gtm_txninfo->gti_gxid, gtm_txninfo->gti_thread_id, thread_id);
+			elog(DEBUG1, "GTM_RemoveAllTransInfos: removing transaction id %u, %lu:%lu %d:%d",
+					gtm_txninfo->gti_gxid, gtm_txninfo->gti_thread_id,
+					thread_id, gtm_txninfo->gti_backend_id, backend_id);
 			/*
 			 * Now mark the transaction as aborted and mark the structure as not-in-use
 			 */
@@ -823,6 +826,9 @@ GTM_BkupBeginTransactionMulti(char *coord_name,
 				 txn[kk]);
 			return;
 		}
+
+		elog(DEBUG1, "GTM_BkupBeginTransactionMulti: handle(%u)", txn[kk]);
+
 		init_GTM_TransactionInfo(gtm_txninfo, coord_name, txn[kk], isolevel[kk], connid[kk], readonly[kk]);
 		GTMTransactions.gt_lastslot = txn[kk];
 		GTMTransactions.gt_open_transactions = gtm_lappend(GTMTransactions.gt_open_transactions, gtm_txninfo);
@@ -1295,10 +1301,14 @@ GTM_BkupBeginTransactionGetGXIDMulti(char *coord_name,
 		init_GTM_TransactionInfo(gtm_txninfo, coord_name, txn[ii], isolevel[ii], connid[ii], readonly[ii]);
 		GTMTransactions.gt_lastslot = txn[ii];
 		gtm_txninfo->gti_gxid = gxid[ii];
+
+		elog(DEBUG1, "GTM_BkupBeginTransactionGetGXIDMulti: xid(%u), handle(%u)",
+				gxid[ii], txn[ii]);
+
 		/*
 		 * Advance next gxid
 		 */
-		if (GlobalTransactionIdPrecedes(GTMTransactions.gt_nextXid, gxid[ii]))
+		if (GlobalTransactionIdPrecedesOrEquals(GTMTransactions.gt_nextXid, gxid[ii]))
 			GTMTransactions.gt_nextXid = gxid[ii] + 1;
 		if (!GlobalTransactionIdIsValid(GTMTransactions.gt_nextXid))	/* Handle wrap around too */
 			GTMTransactions.gt_nextXid = FirstNormalGlobalTransactionId;

@@ -679,13 +679,6 @@ main(int argc, char *argv[])
 			exit(1);
 		}
 		elog(LOG, "Restoring node information from the active-GTM succeeded.");
-
-		if (!gtm_standby_end_backup())
-		{
-			elog(ERROR, "Failed to setup normal standby mode to the active-GTM.");
-			exit(1);
-		}
-		elog(LOG, "Started to run as GTM-Standby.");
 	}
 	else
 	{
@@ -749,12 +742,32 @@ main(int argc, char *argv[])
 	 */
 	if (Recovery_IsStandby())
 	{
+		/*
+		 * Before ending the backup, inform the GTM master that we are now
+		 * ready to accept connections and mark ourselves as CONNECTED. All GTM
+		 * threads are still blocked at this point and when they are unlocked,
+		 * we will be ready to accept new connections
+		 */
 		if (!gtm_standby_activate_self())
 		{
 			elog(ERROR, "Failed to update the standby-GTM status as \"CONNECTED\".");
 			exit(1);
 		}
 		elog(DEBUG1, "Updating the standby-GTM status as \"CONNECTED\" succeeded.");
+
+		/*
+		 * GTM master can now start serving incoming requests. Before it serves
+		 * any request, it will open a connection with us and start copying all
+		 * those messages. So we are guaranteed to see each operation, either
+		 * in the backup we took or as GTM master copies those messages
+		 */
+		if (!gtm_standby_end_backup())
+		{
+			elog(ERROR, "Failed to setup normal standby mode to the active-GTM.");
+			exit(1);
+		}
+		elog(LOG, "Started to run as GTM-Standby.");
+
 		if (!gtm_standby_finish_startup())
 		{
 			elog(ERROR, "Failed to close the initial connection to the active-GTM.");
@@ -1174,8 +1187,14 @@ GTM_ThreadMain(void *argp)
 		 * Maybe the following lines can be a separate function.   At present, this is done only here so
 		 * I'll leave them here.   K.Suzuki, Nov.29, 2011
 		 * Please note that we don't check if it is not in the standby mode to allow cascased standby.
+		 *
+		 * Also ensure that we don't try to connect just yet if we are
+		 * responsible for serving the BACKUP request from the standby.
+		 * Otherwise, this will lead to a deadlock
 		 */
-		if (GTMThreads->gt_standby_ready && thrinfo->thr_conn->standby == NULL)
+		if (GTMThreads->gt_standby_ready &&
+				thrinfo->thr_conn->standby == NULL &&
+				thrinfo->thr_status != GTM_THREAD_BACKUP)
 		{
 			/* Connect to GTM-Standby */
 			thrinfo->thr_conn->standby = gtm_standby_connect_to_standby();
@@ -1197,12 +1216,18 @@ GTM_ThreadMain(void *argp)
 				break;
 
 			case 'X':
+				elog(DEBUG1, "Removing all transaction infos - qtype:X");
 			case EOF:
 				/*
 				 * Connection termination request
-				 * Remove all transactions opened within the thread
+				 * Remove all transactions opened within the thread. Note that
+				 * we don't remove transaction infos if we are a standby and
+				 * the transaction infos actually correspond to in-progress
+				 * transactions on the master
 				 */
-				GTM_RemoveAllTransInfos(-1);
+				elog(DEBUG1, "Removing all transaction infos - qtype:EOF");
+				if (!Recovery_IsStandby())
+					GTM_RemoveAllTransInfos(-1);
 
 				/* Disconnect node if necessary */
 				Recovery_PGXCNodeDisconnect(thrinfo->thr_conn->con_port);
@@ -1270,9 +1295,7 @@ ProcessCommand(Port *myport, StringInfo input_message)
 	 * The next line will have some overhead.  Better to be in
 	 * compile option.
 	 */
-#ifdef GTM_DEBUG
-	elog(DEBUG3, "mtype = %s (%d).", gtm_util_message_name(mtype), (int)mtype);
-#endif
+	elog(DEBUG1, "mtype = %s (%d).", gtm_util_message_name(mtype), (int)mtype);
 
 	switch (mtype)
 	{
@@ -1294,6 +1317,7 @@ ProcessCommand(Port *myport, StringInfo input_message)
 			break;
 		case MSG_END_BACKUP:
 			ProcessGTMEndBackup(myport, input_message);
+			break;
 		case MSG_NODE_BEGIN_REPLICATION_INIT:
 		case MSG_NODE_END_REPLICATION_INIT:
 		case MSG_TXN_BEGIN:
@@ -1358,8 +1382,17 @@ ProcessCommand(Port *myport, StringInfo input_message)
 			break;
 
 		case MSG_BACKEND_DISCONNECT:
+			elog(DEBUG1, "MSG_BACKEND_DISCONNECT received - removing all txn infos");
+			/*
+			 * !!TODO The original code used to remove all transaction info
+			 * structures with the given ph_conid stored in gti_backend_id. But
+			 * we are seeing several issues because of that during GTM
+			 * failover. So disable the code for now as we further investigate
+			 * the code
+			 */
+#ifdef NOT_USED
 			GTM_RemoveAllTransInfos(proxyhdr.ph_conid);
-
+#endif
 			/* Mark PGXC Node as disconnected if backend disconnected is postmaster */
 			ProcessPGXCNodeBackendDisconnect(myport, input_message);
 			break;

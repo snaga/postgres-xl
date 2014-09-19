@@ -252,7 +252,9 @@ pgxcnode_add_info(GTM_PGXCNodeInfo *nodeinfo)
 				GTM_RWLockRelease(&bucket->nhb_lock);
 				ereport(LOG,
 						(EEXIST,
-						 errmsg("Node with the given ID number already exists")));
+						 errmsg("Node with the given ID number already exists - %s %d:%d",
+							nodeinfo->nodename, nodeinfo->status,
+							nodeinfo->type )));
 				return EEXIST;
 			}
 			else

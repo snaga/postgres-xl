@@ -105,12 +105,12 @@ ProcessPGXCNodeRegister(Port *myport, StringInfo message, bool is_backup)
 	memcpy(datafolder, (char *)pq_getmsgbytes(message, len), len);
 	datafolder[len] = '\0';
 
+	status = pq_getmsgint(message, sizeof (GTM_PGXCNodeStatus));
+
 	elog(DEBUG1,
 		 "ProcessPGXCNodeRegister: ipaddress = \"%s\", node name = \"%s\", proxy name = \"%s\", "
-		 "datafolder \"%s\"",
-		 ipaddress, node_name, proxyname, datafolder);
-
-	status = pq_getmsgint(message, sizeof (GTM_PGXCNodeStatus));
+		 "datafolder \"%s\", status = %d",
+		 ipaddress, node_name, proxyname, datafolder, status);
 
 	if ((type!=GTM_NODE_GTM_PROXY) &&
 		(type!=GTM_NODE_GTM_PROXY_POSTMASTER) &&
@@ -159,12 +159,10 @@ ProcessPGXCNodeRegister(Port *myport, StringInfo message, bool is_backup)
 		 * Cascade standby may be allowed.
 		 */
 		GTM_DoForAllOtherThreads(finishStandbyConn);
-
-		GTMThreads->gt_standby_ready = true;
 	}
 
 	if (Recovery_PGXCNodeRegister(type, node_name, port,
-								  proxyname, NODE_CONNECTED,
+								  proxyname, status,
 								  ipaddress, datafolder, false, myport->sock))
 	{
 		ereport(ERROR,
@@ -176,7 +174,7 @@ ProcessPGXCNodeRegister(Port *myport, StringInfo message, bool is_backup)
 	 * We don't check if the this is not in standby mode to allow
 	 * cascaded standby.
 	 */
-	if (type == GTM_NODE_GTM)
+	if ((type == GTM_NODE_GTM) && (status == NODE_CONNECTED))
 		GTMThreads->gt_standby_ready = true;
 
 	MemoryContextSwitchTo(oldContext);

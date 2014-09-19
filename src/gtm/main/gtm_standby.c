@@ -135,54 +135,66 @@ gtm_standby_restore_gxid(void)
 
 	for (i = 0; i < num_txn; i++)
 	{
-		GTMTransactions.gt_transactions_array[i].gti_handle = txn.gt_transactions_array[i].gti_handle;
-		GTMTransactions.gt_transactions_array[i].gti_thread_id = txn.gt_transactions_array[i].gti_thread_id;
-		GTMTransactions.gt_transactions_array[i].gti_in_use = txn.gt_transactions_array[i].gti_in_use;
-		GTMTransactions.gt_transactions_array[i].gti_gxid = txn.gt_transactions_array[i].gti_gxid;
-		GTMTransactions.gt_transactions_array[i].gti_state = txn.gt_transactions_array[i].gti_state;
-		GTMTransactions.gt_transactions_array[i].gti_coordname = txn.gt_transactions_array[i].gti_coordname;
-		GTMTransactions.gt_transactions_array[i].gti_xmin = txn.gt_transactions_array[i].gti_xmin;
-		GTMTransactions.gt_transactions_array[i].gti_isolevel = txn.gt_transactions_array[i].gti_isolevel;
-		GTMTransactions.gt_transactions_array[i].gti_readonly = txn.gt_transactions_array[i].gti_readonly;
-		GTMTransactions.gt_transactions_array[i].gti_backend_id = txn.gt_transactions_array[i].gti_backend_id;
+		int handle = txn.gt_transactions_array[i].gti_handle;
+
+		GTMTransactions.gt_transactions_array[handle].gti_handle = txn.gt_transactions_array[i].gti_handle;
+
+		/* 
+		 * Don't copy the gti_thread_id. Its the thread id of the thread
+		 * running on the GTM master and does make no sense on the standy.
+		 *
+		 * XXX How do we clean up these transaction info structures if the
+		 * connection goes away after standby is promoted? We need some
+		 * mechanism to set ownership of the in-progress transactions once a
+		 * standby is promoted
+		 */
+		GTMTransactions.gt_transactions_array[handle].gti_thread_id = -1;
+		GTMTransactions.gt_transactions_array[handle].gti_in_use = txn.gt_transactions_array[i].gti_in_use;
+		GTMTransactions.gt_transactions_array[handle].gti_gxid = txn.gt_transactions_array[i].gti_gxid;
+		GTMTransactions.gt_transactions_array[handle].gti_state = txn.gt_transactions_array[i].gti_state;
+		GTMTransactions.gt_transactions_array[handle].gti_coordname = txn.gt_transactions_array[i].gti_coordname;
+		GTMTransactions.gt_transactions_array[handle].gti_xmin = txn.gt_transactions_array[i].gti_xmin;
+		GTMTransactions.gt_transactions_array[handle].gti_isolevel = txn.gt_transactions_array[i].gti_isolevel;
+		GTMTransactions.gt_transactions_array[handle].gti_readonly = txn.gt_transactions_array[i].gti_readonly;
+		GTMTransactions.gt_transactions_array[handle].gti_backend_id = txn.gt_transactions_array[i].gti_backend_id;
 
 		if (txn.gt_transactions_array[i].nodestring == NULL )
-			GTMTransactions.gt_transactions_array[i].nodestring = NULL;
+			GTMTransactions.gt_transactions_array[handle].nodestring = NULL;
 		else
-			GTMTransactions.gt_transactions_array[i].nodestring = txn.gt_transactions_array[i].nodestring;
+			GTMTransactions.gt_transactions_array[handle].nodestring = txn.gt_transactions_array[i].nodestring;
 
 		/* GID */
 		if (txn.gt_transactions_array[i].gti_gid == NULL )
-			GTMTransactions.gt_transactions_array[i].gti_gid = NULL;
+			GTMTransactions.gt_transactions_array[handle].gti_gid = NULL;
 		else
-			GTMTransactions.gt_transactions_array[i].gti_gid = txn.gt_transactions_array[i].gti_gid;
+			GTMTransactions.gt_transactions_array[handle].gti_gid = txn.gt_transactions_array[i].gti_gid;
 
 		/* copy GTM_SnapshotData */
-		GTMTransactions.gt_transactions_array[i].gti_current_snapshot.sn_xmin =
+		GTMTransactions.gt_transactions_array[handle].gti_current_snapshot.sn_xmin =
 						txn.gt_transactions_array[i].gti_current_snapshot.sn_xmin;
-		GTMTransactions.gt_transactions_array[i].gti_current_snapshot.sn_xmax =
+		GTMTransactions.gt_transactions_array[handle].gti_current_snapshot.sn_xmax =
 						txn.gt_transactions_array[i].gti_current_snapshot.sn_xmax;
-		GTMTransactions.gt_transactions_array[i].gti_current_snapshot.sn_recent_global_xmin =
+		GTMTransactions.gt_transactions_array[handle].gti_current_snapshot.sn_recent_global_xmin =
 						txn.gt_transactions_array[i].gti_current_snapshot.sn_recent_global_xmin;
-		GTMTransactions.gt_transactions_array[i].gti_current_snapshot.sn_xcnt =
+		GTMTransactions.gt_transactions_array[handle].gti_current_snapshot.sn_xcnt =
 						txn.gt_transactions_array[i].gti_current_snapshot.sn_xcnt;
-		GTMTransactions.gt_transactions_array[i].gti_current_snapshot.sn_xip =
+		GTMTransactions.gt_transactions_array[handle].gti_current_snapshot.sn_xip =
 						txn.gt_transactions_array[i].gti_current_snapshot.sn_xip;
 		/* end of copying GTM_SnapshotData */
 
-		GTMTransactions.gt_transactions_array[i].gti_snapshot_set =
+		GTMTransactions.gt_transactions_array[handle].gti_snapshot_set =
 						txn.gt_transactions_array[i].gti_snapshot_set;
-		GTMTransactions.gt_transactions_array[i].gti_vacuum =
+		GTMTransactions.gt_transactions_array[handle].gti_vacuum =
 						txn.gt_transactions_array[i].gti_vacuum;
 
 		/*
 		 * Is this correct? Is GTM_TXN_COMMITTED transaction categorized as "open"?
 		 */
-		if (GTMTransactions.gt_transactions_array[i].gti_state != GTM_TXN_ABORTED)
+		if (GTMTransactions.gt_transactions_array[handle].gti_state != GTM_TXN_ABORTED)
 		{
 			GTMTransactions.gt_open_transactions =
 					gtm_lappend(GTMTransactions.gt_open_transactions,
-							&GTMTransactions.gt_transactions_array[i]);
+							&GTMTransactions.gt_transactions_array[handle]);
 		}
 	}
 
@@ -333,7 +345,15 @@ find_standby_node_info(void)
 			 node[i]->port,
 			 node[i]->status);
 
-		if ( (strcmp(standbyNodeName, node[i]->nodename) != 0) &&
+		/* 
+		 * Must not try and connect to ourself. That will lead to a deadlock
+		 *
+		 * !!TODO Ideally we should not be registered on the GTM, but when a
+		 * failover happens, the standby may carry forward the node
+		 * registration information previously sent by the original master as a
+		 * backup. This needs to be studied further
+		 */
+		if (strcmp(node[i]->nodename, NodeName) &&
 			node[i]->status == NODE_CONNECTED)
 			return node[i];
 	}
