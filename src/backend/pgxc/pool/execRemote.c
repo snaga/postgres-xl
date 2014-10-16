@@ -1225,6 +1225,8 @@ CloseCombiner(ResponseCombiner *combiner)
 		FreeTupleDesc(combiner->tuple_desc);
 	if (combiner->errorMessage)
 		pfree(combiner->errorMessage);
+	if (combiner->errorDetail)
+		pfree(combiner->errorDetail);
 	if (combiner->cursor_connections)
 		pfree(combiner->cursor_connections);
 	if (combiner->tapenodes)
