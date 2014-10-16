@@ -33,7 +33,17 @@ extern void ProcArrayEndTransaction(PGPROC *proc, TransactionId latestXid);
 extern void ProcArrayClearTransaction(PGPROC *proc);
 
 #ifdef PGXC  /* PGXC_DATANODE */
-extern void SetGlobalSnapshotData(int xmin, int xmax, int xcnt, int *xip);
+typedef enum
+{
+	SNAPSHOT_UNDEFINED,   /* Coordinator has not sent snapshot or not yet connected */
+	SNAPSHOT_LOCAL,       /* Coordinator has instructed Datanode to build up snapshot from the local procarray */
+	SNAPSHOT_COORDINATOR, /* Coordinator has sent snapshot data */
+	SNAPSHOT_DIRECT       /* Datanode obtained directly from GTM */
+} SnapshotSource;
+
+extern void SetGlobalSnapshotData(TransactionId xmin, TransactionId xmax, int xcnt,
+		TransactionId *xip,
+		SnapshotSource source);
 extern void UnsetGlobalSnapshotData(void);
 extern void ReloadConnInfoOnBackends(void);
 #endif /* PGXC */

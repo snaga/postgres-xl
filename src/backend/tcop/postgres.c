@@ -3985,10 +3985,10 @@ PostgresMain(int argc, char *argv[],
 
 #ifdef PGXC /* PGXC_DATANODE */
 	/* Snapshot info */
-	int 			xmin;
-	int 			xmax;
-	int			xcnt;
-	int 			*xip;
+	TransactionId 			xmin;
+	TransactionId 			xmax;
+	int						xcnt;
+	TransactionId 			*xip;
 	/* Timestamp info */
 	TimestampTz		timestamp;
 #ifndef XCP
@@ -4831,7 +4831,9 @@ PostgresMain(int argc, char *argv[],
 			case 'g':			/* gxid */
 				{
 					/* Set the GXID we were passed down */
-					TransactionId gxid = (TransactionId) pq_getmsgint(&input_message, 4);
+					TransactionId gxid;
+				   	memcpy(&gxid, pq_getmsgbytes(&input_message, sizeof (TransactionId)),
+							sizeof (TransactionId));
 					elog(DEBUG1, "Received new gxid %u", gxid);
 					SetNextTransactionId(gxid);
 					pq_getmsgend(&input_message);
@@ -4840,14 +4842,20 @@ PostgresMain(int argc, char *argv[],
 
 			case 's':			/* snapshot */
 				/* Set the snapshot we were passed down */
-				xmin = pq_getmsgint(&input_message, 4);
-				xmax = pq_getmsgint(&input_message, 4);
-				RecentGlobalXmin = pq_getmsgint(&input_message, 4);
+				memcpy(&xmin,
+						pq_getmsgbytes(&input_message, sizeof (TransactionId)),
+						sizeof (TransactionId));
+				memcpy(&xmax,
+						pq_getmsgbytes(&input_message, sizeof (TransactionId)),
+						sizeof (TransactionId));
+				memcpy(&RecentGlobalXmin,
+						pq_getmsgbytes(&input_message, sizeof (TransactionId)),
+						sizeof (TransactionId));
 				xcnt = pq_getmsgint(&input_message, 4);
 				if (xcnt > 0)
 				{
 					int i;
-					xip = malloc(xcnt * sizeof(int));
+					xip = palloc(xcnt * sizeof(TransactionId));
 					if (xip == NULL)
 					{
 						ereport(ERROR,
@@ -4855,12 +4863,17 @@ PostgresMain(int argc, char *argv[],
 								 errmsg("out of memory")));
 					}
 					for (i = 0; i < xcnt; i++)
-					       xip[i] = pq_getmsgint(&input_message, 4);
+					       memcpy(&xip[i],
+								   pq_getmsgbytes(&input_message, sizeof (TransactionId)),
+								   sizeof (TransactionId));
 				}
 				else
 					xip = NULL;
 				pq_getmsgend(&input_message);
-				SetGlobalSnapshotData(xmin, xmax, xcnt, xip);
+				SetGlobalSnapshotData(xmin, xmax, xcnt, xip,
+						SNAPSHOT_COORDINATOR);
+				if (xip)
+					pfree(xip);
 				break;
 
 			case 't':			/* timestamp */
