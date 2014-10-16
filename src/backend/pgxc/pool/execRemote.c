@@ -8707,6 +8707,20 @@ primary_mode_phase_two:
 							 errmsg("Failed to send command to data nodes")));
 				}
 
+				/*
+				 * Resend the snapshot as well since the connection may have
+				 * been buffered and use by other commands, with different
+				 * snapshot. Set the snapshot back to what it was
+				 */
+				if (pgxc_node_send_snapshot(conn, estate->es_snapshot))
+				{
+					combiner->conn_count = 0;
+					pfree(combiner->connections);
+					ereport(ERROR,
+							(errcode(ERRCODE_INTERNAL_ERROR),
+							 errmsg("Failed to send snapshot to data nodes")));
+				}
+
 				/* bind */
 				pgxc_node_send_bind(conn, cursor, cursor, paramlen, paramdata);
 				/* execute */
