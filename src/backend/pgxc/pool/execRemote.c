@@ -4612,17 +4612,37 @@ DataNodeCopyFinish(PGXCNodeHandle** copy_connections, int primary_dn_index, Comb
 	memset(&combiner, 0, sizeof(ScanState));
 	error = (pgxc_node_receive_responses(conn_count, connections, NULL, &combiner) != 0) || error;
 
-	if (!ValidateAndCloseCombiner(&combiner) || error)
+	if (!validate_combiner(&combiner) || error)
+	{
+		if (combiner.errorMessage)
+		{
+			char *code = combiner.errorCode;
+			if (combiner.errorDetail)
+				ereport(ERROR,
+						(errcode(MAKE_SQLSTATE(code[0], code[1], code[2], code[3], code[4])),
+						 errmsg("%s", combiner.errorMessage), errdetail("%s", combiner.errorDetail) ));
+			else
+				ereport(ERROR,
+						(errcode(MAKE_SQLSTATE(code[0], code[1], code[2], code[3], code[4])),
+						 errmsg("%s", combiner.errorMessage)));
+		}
+		else
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("Error while running COPY")));
+	}
+	else
+		CloseCombiner(&combiner);
 #else
 	if (!combiner)
 		combiner = CreateResponseCombiner(conn_count, combine_type);
 	error = (pgxc_node_receive_responses(conn_count, connections, timeout, combiner) != 0) || error;
 
 	if (!ValidateAndCloseCombiner(combiner) || error)
-#endif
 		ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
 				 errmsg("Error while running COPY")));
+#endif
 }
 
 /*
