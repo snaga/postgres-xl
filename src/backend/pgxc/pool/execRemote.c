@@ -6563,6 +6563,11 @@ PreAbort_Remote(void)
 				handle->state == DN_CONNECTION_STATE_COPY_OUT)
 		{
 			DataNodeCopyEnd(handle, true);
+			/*
+			 * Forget previous combiner if any since input will be handled by
+			 * different one.
+			 */
+			handle->combiner = NULL;
 			clean_nodes[node_count++] = handle;
 		}
 	}
