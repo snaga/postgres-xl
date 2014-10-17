@@ -1559,7 +1559,7 @@ GetSnapshotData(Snapshot snapshot)
 
 #ifdef PGXC
 	if (!RecoveryInProgress())
-		elog(LOG, "Local snapshot is built, xmin: %d, xmax: %d, xcnt: %d, RecentGlobalXmin: %d",
+		elog(DEBUG1, "Local snapshot is built, xmin: %d, xmax: %d, xcnt: %d, RecentGlobalXmin: %d",
 			 xmin, xmax, count, globalxmin);
 #endif
 
