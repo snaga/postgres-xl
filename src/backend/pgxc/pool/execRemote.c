@@ -8005,7 +8005,6 @@ determine_param_types(Plan *plan,  struct find_params_context *context)
 									   (void *) context))
 			break;
 
-		case T_CteScan:
 		case T_Hash:
 		case T_Agg:
 		case T_Material:
