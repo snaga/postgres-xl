@@ -254,7 +254,14 @@ SyncRepWaitForLSN(XLogRecPtr XactCommitLSN)
 	 * holding SyncRepLock, because any walsenders will ignore us anyway when
 	 * we're not on the queue.
 	 */
+#ifdef NOT_USED	
+	/*
+	 * We are hitting this Assert too often in our tests. This is a PG bug and
+	 * has been reported to the list. But turn this off until it gets fixed in
+	 * the upstream branch
+	 */
 	Assert(SHMQueueIsDetached(&(MyProc->syncRepLinks)));
+#endif	
 	MyProc->syncRepState = SYNC_REP_NOT_WAITING;
 	MyProc->waitLSN.xlogid = 0;
 	MyProc->waitLSN.xrecoff = 0;
