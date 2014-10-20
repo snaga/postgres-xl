@@ -143,6 +143,13 @@ MainThreadInit()
 	GTM_RWLockInit(&GTMThreads->gt_lock);
 
 	/*
+	 * Set the next client identifier to be issued after connection
+	 * establishment
+	 */
+	GTMThreads->gt_starting_client_id = 0;
+	GTMThreads->gt_next_client_id = 1;
+
+	/*
 	 * We are called even before memory context management is setup. We must
 	 * use malloc
 	 */
@@ -1088,15 +1095,32 @@ GTM_ThreadMain(void *argp)
 
 		thrinfo->thr_conn->con_port->remote_type = sp.sp_remotetype;
 		thrinfo->thr_conn->con_port->is_postmaster = sp.sp_ispostmaster;
+
+		/*
+		 * If the client has resent the identifier assigned to it previously
+		 * (by GTM master), use that identifier. 
+		 * 
+		 * We only accept identifiers which are lesser or equal to the last
+		 * identifier we had seen when we were promoted. All other identifiers
+		 * will be overwritten by what we have assigned
+		 */
+		if ((sp.sp_client_id != 0) &&
+			(sp.sp_client_id <= GTMThreads->gt_starting_client_id))
+		{
+			thrinfo->thr_client_id = sp.sp_client_id;
+		}
 	}
 
 	{
 		/*
 		 * Send a dummy authentication request message 'R' as the client
-		 * expects that in the current protocol
+		 * expects that in the current protocol. Also send the client
+		 * identifier issued by us (or sent by the client in the startup packet
+		 * if we concluded to use the same)
 		 */
 		StringInfoData buf;
 		pq_beginmessage(&buf, 'R');
+		pq_sendint(&buf, thrinfo->thr_client_id, 4);
 		pq_endmessage(thrinfo->thr_conn->con_port, &buf);
 		pq_flush(thrinfo->thr_conn->con_port);
 
@@ -1227,7 +1251,7 @@ GTM_ThreadMain(void *argp)
 				 */
 				elog(DEBUG1, "Removing all transaction infos - qtype:EOF");
 				if (!Recovery_IsStandby())
-					GTM_RemoveAllTransInfos(-1);
+					GTM_RemoveAllTransInfos(thrinfo->thr_client_id, -1);
 
 				/* Disconnect node if necessary */
 				Recovery_PGXCNodeDisconnect(thrinfo->thr_conn->con_port);
@@ -1255,9 +1279,9 @@ GTM_ThreadMain(void *argp)
 
 			default:
 				/*
-				 * Remove all transactions opened within the thread
+				 * Remove all transactions opened by the client
 				 */
-				GTM_RemoveAllTransInfos(-1);
+				GTM_RemoveAllTransInfos(thrinfo->thr_client_id, -1);
 
 				/* Disconnect node if necessary */
 				Recovery_PGXCNodeDisconnect(thrinfo->thr_conn->con_port);
@@ -1383,16 +1407,7 @@ ProcessCommand(Port *myport, StringInfo input_message)
 
 		case MSG_BACKEND_DISCONNECT:
 			elog(DEBUG1, "MSG_BACKEND_DISCONNECT received - removing all txn infos");
-			/*
-			 * !!TODO The original code used to remove all transaction info
-			 * structures with the given ph_conid stored in gti_backend_id. But
-			 * we are seeing several issues because of that during GTM
-			 * failover. So disable the code for now as we further investigate
-			 * the code
-			 */
-#ifdef NOT_USED
-			GTM_RemoveAllTransInfos(proxyhdr.ph_conid);
-#endif
+			GTM_RemoveAllTransInfos(GetMyThreadInfo->thr_client_id, proxyhdr.ph_conid);
 			/* Mark PGXC Node as disconnected if backend disconnected is postmaster */
 			ProcessPGXCNodeBackendDisconnect(myport, input_message);
 			break;
@@ -2154,6 +2169,11 @@ PromoteToActive(void)
 	FILE	   *fp;
 
 	elog(LOG, "Promote signal received. Becoming an active...");
+
+	/*
+	 * Set starting and next client idendifier before promotion is complete
+	 */
+	GTM_SetInitialAndNextClientIdentifierAtPromote();
 
 	/*
 	 * Do promoting things here.

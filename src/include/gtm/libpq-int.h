@@ -46,6 +46,7 @@ struct gtm_conn
 	char		*gc_node_name;		/* PGXC Node Name */
 	int			remote_type;		/* is this a connection to/from a proxy ? */
 	int			is_postmaster;		/* is this connection to/from a postmaster instance */
+	uint32		my_id;				/* unique identifier issued to us by GTM */
 
 	/* Optional file to write trace info to */
 	FILE		*Pfdebug;

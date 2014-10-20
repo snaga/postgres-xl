@@ -212,6 +212,14 @@ GTMProxy_ThreadCreate(void *(* startroutine)(void *), int idx)
 				(err,
 				 errmsg("Failed to create a new thread: error %d", err)));
 
+	/*
+	 * Prepare to reclaim resources used by the thread once it exits. (We used
+	 * to do this inside GTMProxy_ThreadMainWrapper, but its not clear if
+	 * thrinfo->thr_id will be set by the time the routine starts executing.
+	 * Its safer to do that here instead
+	 */
+	pthread_detach(thrinfo->thr_id);
+
 	return thrinfo;
 }
 
@@ -332,6 +340,7 @@ GTMProxy_ThreadInfo *
 GTMProxy_ThreadAddConnection(GTMProxy_ConnectionInfo *conninfo)
 {
 	GTMProxy_ThreadInfo *thrinfo = NULL;
+	GTMProxy_ConnID connIndx, ii;
 
 	/*
 	 * Get the next thread in the queue
@@ -368,14 +377,52 @@ GTMProxy_ThreadAddConnection(GTMProxy_ConnectionInfo *conninfo)
 		elog(ERROR, "Too many connections");
 	}
 
+	connIndx = -1;
+	for (ii = 0; ii < GTM_PROXY_MAX_CONNECTIONS; ii++)
+	{
+		if (thrinfo->thr_all_conns[ii] == NULL)
+		{
+			/*
+			 * Great, found a free slot to track the connection
+			 */
+			connIndx = ii;
+			break;
+		}
+	}
+
+	if (connIndx == -1)
+	{
+		GTM_MutexLockRelease(&thrinfo->thr_lock);
+		elog(ERROR, "Too many connections - could not find a free slot");
+	}
+
 	/*
 	 * Save the array slotid in the conninfo structure. We send this to the GTM
 	 * server as an identifier which the GTM server sends us back in the
 	 * response. We use that information to route the response back to the
-	 * approrpiate connection
+	 * approrpiate connection.
+	 *
+	 * Note that the reason to use the array slotid in the messages to/from GTM
+	 * is to ensure that the corresponding connection can be quickly found
+	 * while proxying responses back to the client.
 	 */
-	conninfo->con_id = thrinfo->thr_conn_count;
-	thrinfo->thr_all_conns[thrinfo->thr_conn_count] = conninfo;
+	conninfo->con_id = connIndx;
+	thrinfo->thr_all_conns[connIndx] = conninfo;
+
+	/*
+	 * We also maintain a map of currently used array slots in a separate data
+	 * structure. This allows us to quickly iterate through all open
+	 * connections servred by a thread. So while iterating through all open
+	 * connections, the correct mechanism would be something as follow:
+	 *
+	 * for (ii = 0; ii < thrinfo->thr_conn_count; ii++)
+	 * {
+	 * 		int connIndx = thrinfo->thr_conn_map[ii];
+	 * 	 	GTMProxy_ConnectionInfo *conninfo = * 	 	thrinfo->thr_all_conns[connIndx];	
+	 * 	 	.....
+	 * }
+	 */  
+	thrinfo->thr_conn_map[thrinfo->thr_conn_count] = connIndx;
 	thrinfo->thr_conn_count++;
 
 	/*
@@ -406,6 +453,7 @@ int
 GTMProxy_ThreadRemoveConnection(GTMProxy_ThreadInfo *thrinfo, GTMProxy_ConnectionInfo *conninfo)
 {
 	int ii;
+	int connIndx;
 
 	/*
 	 * Lock the threadninfo structure to safely remove the connection from the
@@ -413,13 +461,17 @@ GTMProxy_ThreadRemoveConnection(GTMProxy_ThreadInfo *thrinfo, GTMProxy_Connectio
 	 */
 	GTM_MutexLockAcquire(&thrinfo->thr_lock);
 
-	for (ii = 0; ii < thrinfo->thr_conn_count; ii++)
+	connIndx = -1;
+	for (ii = 0; ii < GTM_PROXY_MAX_CONNECTIONS; ii++)
 	{
 		if (thrinfo->thr_all_conns[ii] == conninfo)
+		{
+			connIndx = ii;
 			break;
+		}
 	}
 
-	if (ii >= thrinfo->thr_conn_count)
+	if (connIndx == -1)
 	{
 		GTM_MutexLockRelease(&thrinfo->thr_lock);
 		elog(ERROR, "No such connection");
@@ -428,9 +480,25 @@ GTMProxy_ThreadRemoveConnection(GTMProxy_ThreadInfo *thrinfo, GTMProxy_Connectio
 	/*
 	 * Reset command backup info
 	 */
-	thrinfo->thr_any_backup[ii] = FALSE;
-	thrinfo->thr_qtype[ii] = 0;
-	resetStringInfo(&(thrinfo->thr_inBufData[ii]));
+	thrinfo->thr_any_backup[connIndx] = FALSE;
+	thrinfo->thr_qtype[connIndx] = 0;
+	resetStringInfo(&(thrinfo->thr_inBufData[connIndx]));
+	thrinfo->thr_all_conns[connIndx] = NULL;
+
+	/*
+	 * Now also removed the entry from thr_conn_map
+	 */
+	for (ii = 0; ii < thrinfo->thr_conn_count; ii++)
+	{
+		if (thrinfo->thr_conn_map[ii] == connIndx)
+			break;
+	}
+
+	if (ii >= thrinfo->thr_conn_count)
+	{
+		GTM_MutexLockRelease(&thrinfo->thr_lock);
+		elog(FATAL, "Failed to find connection mapping to %d", connIndx);
+	}
 
 	/*
 	 * If this is the last entry in the array ? If not, then copy the last
@@ -439,18 +507,15 @@ GTMProxy_ThreadRemoveConnection(GTMProxy_ThreadInfo *thrinfo, GTMProxy_Connectio
 	if ((ii + 1) < thrinfo->thr_conn_count)
 	{
 		/* Copy the last entry in this slot */
-		thrinfo->thr_all_conns[ii] = thrinfo->thr_all_conns[thrinfo->thr_conn_count - 1];
+		thrinfo->thr_conn_map[ii] = thrinfo->thr_conn_map[thrinfo->thr_conn_count - 1];
 
 		/* Mark the last slot free */
-		thrinfo->thr_all_conns[thrinfo->thr_conn_count - 1] = NULL;
-
-		/* Adjust the con_id to reflect the current slot in the array */
-		thrinfo->thr_all_conns[ii]->con_id = ii;
+		thrinfo->thr_conn_map[thrinfo->thr_conn_count - 1] = -1;
 	}
 	else
 	{
 		/* This is the last entry in the array. Just mark it free */
-		thrinfo->thr_all_conns[ii] = NULL;
+		thrinfo->thr_conn_map[ii] = -1;
 	}
 
 	thrinfo->thr_conn_count--;

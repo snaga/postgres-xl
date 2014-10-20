@@ -174,7 +174,7 @@ gtm_get_transactioninfo_size(GTM_TransactionInfo *data)
 		return len;
 
 	len += sizeof(GTM_TransactionHandle);		/* gti_handle */
-	len += sizeof(GTM_ThreadID);			/* gti_thread_id */
+	len += sizeof(uint32);			/* gti_client_id */
 	len += sizeof(bool);				/* gti_in_use */
 	len += sizeof(GlobalTransactionId);		/* gti_gxid */
 	len += sizeof(GTM_TransactionStates);		/* gti_state */
@@ -224,9 +224,9 @@ gtm_serialize_transactioninfo(GTM_TransactionInfo *data, char *buf, size_t bufle
 	memcpy(buf + len, &(data->gti_handle), sizeof(GTM_TransactionHandle));
 	len += sizeof(GTM_TransactionHandle);
 
-	/* GTM_TransactionInfo.gti_thread_id */
-	memcpy(buf + len, &(data->gti_thread_id), sizeof(GTM_ThreadID));
-	len += sizeof(GTM_ThreadID);
+	/* GTM_TransactionInfo.gti_client_id */
+	memcpy(buf + len, &(data->gti_client_id), sizeof(uint32));
+	len += sizeof(uint32);
 
 	/* GTM_TransactionInfo.gti_in_use */
 	memcpy(buf + len, &(data->gti_in_use), sizeof(bool));
@@ -349,9 +349,9 @@ gtm_deserialize_transactioninfo(GTM_TransactionInfo *data, const char *buf, size
 	memcpy(&(data->gti_handle), buf + len, sizeof(GTM_TransactionHandle));
 	len += sizeof(GTM_TransactionHandle);
 
-	/* GTM_TransactionInfo.gti_thread_id */
-	memcpy(&(data->gti_thread_id), buf + len, sizeof(GTM_ThreadID));
-	len += sizeof(GTM_ThreadID);
+	/* GTM_TransactionInfo.gti_client_id */
+	memcpy(&(data->gti_client_id), buf + len, sizeof(uint32));
+	len += sizeof(uint32);
 
 	/* GTM_TransactionInfo.gti_in_use */
 	memcpy(&(data->gti_in_use), buf + len, sizeof(bool));

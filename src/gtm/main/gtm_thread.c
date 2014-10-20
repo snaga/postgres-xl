@@ -97,6 +97,45 @@ GTM_ThreadAdd(GTM_ThreadInfo *thrinfo)
 			break;
 		}
 	}
+	
+	/*
+	 * Lastly, assign a unique, monotonically increasing identifier to the
+	 * remote client. This is sent back to the client and client will resend it
+	 * in case of reconnect
+	 *
+	 * Since all open transactions are tracked in a single linked list on the
+	 * GTM, we need a mechanism to identify transactions associated with a
+	 * specific client connection so that they can be removed if the client
+	 * disconnects abrubptly. We could have something like a pthread_id given
+	 * that there is one GTM thread per connection, but that is not sufficient
+	 * when GTM is failed over to a standby. The pthread_id on the old master
+	 * will make no sense on the new master and it will be hard to re-establish
+	 * the association of open transactions and the client connections (note
+	 * that all of this applies only when backends are connecting to GTM via a
+	 * GTM proxy. Otherwise those open transactions will be aborted when GTM
+	 * failover happens)
+	 *
+	 * So we use a unique identifier for each incoming connection to the GTM.
+	 * GTM assigns the identifier and also sends it back to the client as part
+	 * of the connection establishment process. In case of GTM failover, and
+	 * when GTM proxies reconnect to the new master, they also send back the
+	 * identifier issued to them by the previous master. The new GTM master
+	 * then uses that identifier to associate open transactions with the client
+	 * connection. Of course, for this to work, GTM must store client
+	 * identifier in each transaction info structure and also replicate that
+	 * information to the standby when new transactions are backed up.
+	 *
+	 * Since GTM does not backup the action of assinging new identifiers, at
+	 * failover, it may happen that the new master hasn't yet seen an
+	 * identifier which is already assigned my the old master (say because the
+	 * client has not started any transaction yet). To handle this case, we
+	 * track the latest identifier as seen my the new master upon failover. If
+	 * a client sends an identifier which is newer than that, that identifier
+	 * is discarded and new master will issue a new identifier that client will
+	 * accept.
+	 */
+	thrinfo->thr_client_id = GTMThreads->gt_next_client_id;
+	GTMThreads->gt_next_client_id = GTM_CLIENT_ID_NEXT(GTMThreads->gt_next_client_id);
 	GTM_RWLockRelease(&GTMThreads->gt_lock);
 
 	/*
@@ -219,6 +258,14 @@ GTM_ThreadCreate(GTM_ConnectionInfo *conninfo,
 		ereport(ERROR,
 				(err,
 				 errmsg("Failed to create a new thread: error %d", err)));
+
+	/*
+	 * Ensure that the resources are released when the thread exits. (We used
+	 * to do this inside GTM_ThreadMainWrapper, but thrinfo->thr_id may not set
+	 * by the time GTM_ThreadMainWrapper starts executing, this possibly
+	 * calling the function on an invalid thr_id
+	 */
+	pthread_detach(thrinfo->thr_id);
 
 	return thrinfo;
 }
@@ -353,8 +400,6 @@ GTM_ThreadMainWrapper(void *argp)
 {
 	GTM_ThreadInfo *thrinfo = (GTM_ThreadInfo *)argp;
 
-	pthread_detach(thrinfo->thr_id);
-
 	SetMyThreadInfo(thrinfo);
 	MemoryContextSwitchTo(TopMemoryContext);
 
@@ -402,4 +447,20 @@ GTM_DoForAllOtherThreads(void (* process_routine)(GTM_ThreadInfo *))
 		if (GTMThreads->gt_threads[ii] && GTMThreads->gt_threads[ii] != my_threadinfo)
 			(process_routine)(GTMThreads->gt_threads[ii]);
 	}
+}
+
+/*
+ * Get the latest client identifier from the list of open transactions and set
+ * the next client identifier to be issued by us appropriately. Also remember
+ * the latest client identifier separately since it will be used to check any
+ * stale identifiers once we take over and old clients reconnect
+ */
+void
+GTM_SetInitialAndNextClientIdentifierAtPromote(void)
+{
+	GTM_RWLockAcquire(&GTMThreads->gt_lock, GTM_LOCKMODE_WRITE);
+	GTMThreads->gt_starting_client_id = GTMGetLastClientIdentifier();
+	GTMThreads->gt_next_client_id =
+		GTM_CLIENT_ID_NEXT(GTMThreads->gt_starting_client_id);
+	GTM_RWLockRelease(&GTMThreads->gt_lock);
 }

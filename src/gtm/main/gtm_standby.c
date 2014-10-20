@@ -139,16 +139,7 @@ gtm_standby_restore_gxid(void)
 
 		GTMTransactions.gt_transactions_array[handle].gti_handle = txn.gt_transactions_array[i].gti_handle;
 
-		/* 
-		 * Don't copy the gti_thread_id. Its the thread id of the thread
-		 * running on the GTM master and does make no sense on the standy.
-		 *
-		 * XXX How do we clean up these transaction info structures if the
-		 * connection goes away after standby is promoted? We need some
-		 * mechanism to set ownership of the in-progress transactions once a
-		 * standby is promoted
-		 */
-		GTMTransactions.gt_transactions_array[handle].gti_thread_id = -1;
+		GTMTransactions.gt_transactions_array[handle].gti_client_id = txn.gt_transactions_array[i].gti_client_id;
 		GTMTransactions.gt_transactions_array[handle].gti_in_use = txn.gt_transactions_array[i].gti_in_use;
 		GTMTransactions.gt_transactions_array[handle].gti_gxid = txn.gt_transactions_array[i].gti_gxid;
 		GTMTransactions.gt_transactions_array[handle].gti_state = txn.gt_transactions_array[i].gti_state;

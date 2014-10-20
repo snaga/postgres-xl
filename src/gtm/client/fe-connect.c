@@ -62,6 +62,7 @@ static const GTMPQconninfoOption GTMPQconninfoOptions[] = {
 	{"node_name", NULL},
 	{"remote_type", NULL},
 	{"postmaster", NULL},
+	{"client_id", NULL},
 	/* Terminating entry --- MUST BE LAST */
 	{NULL, NULL}
 };
@@ -185,6 +186,8 @@ connectOptions1(GTM_Conn *conn, const char *conninfo)
 	conn->is_postmaster = tmp ? atoi(tmp) : 0;
 	tmp = conninfo_getval(connOptions, "remote_type");
 	conn->remote_type = tmp ? atoi(tmp) : GTM_NODE_DEFAULT;
+	tmp = conninfo_getval(connOptions, "client_id");
+	conn->my_id = tmp ? atoi(tmp) : 0;
 
 	/*
 	 * Free the option info - all is in conn now
@@ -687,6 +690,7 @@ keep_going:						/* We will come back to here until there is
 				strncpy(sp->sp_node_name, conn->gc_node_name, SP_NODE_NAME);
 				sp->sp_remotetype = conn->remote_type;
 				sp->sp_ispostmaster = conn->is_postmaster;
+				sp->sp_client_id = conn->my_id;
 
 				/*
 				 * Send the startup packet.
@@ -760,11 +764,27 @@ keep_going:						/* We will come back to here until there is
 				}
 
 				{
+					int msgLength;
 					/*
-					 * Server sends a dummy message body of size 4 bytes
+					 * Read the message length word
 					 */
-					int tmp_int;
-					gtmpqGetInt(&tmp_int, 4, conn);
+					if (gtmpqGetInt(&msgLength, 4, conn))
+					{
+						/* We'll come back when there is more data */
+						return PGRES_POLLING_READING;
+					}
+
+					if (msgLength != 4)
+						appendGTMPQExpBuffer(&conn->errorMessage,
+								"expected message length of 4 bytes from "
+								"server, but received %d bytes\n",
+								msgLength);
+
+					if (gtmpqGetInt(&conn->my_id, 4, conn))
+					{
+						/* We'll come back when there is more data */
+						return PGRES_POLLING_READING;
+					}
 				}
 
 				/*

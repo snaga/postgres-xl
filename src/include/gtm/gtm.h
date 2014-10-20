@@ -22,6 +22,7 @@
 #include <setjmp.h>
 
 #include "gtm/gtm_c.h"
+#include "gtm/gtm_common.h"
 #include "gtm/palloc.h"
 #include "gtm/gtm_lock.h"
 #include "gtm/gtm_conn.h"
@@ -47,28 +48,17 @@ struct GTM_ConnectionInfo;
 typedef struct GTM_ThreadInfo
 {
 	/*
-	 * Thread specific information such as connection(s) served by it
+	 * Initial few members get includes from gtm_common.h. This is to make sure
+	 * that the GTMProxy_ThreadInfo and GTM_ThreadInfo structure can be
+	 * typecasted to each other and these initial members can be safely
+	 * accessed. If you need a member which should be common to both
+	 * structures, consider adding them to GTM_COMMON_THREAD_INFO
 	 */
-	GTM_ThreadID		thr_id;
-	uint32				thr_localid;
-	bool				is_main_thread;
-	void * (* thr_startroutine)(void *);
-
-	MemoryContext	thr_thread_context;
-	MemoryContext	thr_message_context;
-	MemoryContext	thr_current_context;
-	MemoryContext	thr_error_context;
-	MemoryContext	thr_parent_context;
-
-	sigjmp_buf		*thr_sigjmp_buf;
-
-	ErrorData		thr_error_data[ERRORDATA_STACK_SIZE];
-	int				thr_error_stack_depth;
-	int				thr_error_recursion_depth;
-	int				thr_criticalsec_count;
+	GTM_COMMON_THREAD_INFO
 
 	GTM_ThreadStatus	thr_status;
 	GTM_ConnectionInfo	*thr_conn;
+	uint32				thr_client_id;		/* unique client identifier */
 
 	GTM_RWLock			thr_lock;
 	gtm_List				*thr_cached_txninfo;
@@ -80,6 +70,8 @@ typedef struct GTM_Threads
 	uint32				gt_array_size;
 	bool				gt_standby_ready;
 	GTM_ThreadInfo		**gt_threads;
+	uint32				gt_starting_client_id;
+	uint32				gt_next_client_id;
 	GTM_RWLock			gt_lock;
 } GTM_Threads;
 
@@ -93,6 +85,7 @@ void ConnFree(Port *port);
 void GTM_LockAllOtherThreads(void);
 void GTM_UnlockAllOtherThreads(void);
 void GTM_DoForAllOtherThreads(void (* process_routine)(GTM_ThreadInfo *));
+void GTM_SetInitialAndNextClientIdentifierAtPromote(void);
 
 GTM_ThreadInfo *GTM_ThreadCreate(GTM_ConnectionInfo *conninfo,
 				  void *(* startroutine)(void *));
@@ -143,4 +136,13 @@ extern GTM_ThreadID						TopMostThreadID;
 		    Assert(CritSectionCount > 0); \
 		    CritSectionCount--; \
 	} while(0)
+
+#define GTM_CLIENT_ID_EQ(a, b)		\
+	((a) == (b))
+#define GTM_CLIENT_ID_LT(a, b)		\
+	(((int32)((a) - (b)) < 0) ? true : false)
+#define GTM_CLIENT_ID_GT(a, b)		\
+	(!GTM_CLIENT_ID_LT(a, b) && !GTM_CLIENT_ID_EQ(a, b))
+#define GTM_CLIENT_ID_NEXT(a)	\
+	((((a) + 1) == UINT32_MAX) ? 1 : ((a) + 1))
 #endif

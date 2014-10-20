@@ -42,6 +42,7 @@ static void init_GTM_TransactionInfo(GTM_TransactionInfo *gtm_txninfo,
 									 char *coord_name,
 									 GTM_TransactionHandle txn,
 									 GTM_IsolationLevel isolevel,
+									 uint32 client_id,
 									 GTMProxy_ConnID connid,
 									 bool readonly);
 static void clean_GTM_TransactionInfo(GTM_TransactionInfo *gtm_txninfo);
@@ -273,8 +274,8 @@ GTM_RemoveTransInfoMulti(GTM_TransactionInfo *gtm_txninfo[], int txn_count)
 											   GTMTransactions.gt_latestCompletedXid))
 			GTMTransactions.gt_latestCompletedXid = gtm_txninfo[ii]->gti_gxid;
 
-		elog(DEBUG1, "GTM_RemoveTransInfoMulti: removing transaction id %u, %lu, handle (%d)",
-				gtm_txninfo[ii]->gti_gxid, gtm_txninfo[ii]->gti_thread_id,
+		elog(DEBUG1, "GTM_RemoveTransInfoMulti: removing transaction id %u, %u, handle (%d)",
+				gtm_txninfo[ii]->gti_gxid, gtm_txninfo[ii]->gti_client_id,
 				gtm_txninfo[ii]->gti_handle);
 
 		/*
@@ -294,12 +295,9 @@ GTM_RemoveTransInfoMulti(GTM_TransactionInfo *gtm_txninfo[], int txn_count)
  * Also compute the latestCompletedXid.
  */
 void
-GTM_RemoveAllTransInfos(int backend_id)
+GTM_RemoveAllTransInfos(uint32 client_id, int backend_id)
 {
 	gtm_ListCell *cell, *prev;
-	GTM_ThreadID thread_id;
-
-	thread_id = pthread_self();
 
 	/*
 	 * Scan the global list of open transactions
@@ -318,7 +316,7 @@ GTM_RemoveAllTransInfos(int backend_id)
 		if ((gtm_txninfo->gti_in_use) &&
 			(gtm_txninfo->gti_state != GTM_TXN_PREPARED) &&
 			(gtm_txninfo->gti_state != GTM_TXN_PREPARE_IN_PROGRESS) &&
-			(gtm_txninfo->gti_thread_id == thread_id) &&
+			(GTM_CLIENT_ID_EQ(gtm_txninfo->gti_client_id, client_id)) &&
 			((gtm_txninfo->gti_backend_id == backend_id) || (backend_id == -1)))
 		{
 			/* remove the entry */
@@ -330,9 +328,9 @@ GTM_RemoveAllTransInfos(int backend_id)
 												   GTMTransactions.gt_latestCompletedXid))
 				GTMTransactions.gt_latestCompletedXid = gtm_txninfo->gti_gxid;
 
-			elog(DEBUG1, "GTM_RemoveAllTransInfos: removing transaction id %u, %lu:%lu %d:%d",
-					gtm_txninfo->gti_gxid, gtm_txninfo->gti_thread_id,
-					thread_id, gtm_txninfo->gti_backend_id, backend_id);
+			elog(DEBUG1, "GTM_RemoveAllTransInfos: removing transaction id %u, %u:%u %d:%d",
+					gtm_txninfo->gti_gxid, gtm_txninfo->gti_client_id,
+					client_id, gtm_txninfo->gti_backend_id, backend_id);
 			/*
 			 * Now mark the transaction as aborted and mark the structure as not-in-use
 			 */
@@ -354,6 +352,67 @@ GTM_RemoveAllTransInfos(int backend_id)
 	GTM_RWLockRelease(&GTMTransactions.gt_TransArrayLock);
 	return;
 }
+
+/*
+ * Get the latest client identifier issued to the currently open transactions.
+ * Remember this may not be the latest identifier issued by the old master, but
+ * we won't acknowledge client identifiers larger than what we are about to
+ * compute. Any such identifiers will be overwritten the new identifier issued
+ * by the new master
+ */
+uint32
+GTMGetLastClientIdentifier(void)
+{
+	gtm_ListCell *cell, *prev;
+	uint32 last_client_id = 0;
+
+	/*
+	 * Scan the global list of open transactions
+	 */
+	GTM_RWLockAcquire(&GTMTransactions.gt_TransArrayLock, GTM_LOCKMODE_WRITE);
+
+	cell = gtm_list_head(GTMTransactions.gt_open_transactions);
+	while (cell != NULL)
+	{
+		GTM_TransactionInfo *gtm_txninfo = gtm_lfirst(cell);
+
+		if (GTM_CLIENT_ID_GT(gtm_txninfo->gti_client_id, last_client_id))
+			last_client_id = gtm_txninfo->gti_client_id;
+		cell = gtm_lnext(cell);
+	}
+
+	GTM_RWLockRelease(&GTMTransactions.gt_TransArrayLock);
+	return last_client_id;
+}
+
+/*
+ * Get the oldest client identifier issued to the currently open transactions.
+ */
+uint32
+GTMGetFirstClientIdentifier(void)
+{
+	gtm_ListCell *cell, *prev;
+	uint32 first_client_id = UINT32_MAX;
+
+	/*
+	 * Scan the global list of open transactions
+	 */
+	GTM_RWLockAcquire(&GTMTransactions.gt_TransArrayLock, GTM_LOCKMODE_WRITE);
+
+	cell = gtm_list_head(GTMTransactions.gt_open_transactions);
+	while (cell != NULL)
+	{
+		GTM_TransactionInfo *gtm_txninfo = gtm_lfirst(cell);
+
+		if (GTM_CLIENT_ID_LT(gtm_txninfo->gti_client_id, first_client_id))
+			first_client_id = gtm_txninfo->gti_client_id;
+		cell = gtm_lnext(cell);
+	}
+
+	GTM_RWLockRelease(&GTMTransactions.gt_TransArrayLock);
+	return first_client_id;
+}
+
 /*
  * GlobalTransactionIdDidCommit
  *		True iff transaction associated with the identifier did commit.
@@ -708,7 +767,8 @@ GTM_BeginTransactionMulti(char *coord_name,
 			}
 		}
 
-		init_GTM_TransactionInfo(gtm_txninfo[kk], coord_name, ii, isolevel[kk], connid[kk], readonly[kk]);
+		init_GTM_TransactionInfo(gtm_txninfo[kk], coord_name, ii, isolevel[kk],
+				GetMyThreadInfo->thr_client_id, connid[kk], readonly[kk]);
 
 		GTMTransactions.gt_lastslot = ii;
 
@@ -748,6 +808,7 @@ init_GTM_TransactionInfo(GTM_TransactionInfo *gtm_txninfo,
 						 char *coord_name,
 						 GTM_TransactionHandle txn,
 						 GTM_IsolationLevel isolevel,
+						 uint32 client_id,
 						 GTMProxy_ConnID connid,
 						 bool readonly)
 {
@@ -758,7 +819,6 @@ init_GTM_TransactionInfo(GTM_TransactionInfo *gtm_txninfo,
 
 	gtm_txninfo->gti_isolevel = isolevel;
 	gtm_txninfo->gti_readonly = readonly;
-	gtm_txninfo->gti_backend_id = connid;
 	gtm_txninfo->gti_in_use = true;
 
 	gtm_txninfo->nodestring = NULL;
@@ -766,7 +826,28 @@ init_GTM_TransactionInfo(GTM_TransactionInfo *gtm_txninfo,
 
 	gtm_txninfo->gti_handle = txn;
 	gtm_txninfo->gti_vacuum = false;
-	gtm_txninfo->gti_thread_id = pthread_self();
+
+	/*
+	 * For every new transaction that gets created, we track two important
+	 * identifiers:
+	 *
+	 * gt_client_id: is the identifier assigned to the client connected to
+	 * GTM. Whenever a connection to GTM is dropped, we must clean up all
+	 * transactions opened by that client. Since we track all open transactions
+	 * in a global data structure, this identifier helps us to identify
+	 * client-specific transactions. Also, the identifier is issued and tracked
+	 * irrespective of whether the remote client is a GTM proxy or a PG
+	 * backend.
+	 *
+	 * gti_backend_id: is the identifier assigned by the GTM proxy to its
+	 * client. Proxy sends us this identifier and we track it in the list of
+	 * open transactions. If a backend disconnects from the proxy, it sends us
+	 * a MSG_BACKEND_DISCONNECT message, along with the backend identifier. As
+	 * a response to that message, we clean up all the transactions opened by
+	 * the backend.
+	 */ 
+	gtm_txninfo->gti_client_id = client_id;
+	gtm_txninfo->gti_backend_id = connid;
 }
 
 
@@ -804,6 +885,7 @@ GTM_BkupBeginTransactionMulti(char *coord_name,
 							  GTM_TransactionHandle *txn,
 							  GTM_IsolationLevel *isolevel,
 							  bool *readonly,
+							  uint32 *client_id,
 							  GTMProxy_ConnID *connid,
 							  int	txn_count)
 {
@@ -829,7 +911,8 @@ GTM_BkupBeginTransactionMulti(char *coord_name,
 
 		elog(DEBUG1, "GTM_BkupBeginTransactionMulti: handle(%u)", txn[kk]);
 
-		init_GTM_TransactionInfo(gtm_txninfo, coord_name, txn[kk], isolevel[kk], connid[kk], readonly[kk]);
+		init_GTM_TransactionInfo(gtm_txninfo, coord_name, txn[kk],
+				isolevel[kk], client_id[kk], connid[kk], readonly[kk]);
 		GTMTransactions.gt_lastslot = txn[kk];
 		GTMTransactions.gt_open_transactions = gtm_lappend(GTMTransactions.gt_open_transactions, gtm_txninfo);
 	}
@@ -842,11 +925,13 @@ void
 GTM_BkupBeginTransaction(char *coord_name,
 						 GTM_TransactionHandle txn,
 						 GTM_IsolationLevel isolevel,
-						 bool readonly)
+						 bool readonly,
+						 uint32 client_id)
 {
 	GTMProxy_ConnID connid = -1;
 
-	GTM_BkupBeginTransactionMulti(coord_name, &txn, &isolevel, &readonly, &connid, 1);
+	GTM_BkupBeginTransactionMulti(coord_name, &txn, &isolevel, &readonly,
+			&client_id, &connid, 1);
 }
 /*
  * Same as GTM_RollbackTransaction, but takes GXID as input
@@ -1121,7 +1206,9 @@ ProcessBeginTransactionCommand(Port *myport, StringInfo message)
 	/* Backup first */
 	if (GetMyThreadInfo->thr_conn->standby)
 	{
-		bkup_begin_transaction(GetMyThreadInfo->thr_conn->standby, txn, txn_isolation_level, txn_read_only, timestamp);
+		bkup_begin_transaction(GetMyThreadInfo->thr_conn->standby, txn,
+				txn_isolation_level, txn_read_only,
+				GetMyThreadInfo->thr_client_id, timestamp);
 		/* Synch. with standby */
 		if (Backup_synchronously && (myport->remote_type != GTM_NODE_GTM_PROXY))
 			gtm_sync_standby(GetMyThreadInfo->thr_conn->standby);
@@ -1163,16 +1250,19 @@ ProcessBkupBeginTransactionCommand(Port *myport, StringInfo message)
 	bool txn_read_only;
 	GTM_Timestamp timestamp;
 	MemoryContext oldContext;
+	uint32 client_id;
 
 	txn = pq_getmsgint(message, sizeof(GTM_TransactionHandle));
 	txn_isolation_level = pq_getmsgint(message, sizeof(GTM_IsolationLevel));
 	txn_read_only = pq_getmsgbyte(message);
+	client_id = pq_getmsgint(message, sizeof (uint32));
 	memcpy(&timestamp, pq_getmsgbytes(message, sizeof(GTM_Timestamp)), sizeof(GTM_Timestamp));
 	pq_getmsgend(message);
 
 	oldContext = MemoryContextSwitchTo(TopMemoryContext);
 
-	GTM_BkupBeginTransaction("", txn, txn_isolation_level, txn_read_only);
+	GTM_BkupBeginTransaction("", txn, txn_isolation_level, txn_read_only,
+			client_id);
 
 	MemoryContextSwitchTo(oldContext);
 }
@@ -1230,7 +1320,10 @@ ProcessBeginTransactionGetGXIDCommand(Port *myport, StringInfo message)
 
 retry:
 		bkup_begin_transaction_gxid(GetMyThreadInfo->thr_conn->standby,
-									txn, gxid, txn_isolation_level, txn_read_only, timestamp);
+									txn, gxid, txn_isolation_level,
+									txn_read_only,
+									GetMyThreadInfo->thr_client_id,
+									timestamp);
 
 		if (gtm_standby_check_communication_error(&count, oldconn))
 			goto retry;
@@ -1271,6 +1364,7 @@ GTM_BkupBeginTransactionGetGXIDMulti(char *coord_name,
 									 GlobalTransactionId *gxid,
 									 GTM_IsolationLevel *isolevel,
 									 bool *readonly,
+									 uint32 *client_id,
 									 GTMProxy_ConnID *connid,
 									 int txn_count)
 {
@@ -1298,7 +1392,8 @@ GTM_BkupBeginTransactionGetGXIDMulti(char *coord_name,
 			MemoryContextSwitchTo(oldContext);
 			return;
 		}
-		init_GTM_TransactionInfo(gtm_txninfo, coord_name, txn[ii], isolevel[ii], connid[ii], readonly[ii]);
+		init_GTM_TransactionInfo(gtm_txninfo, coord_name, txn[ii],
+				isolevel[ii], client_id[ii], connid[ii], readonly[ii]);
 		GTMTransactions.gt_lastslot = txn[ii];
 		gtm_txninfo->gti_gxid = gxid[ii];
 
@@ -1345,11 +1440,13 @@ GTM_BkupBeginTransactionGetGXID(char *coord_name,
 								GTM_TransactionHandle txn,
 								GlobalTransactionId gxid,
 								GTM_IsolationLevel isolevel,
-								bool readonly)
+								bool readonly,
+								uint32 client_id)
 {
 	GTMProxy_ConnID connid = -1;
 
-	GTM_BkupBeginTransactionGetGXIDMulti(coord_name, &txn, &gxid, &isolevel, &readonly, &connid, 1);
+	GTM_BkupBeginTransactionGetGXIDMulti(coord_name, &txn, &gxid, &isolevel,
+			&readonly, &client_id, &connid, 1);
 }
 
 /*
@@ -1362,16 +1459,19 @@ ProcessBkupBeginTransactionGetGXIDCommand(Port *myport, StringInfo message)
 	GlobalTransactionId gxid;
 	GTM_IsolationLevel txn_isolation_level;
 	bool txn_read_only;
+	uint32 txn_client_id;
 	GTM_Timestamp timestamp;
 
 	txn = pq_getmsgint(message, sizeof(GTM_TransactionHandle));
 	gxid = pq_getmsgint(message, sizeof(GlobalTransactionId));
 	txn_isolation_level = pq_getmsgint(message, sizeof(GTM_IsolationLevel));
 	txn_read_only = pq_getmsgbyte(message);
+	txn_client_id = pq_getmsgint(message, sizeof (uint32));
 	memcpy(&timestamp, pq_getmsgbytes(message, sizeof(GTM_Timestamp)), sizeof(GTM_Timestamp));
 	pq_getmsgend(message);
 
-	GTM_BkupBeginTransactionGetGXID("", txn, gxid, txn_isolation_level, txn_read_only);
+	GTM_BkupBeginTransactionGetGXID("", txn, gxid, txn_isolation_level,
+			txn_read_only, txn_client_id);
 }
 
 /*
@@ -1383,13 +1483,16 @@ ProcessBkupBeginTransactionGetGXIDAutovacuumCommand(Port *myport, StringInfo mes
 	GTM_TransactionHandle txn;
 	GlobalTransactionId gxid;
 	GTM_IsolationLevel txn_isolation_level;
+	uint32 txn_client_id;
 
 	txn = pq_getmsgint(message, sizeof(GTM_TransactionHandle));
 	gxid = pq_getmsgint(message, sizeof(GlobalTransactionId));
 	txn_isolation_level = pq_getmsgint(message, sizeof(GTM_IsolationLevel));
+	txn_client_id = pq_getmsgint(message, sizeof (uint32));
 	pq_getmsgend(message);
 
-	GTM_BkupBeginTransactionGetGXID("", txn, gxid, txn_isolation_level, false);
+	GTM_BkupBeginTransactionGetGXID("", txn, gxid, txn_isolation_level,
+			false, txn_client_id);
 	GTM_SetDoVacuum(txn);
 }
 
@@ -1449,7 +1552,9 @@ ProcessBeginTransactionGetGXIDAutovacuumCommand(Port *myport, StringInfo message
 
 	retry:
 		_gxid = bkup_begin_transaction_autovacuum(GetMyThreadInfo->thr_conn->standby,
-												  txn, gxid, txn_isolation_level);
+												  txn, gxid,
+												  txn_isolation_level,
+												  GetMyThreadInfo->thr_client_id);
 
 		if (gtm_standby_check_communication_error(&count, oldconn))
 			goto retry;
@@ -1497,6 +1602,7 @@ ProcessBeginTransactionGetGXIDCommandMulti(Port *myport, StringInfo message)
 	GlobalTransactionId start_gxid, end_gxid;
 	GTM_Timestamp timestamp;
 	GTMProxy_ConnID txn_connid[GTM_MAX_GLOBAL_TRANSACTIONS];
+	uint32 txn_client_id[GTM_MAX_GLOBAL_TRANSACTIONS];
 	MemoryContext oldContext;
 	int count;
 	int ii;
@@ -1511,6 +1617,7 @@ ProcessBeginTransactionGetGXIDCommandMulti(Port *myport, StringInfo message)
 		txn_isolation_level[ii] = pq_getmsgint(message, sizeof (GTM_IsolationLevel));
 		txn_read_only[ii] = pq_getmsgbyte(message);
 		txn_connid[ii] = pq_getmsgint(message, sizeof (GTMProxy_ConnID));
+		txn_client_id[ii] = GetMyThreadInfo->thr_client_id;
 	}
 
 	oldContext = MemoryContextSwitchTo(TopMemoryContext);
@@ -1561,6 +1668,7 @@ retry:
 										   start_gxid,
 										   txn_isolation_level,
 										   txn_read_only,
+										   txn_client_id,
 										   txn_connid);
 
 		if (gtm_standby_check_communication_error(&count, oldconn))
@@ -1609,6 +1717,7 @@ ProcessBkupBeginTransactionGetGXIDCommandMulti(Port *myport, StringInfo message)
 	GTM_IsolationLevel txn_isolation_level[GTM_MAX_GLOBAL_TRANSACTIONS];
 	bool txn_read_only[GTM_MAX_GLOBAL_TRANSACTIONS];
 	GTMProxy_ConnID txn_connid[GTM_MAX_GLOBAL_TRANSACTIONS];
+	uint32 txn_client_id[GTM_MAX_GLOBAL_TRANSACTIONS];
 	int ii;
 
 	txn_count = pq_getmsgint(message, sizeof(int));
@@ -1621,10 +1730,12 @@ ProcessBkupBeginTransactionGetGXIDCommandMulti(Port *myport, StringInfo message)
 		gxid[ii] = pq_getmsgint(message, sizeof(GlobalTransactionId));
 		txn_isolation_level[ii] = pq_getmsgint(message, sizeof(GTM_IsolationLevel));
 		txn_read_only[ii] = pq_getmsgbyte(message);
+		txn_client_id[ii] = pq_getmsgint(message, sizeof(uint32));
 		txn_connid[ii] = pq_getmsgint(message, sizeof(GTMProxy_ConnID));
 	}
 
-	GTM_BkupBeginTransactionGetGXIDMulti("", txn, gxid, txn_isolation_level, txn_read_only, txn_connid, txn_count);
+	GTM_BkupBeginTransactionGetGXIDMulti("", txn, gxid, txn_isolation_level,
+			txn_read_only, txn_client_id, txn_connid, txn_count);
 
 }
 /*

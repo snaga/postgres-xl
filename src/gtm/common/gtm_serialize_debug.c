@@ -36,7 +36,7 @@ dump_transactioninfo_elog(GTM_TransactionInfo *txn)
 
 	elog(LOG, "  ========= GTM_TransactionInfo =========");
 	elog(LOG, "gti_handle: %d", txn->gti_handle);
-	elog(LOG, "gti_thread_id: %ld", txn->gti_thread_id);
+	elog(LOG, "gti_client_id: %u", txn->gti_client_id);
 	elog(LOG, "gti_in_use: %d", txn->gti_in_use);
 	elog(LOG, "gti_gxid: %d", txn->gti_gxid);
 	elog(LOG, "gti_state: %d", txn->gti_state);

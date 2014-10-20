@@ -18,6 +18,7 @@
 #include <poll.h>
 
 #include "gtm/gtm_c.h"
+#include "gtm/gtm_common.h"
 #include "gtm/palloc.h"
 #include "gtm/gtm_lock.h"
 #include "gtm/gtm_conn.h"
@@ -65,37 +66,18 @@ typedef struct GTMProxy_Connections
 typedef struct GTMProxy_ThreadInfo
 {
 	/*
-	 * Thread specific information such as connection(s) served by it
+	 * Initial few members get includes from gtm_common.h. This is to make sure
+	 * that the GTMProxy_ThreadInfo and GTM_ThreadInfo structure can be
+	 * typecasted to each other and these initial members can be safely
+	 * accessed. If you need a member which should be common to both
+	 * structures, consider adding them to GTM_COMMON_THREAD_INFO
 	 */
-	GTM_ThreadID			thr_id;
-	uint32					thr_localid;
-	bool					is_main_thread;
-	void * (* thr_startroutine)(void *);
-
-	MemoryContext	thr_thread_context;
-	MemoryContext	thr_message_context;
-	MemoryContext	thr_current_context;
-	MemoryContext	thr_error_context;
-	MemoryContext	thr_parent_context;
-
-	sigjmp_buf		*thr_sigjmp_buf;
-
-	ErrorData		thr_error_data[ERRORDATA_STACK_SIZE];
-	int				thr_error_stack_depth;
-	int				thr_error_recursion_depth;
-	int				thr_criticalsec_count;
+	GTM_COMMON_THREAD_INFO
 
 	GTMProxy_ThreadStatus	thr_status;
 	GTMProxy_ConnectionInfo	*thr_conn;		/* Current set of connections from clients */
 	uint32					thr_conn_count;	/* number of connections served by this thread */
 
-
-	/*
-	 * The structure member type/sequence upto this point must match the
-	 * GTM_ThreadInfo structure in gtm.h since they are shared in some common
-	 * library routines such as elog.c. Keeping them in sync helps us use the
-	 * same library for the proxy as well as the server.
-	 */
 	GTM_MutexLock			thr_lock;
 	GTM_CV					thr_cv;
 
@@ -109,6 +91,7 @@ typedef struct GTMProxy_ThreadInfo
 
 	/* connection array */
 	GTMProxy_ConnectionInfo	*thr_all_conns[GTM_PROXY_MAX_CONNECTIONS];
+	int						thr_conn_map[GTM_PROXY_MAX_CONNECTIONS];
 	struct pollfd			thr_poll_fds[GTM_PROXY_MAX_CONNECTIONS];
 
 	/* Command backup */

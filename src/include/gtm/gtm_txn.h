@@ -107,7 +107,7 @@ typedef enum GTM_TransactionStates
 typedef struct GTM_TransactionInfo
 {
 	GTM_TransactionHandle	gti_handle;
-	GTM_ThreadID			gti_thread_id;
+	uint32					gti_client_id;
 
 	bool					gti_in_use;
 	GlobalTransactionId		gti_gxid;
@@ -212,7 +212,8 @@ uint32 GTM_GetAllPrepared(GlobalTransactionId gxids[], uint32 gxidcnt);
 GTM_TransactionStates GTM_GetStatus(GTM_TransactionHandle txn);
 GTM_TransactionStates GTM_GetStatusGXID(GlobalTransactionId gxid);
 int GTM_GetAllTransactions(GTM_TransactionInfo txninfo[], uint32 txncnt);
-void GTM_RemoveAllTransInfos(int backend_id);
+void GTM_RemoveAllTransInfos(uint32 client_id, int backend_id);
+uint32 GTMGetLastClientIdentifier(void);
 
 GTM_Snapshot GTM_GetSnapshotData(GTM_TransactionInfo *my_txninfo,
 								 GTM_Snapshot snapshot);
@@ -226,6 +227,7 @@ void GTM_BkupBeginTransactionMulti(char *coord_name,
 								   GTM_TransactionHandle *txn,
 								   GTM_IsolationLevel *isolevel,
 								   bool *readonly,
+								   uint32 *client_id,
 								   GTMProxy_ConnID *connid,
 								   int	txn_count);
 
@@ -253,7 +255,8 @@ void GTM_RestoreTxnInfo(FILE *ctlf, GlobalTransactionId next_gxid);
 void GTM_BkupBeginTransaction(char *coord_name,
 							  GTM_TransactionHandle txn,
 							  GTM_IsolationLevel isolevel,
-							  bool readonly);
+							  bool readonly,
+							  uint32 client_id);
 void ProcessBkupBeginTransactionGetGXIDCommand(Port *myport, StringInfo message);
 void ProcessBkupBeginTransactionGetGXIDCommandMulti(Port *myport, StringInfo message);
 

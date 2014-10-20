@@ -124,6 +124,7 @@ typedef struct GTM_StartupPacket {
 	char					sp_node_name[SP_NODE_NAME];
 	GTM_PGXCNodeType		sp_remotetype;
 	bool					sp_ispostmaster;
+	uint32					sp_client_id;
 } GTM_StartupPacket;
 
 typedef enum GTM_PortLastCall
