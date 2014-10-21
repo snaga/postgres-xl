@@ -1209,8 +1209,9 @@ exec_simple_query(const char *query_string)
 
 #ifdef PGXC
 		/* PGXC_DATANODE */
-		/* Force getting Xid from GTM if not autovacuum, but a vacuum */
-		if (IS_PGXC_DATANODE && IsA(parsetree, VacuumStmt) && IsPostmasterEnvironment)
+		/* Force getting Xid from GTM for vacuum and cluster. */
+		if (IS_PGXC_DATANODE && IsPostmasterEnvironment &&
+			(IsA(parsetree, VacuumStmt) || IsA(parsetree, ClusterStmt)))
 			SetForceXidFromGTM(true);
 #endif
 
