@@ -1463,14 +1463,12 @@ standard_ProcessUtility(Node *parsetree,
 #ifdef PGXC
 			if (IS_PGXC_COORDINATOR)
 			{
-#ifdef XCP
-				ViewStmt *stmt = (ViewStmt *) parsetree;
-
-				if (stmt->view->relpersistence != RELPERSISTENCE_TEMP)
-#else
+#ifndef XCP
 				if (!ExecIsTempObjectIncluded())
-#endif
 					ExecUtilityStmtOnNodes(queryString, NULL, sentToRemote, false, EXEC_ON_COORDS, false);
+#else
+					ExecUtilityStmtOnNodes(queryString, NULL, sentToRemote, false, EXEC_ON_ALL_NODES, false);
+#endif
 			}
 #endif
 			break;
