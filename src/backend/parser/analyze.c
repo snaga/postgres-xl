@@ -2552,6 +2552,11 @@ transformExecDirectStmt(ParseState *pstate, ExecDirectStmt *stmt)
 	if (!is_local)
 		result->utilityStmt = (Node *) step;
 
+	/*
+	 * Reset the queryId since the caller would do that anyways.
+	 */
+	result->queryId = 0;
+
 	return result;
 }
 
@@ -2907,6 +2912,8 @@ applyLockingClause(Query *qry, Index rtindex,
 }
 
 #ifdef XCP
+post_parse_analyze_hook_type prev_ParseAnalyze_callback;
+
 /*
  * Check if the query contains references to any pg_catalog tables that should
  * be remapped to storm_catalog. The list is obtained from the
@@ -2915,6 +2922,8 @@ applyLockingClause(Query *qry, Index rtindex,
 void
 ParseAnalyze_callback(ParseState *pstate, Query *query)
 {
+	if (prev_ParseAnalyze_callback)
+		prev_ParseAnalyze_callback(pstate, query);
 	ParseAnalyze_rtable_walk(query->rtable);
 }
 

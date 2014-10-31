@@ -4276,6 +4276,8 @@ PostgresMain(int argc, char *argv[],
 	}
 
 	/* Set up the post parse analyze hook */
+	if (post_parse_analyze_hook)
+		prev_ParseAnalyze_callback = post_parse_analyze_hook;
 	post_parse_analyze_hook = ParseAnalyze_callback;
 
 	/* if we exit, try to release cluster lock properly */

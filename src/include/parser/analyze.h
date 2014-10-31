@@ -47,5 +47,6 @@ extern void applyLockingClause(Query *qry, Index rtindex,
 
 #ifdef XCP
 extern void ParseAnalyze_callback(ParseState *pstate, Query *query);
+extern post_parse_analyze_hook_type prev_ParseAnalyze_callback;
 #endif
 #endif   /* ANALYZE_H */
