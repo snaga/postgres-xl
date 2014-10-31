@@ -212,9 +212,7 @@ static bool check_ssl(bool *newval, void **extra, GucSource source);
 static bool check_stage_log_stats(bool *newval, void **extra, GucSource source);
 static bool check_log_stats(bool *newval, void **extra, GucSource source);
 #ifdef PGXC
-#ifndef XCP
 static bool check_pgxc_maintenance_mode(bool *newval, void **extra, GucSource source);
-#endif
 #endif
 static bool check_canonical_path(char **newval, void **extra, GucSource source);
 static bool check_timezone_abbreviations(char **newval, void **extra, GucSource source);
@@ -1541,7 +1539,6 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 #ifdef PGXC
-#ifndef XCP
 	{
 		{"persistent_datanode_connections", PGC_BACKEND, DEVELOPER_OPTIONS,
 			gettext_noop("Session never releases acquired connections."),
@@ -1580,7 +1577,6 @@ static struct config_bool ConfigureNamesBool[] =
 		false,
 		check_pgxc_maintenance_mode, NULL, NULL
 	},
-#endif
 #endif
 
 	{
@@ -9006,7 +9002,6 @@ check_log_stats(bool *newval, void **extra, GucSource source)
 }
 
 #ifdef PGXC
-#ifndef XCP
 /*
  * Only a warning is printed to log.
  * Returning false will cause FATAL error and it will not be good.
@@ -9051,7 +9046,6 @@ check_pgxc_maintenance_mode(bool *newval, void **extra, GucSource source)
 			return false;
 	}
 }
-#endif
 #endif
 
 static bool

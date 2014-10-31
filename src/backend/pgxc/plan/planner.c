@@ -64,9 +64,9 @@
 #include "utils/timestamp.h"
 #include "utils/date.h"
 
-#ifndef XCP
 /* Forbid unsafe SQL statements */
 bool		StrictStatementChecking = true;
+#ifndef XCP
 /* fast query shipping is enabled by default */
 bool		enable_fast_query_shipping = true;
 

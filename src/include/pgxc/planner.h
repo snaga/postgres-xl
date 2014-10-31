@@ -199,11 +199,12 @@ typedef enum
 	SS_HAS_AGG_EXPR				/* it has aggregate expressions */
 } ShippabilityStat;
 
+/* forbid SQL if unsafe, useful to turn off for development */
+extern bool StrictStatementChecking;
+
 #ifndef XCP
 /* global variable corresponding to the GUC with same name */
 extern bool enable_fast_query_shipping;
-/* forbid SQL if unsafe, useful to turn off for development */
-extern bool StrictStatementChecking;
 
 /* forbid SELECT even multi-node ORDER BY */
 extern bool StrictSelectChecking;
