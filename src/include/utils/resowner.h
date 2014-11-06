@@ -136,4 +136,13 @@ extern void ResourceOwnerRememberFile(ResourceOwner owner,
 extern void ResourceOwnerForgetFile(ResourceOwner owner,
 						File file);
 
+#ifdef XCP
+/* support for prepared statement management */
+extern void ResourceOwnerEnlargePreparedStmts(ResourceOwner owner);
+extern void ResourceOwnerRememberPreparedStmt(ResourceOwner owner,
+						  char *stmt);
+extern void ResourceOwnerForgetPreparedStmt(ResourceOwner owner,
+						char *stmt);
+#endif
+
 #endif   /* RESOWNER_H */

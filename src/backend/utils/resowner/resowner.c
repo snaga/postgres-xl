@@ -76,6 +76,13 @@ typedef struct ResourceOwnerData
 	int			nfiles;			/* number of owned temporary files */
 	File	   *files;			/* dynamically allocated array */
 	int			maxfiles;		/* currently allocated array size */
+
+#ifdef XCP	
+	/* We have built-in support for remembering prepared statements */
+	int			nstmts;			/* number of remote statements */
+	char		*stmts;		/* dynamically allocated array */
+	int			maxstmts;		/* currently allocated array size */
+#endif	
 }	ResourceOwnerData;
 
 
@@ -110,6 +117,9 @@ static void PrintPlanCacheLeakWarning(CachedPlan *plan);
 static void PrintTupleDescLeakWarning(TupleDesc tupdesc);
 static void PrintSnapshotLeakWarning(Snapshot snapshot);
 static void PrintFileLeakWarning(File file);
+#ifdef XCP
+static void PrintPreparedStmtLeakWarning(char *stmt);
+#endif
 
 
 /*****************************************************************************
@@ -191,6 +201,10 @@ ResourceOwnerRelease(ResourceOwner owner,
 	PG_END_TRY();
 	CurrentResourceOwner = save;
 }
+
+#ifdef XCP
+#define CNAME_MAXLEN 32
+#endif
 
 static void
 ResourceOwnerReleaseInternal(ResourceOwner owner,
@@ -331,6 +345,17 @@ ResourceOwnerReleaseInternal(ResourceOwner owner,
 				PrintFileLeakWarning(owner->files[owner->nfiles - 1]);
 			FileClose(owner->files[owner->nfiles - 1]);
 		}
+
+#ifdef XCP
+		/* Ditto for prepared statements */
+		while (owner->nstmts > 0)
+		{
+			char *stmt = owner->stmts + ((owner->nstmts - 1) * CNAME_MAXLEN);
+			if (isCommit)
+				PrintPreparedStmtLeakWarning(stmt);
+			DropPreparedStatement(stmt);
+		}
+#endif
 
 		/* Clean up index scans too */
 		ReleaseResources_hash();
@@ -1138,3 +1163,90 @@ PrintFileLeakWarning(File file)
 		 "temporary file leak: File %d still referenced",
 		 file);
 }
+
+#ifdef XCP
+/*
+ * Make sure there is room for at least one more entry in a ResourceOwner's
+ * prepared statements reference array.
+ *
+ * This is separate from actually inserting an entry because if we run out
+ * of memory, it's critical to do so *before* acquiring the resource.
+ */
+void
+ResourceOwnerEnlargePreparedStmts(ResourceOwner owner)
+{
+	int			newmax;
+
+	if (owner->nstmts < owner->maxstmts)
+		return;					/* nothing to do */
+
+	if (owner->stmts == NULL)
+	{
+		newmax = 16;
+		owner->stmts = (char *)
+			MemoryContextAlloc(TopMemoryContext, newmax * CNAME_MAXLEN);
+		owner->maxstmts = newmax;
+	}
+	else
+	{
+		newmax = owner->maxstmts * 2;
+		owner->stmts = (char *)
+			repalloc(owner->stmts, newmax * CNAME_MAXLEN);
+		owner->maxstmts = newmax;
+	}
+}
+
+/*
+ * Remember that a prepared statement is owned by a ResourceOwner
+ *
+ * Caller must have previously done ResourceOwnerEnlargePreparedStmts()
+ */
+void
+ResourceOwnerRememberPreparedStmt(ResourceOwner owner, char *stmt)
+{
+	Assert(owner->nstmts < owner->maxstmts);
+	strncpy(owner->stmts + (owner->nstmts * CNAME_MAXLEN), stmt, CNAME_MAXLEN);
+	owner->nstmts++;
+}
+
+/*
+ * Forget that a temporary file is owned by a ResourceOwner
+ */
+void
+ResourceOwnerForgetPreparedStmt(ResourceOwner owner, char *stmt)
+{
+	char	   *stmts = owner->stmts;
+	int			ns1 = owner->nstmts - 1;
+	int			i;
+
+	for (i = ns1; i >= 0; i--)
+	{
+		if (strncmp(stmts + (i * CNAME_MAXLEN), stmt, CNAME_MAXLEN) == 0)
+		{
+			while (i < ns1)
+			{
+				strncpy(stmts + (i * CNAME_MAXLEN),
+						stmts + ((i + 1) * CNAME_MAXLEN),
+						CNAME_MAXLEN);
+				i++;
+			}
+			owner->nstmts = ns1;
+			return;
+		}
+	}
+	elog(ERROR, "prepared statement %s is not owned by resource owner %s",
+		 stmt, owner->name);
+}
+
+
+/*
+ * Debugging subroutine
+ */
+static void
+PrintPreparedStmtLeakWarning(char *stmt)
+{
+	elog(WARNING,
+		 "prepared statement leak: Statement %s still referenced",
+		 stmt);
+}
+#endif

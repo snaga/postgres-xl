@@ -1619,7 +1619,7 @@ exec_parse_message(const char *query_string,	/* string to execute */
 		/*
 		 * Store the query as a prepared statement.
 		 */
-		StorePreparedStatement(stmt_name, psrc, false);
+		StorePreparedStatement(stmt_name, psrc, false, false);
 	}
 	else
 	{
@@ -1762,7 +1762,7 @@ exec_plan_message(const char *query_string,	/* source of the query */
 	/*
 	 * Store the query as a prepared statement.  See above comments.
 	 */
-	StorePreparedStatement(stmt_name, psrc, false);
+	StorePreparedStatement(stmt_name, psrc, false, true);
 
 	SetRemoteSubplan(psrc, plan_string);
 

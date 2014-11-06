@@ -184,7 +184,8 @@ PrepareQuery(PrepareStmt *stmt, const char *queryString)
 	 */
 	StorePreparedStatement(stmt->name,
 						   plansource,
-						   true);
+						   true,
+						   false);
 }
 
 /*
@@ -583,7 +584,8 @@ SetRemoteStatementName(Plan *plan, const char *stmt_name, int num_params,
 void
 StorePreparedStatement(const char *stmt_name,
 					   CachedPlanSource *plansource,
-					   bool from_sql)
+					   bool from_sql,
+					   bool use_resowner)
 {
 	PreparedStatement *entry;
 	TimestampTz cur_ts = GetCurrentStatementStartTimestamp();
@@ -610,9 +612,19 @@ StorePreparedStatement(const char *stmt_name,
 	entry->plansource = plansource;
 	entry->from_sql = from_sql;
 	entry->prepare_time = cur_ts;
+	entry->use_resowner = use_resowner;
 
 	/* Now it's safe to move the CachedPlanSource to permanent memory */
 	SaveCachedPlan(plansource);
+
+#ifdef XCP	
+	if (use_resowner)
+	{
+		ResourceOwnerEnlargePreparedStmts(CurTransactionResourceOwner);
+		ResourceOwnerRememberPreparedStmt(CurTransactionResourceOwner,
+				entry->stmt_name);
+	}
+#endif	
 }
 
 /*
@@ -722,6 +734,11 @@ DropPreparedStatement(const char *stmt_name, bool showError)
 
 		/* Now we can remove the hash table entry */
 		hash_search(prepared_queries, entry->stmt_name, HASH_REMOVE, NULL);
+#ifdef XCP
+		if (entry->use_resowner)
+			ResourceOwnerForgetPreparedStmt(CurTransactionResourceOwner,
+					entry->stmt_name);
+#endif		
 	}
 }
 
@@ -747,6 +764,12 @@ DropAllPreparedStatements(void)
 
 		/* Now we can remove the hash table entry */
 		hash_search(prepared_queries, entry->stmt_name, HASH_REMOVE, NULL);
+
+#ifdef XCP
+		if (entry->use_resowner)
+			ResourceOwnerForgetPreparedStmt(CurTransactionResourceOwner,
+					entry->stmt_name);
+#endif		
 	}
 }
 
