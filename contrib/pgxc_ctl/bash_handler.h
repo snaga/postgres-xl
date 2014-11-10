@@ -11,7 +11,7 @@
 #ifndef BASH_HANDLER_H
 #define BASH_HANDLER_H
 
-void install_pgxc_ctl_bash(char *path);
+void install_pgxc_ctl_bash(char *path, int read_prototype);
 void read_config_file(char *path, char *conf);
 void uninstall_pgxc_ctl_bash(char *path);
 
