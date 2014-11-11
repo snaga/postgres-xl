@@ -35,7 +35,7 @@ int GtmPort = 6666;
 #ifdef XCP
 bool IsXidFromGTM = false;
 #endif
-
+bool gtm_backup_barrier = false;
 extern bool FirstSnapshotSet;
 
 static GTM_Conn *conn;
@@ -666,3 +666,21 @@ UnregisterGTM(GTM_PGXCNodeType type)
 
 	return ret;
 }
+
+/*
+ * Report BARRIER
+ */
+int
+ReportBarrierGTM(char *barrier_id)
+{
+	if (!gtm_backup_barrier)
+		return EINVAL;
+
+	CheckConnection();
+
+	if (!conn)
+		return EOF;
+
+	return(report_barrier(conn, barrier_id));
+}
+

@@ -871,6 +871,15 @@ static struct config_bool ConfigureNamesBool[] =
 		false,
 		NULL, NULL, NULL
 	},
+	{
+		{"gtm_backup_barrier", PGC_SUSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables coordinator to report barrier id to GTM for backup."),
+			NULL
+		},
+		&gtm_backup_barrier,
+		false,
+		NULL, NULL, NULL
+	},
 #endif
 #endif
 	{

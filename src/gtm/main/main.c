@@ -51,6 +51,7 @@
 #include "gtm/gtm_msg.h"
 #include "gtm/gtm_opt.h"
 #include "gtm/gtm_utils.h"
+#include "gtm/gtm_backup.h"
 
 extern int	optind;
 extern char *optarg;
@@ -125,6 +126,7 @@ static void checkDataDir(void);
 static void DeleteLockFile(const char *filename);
 static void PromoteToActive(void);
 static void ProcessSyncStandbyCommand(Port *myport, GTM_MessageType mtype, StringInfo message);
+static void ProcessBarrierCommand(Port *myport, GTM_MessageType mtype, StringInfo message);
 
 /*
  * One-time initialization. It's called immediately after the main process
@@ -138,9 +140,10 @@ MainThreadInit()
 	pthread_key_create(&threadinfo_key, NULL);
 
 	/*
-	 * Initialize the lock protecting the global threads info
+	 * Initialize the lock protecting the global threads info and backup lock info.
 	 */
 	GTM_RWLockInit(&GTMThreads->gt_lock);
+	GTM_RWLockInit(&gtm_bkup_lock);
 
 	/*
 	 * Set the next client identifier to be issued after connection
@@ -192,6 +195,9 @@ InitGTMProcess()
 	GTM_ThreadInfo *thrinfo = MainThreadInit();
 	MyThreadID = pthread_self();
 	MemoryContextInit();
+
+	/* Backup the restore point */
+	GTM_WriteRestorePoint();
 
 	/*
 	 * The memory context is now set up.
@@ -1405,6 +1411,11 @@ ProcessCommand(Port *myport, StringInfo input_message)
 			ProcessQueryCommand(myport, mtype, input_message);
 			break;
 
+		case MSG_BARRIER:
+		case MSG_BKUP_BARRIER:
+			ProcessBarrierCommand(myport, mtype, input_message);
+			break;
+
 		case MSG_BACKEND_DISCONNECT:
 			elog(DEBUG1, "MSG_BACKEND_DISCONNECT received - removing all txn infos");
 			GTM_RemoveAllTransInfos(GetMyThreadInfo->thr_client_id, proxyhdr.ph_conid);
@@ -1418,6 +1429,8 @@ ProcessCommand(Port *myport, StringInfo input_message)
 					 errmsg("invalid frontend message type %d",
 							mtype)));
 	}
+	if (GTM_NeedBackup())
+		GTM_WriteRestorePoint();
 }
 
 static int
@@ -2203,7 +2216,11 @@ PromoteToActive(void)
 					"%Y-%m-%d %H:%M:%S %Z",
 					localtime(&stamp_time));
 
-		fprintf(fp, "#===================================================\n# Updated due to GTM promote request\n# %s\nstartup = ACT\n#===================================================\n", strfbuf);
+		fprintf(fp, 
+				"#===================================================\n"
+				"# Updated due to GTM promote request\n"
+				"# %s\nstartup = ACT\n"
+				"#===================================================\n", strfbuf);
 		if (fclose(fp))
 			ereport(FATAL,
 					(EINVAL,
@@ -2212,3 +2229,56 @@ PromoteToActive(void)
 	}
 	return;
 }
+
+static void ProcessBarrierCommand(Port *myport, GTM_MessageType mtype, StringInfo message)
+{
+	int barrier_id_len;
+	char *barrier_id;
+	int count = 0;
+	GTM_Conn *oldconn = GetMyThreadInfo->thr_conn->standby;
+	StringInfoData buf;
+
+	barrier_id_len = pq_getmsgint(message, sizeof(int));
+	barrier_id = (char *)pq_getmsgbytes(message, barrier_id_len);
+	pq_getmsgend(message);
+
+	elog(INFO, "Processing BARRIER %s", barrier_id);
+
+	if ((mtype == MSG_BARRIER) && GetMyThreadInfo->thr_conn->standby)
+	{
+	retry:
+		bkup_report_barrier(GetMyThreadInfo->thr_conn->standby, barrier_id);
+		if (gtm_standby_check_communication_error(&count, oldconn))
+			goto retry;
+
+		if (Backup_synchronously && (myport->remote_type != GTM_NODE_GTM_PROXY))
+			gtm_sync_standby(GetMyThreadInfo->thr_conn->standby);
+	}
+
+	GTM_WriteBarrierBackup(barrier_id);
+
+	if (mtype == MSG_BARRIER)
+	{
+		/*
+		 * Send a SUCCESS message back to the client
+		 */
+		pq_beginmessage(&buf, 'S');
+		pq_sendint(&buf, BARRIER_RESULT, 4);
+		if (myport->remote_type == GTM_NODE_GTM_PROXY)
+		{
+			GTM_ProxyMsgHeader proxyhdr;
+			proxyhdr.ph_conid = myport->conn_id;
+			pq_sendbytes(&buf, (char *)&proxyhdr, sizeof (GTM_ProxyMsgHeader));
+		}
+		pq_endmessage(myport, &buf);
+
+		if (myport->remote_type != GTM_NODE_GTM_PROXY)
+		{
+			/* Flush standby first */
+			if (GetMyThreadInfo->thr_conn->standby)
+				gtmpqFlush(GetMyThreadInfo->thr_conn->standby);
+			pq_flush(myport);
+		}
+	}
+}
+	

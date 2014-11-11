@@ -31,6 +31,7 @@
 #include "gtm/libpq.h"
 #include "gtm/libpq-int.h"
 #include "gtm/pqformat.h"
+#include "gtm/gtm_backup.h"
 
 extern bool Backup_synchronously;
 
@@ -52,6 +53,8 @@ static int seq_add_seqinfo(GTM_SeqInfo *seqinfo);
 static int seq_remove_seqinfo(GTM_SeqInfo *seqinfo);
 static GTM_SequenceKey seq_copy_key(GTM_SequenceKey key);
 static int seq_drop_with_dbkey(GTM_SequenceKey nsp);
+static bool GTM_NeedSeqRestoreUpdateInternal(GTM_SeqInfo *seqinfo);
+
 #ifdef XCP
 static GTM_Sequence get_rangemax(GTM_SeqInfo *seqinfo, GTM_Sequence range);
 #endif
@@ -348,12 +351,16 @@ GTM_SeqOpen(GTM_SequenceKey seqkey,
 	seqinfo->gs_last_value = seqinfo->gs_init_value;
 #endif
 
+	seqinfo->gs_backedUpValue = seqinfo->gs_value;
+
 	if ((errcode = seq_add_seqinfo(seqinfo)))
 	{
 		GTM_RWLockDestroy(&seqinfo->gs_lock);
 		pfree(seqinfo->gs_key);
 		pfree(seqinfo);
 	}
+	GTM_SetNeedBackup();
+
 	return errcode;
 }
 
@@ -465,6 +472,7 @@ GTM_SeqRestore(GTM_SequenceKey seqkey,
 	seqinfo->gs_init_value = seqinfo->gs_last_value = startval;
 #endif
 	seqinfo->gs_value = curval;
+	seqinfo->gs_backedUpValue = seqinfo->gs_value;
 
 	/*
 	 * Should we wrap around ?
@@ -652,6 +660,7 @@ GTM_SeqRename(GTM_SequenceKey seqkey, GTM_SequenceKey newseqkey)
 
 	newseqinfo->gs_init_value = seqinfo->gs_init_value;
 	newseqinfo->gs_value = seqinfo->gs_value;
+	newseqinfo->gs_backedUpValue = seqinfo->gs_backedUpValue;
 	newseqinfo->gs_cycle = seqinfo->gs_cycle;
 
 	newseqinfo->gs_state = seqinfo->gs_state;
@@ -1048,6 +1057,7 @@ GTM_SeqSetVal(GTM_SequenceKey seqkey, GTM_Sequence nextval, bool iscalled)
 
 	/* Remove the old key with the old name */
 	GTM_RWLockRelease(&seqinfo->gs_lock);
+	GTM_SetNeedBackup();
 	seq_release_seqinfo(seqinfo);
 
 	return 0;
@@ -1133,6 +1143,8 @@ GTM_SeqGetNext(GTM_SequenceKey seqkey)
 
 	}
 	GTM_RWLockRelease(&seqinfo->gs_lock);
+	if (GTM_NeedSeqRestoreUpdateInternal(seqinfo))
+		GTM_SetNeedBackup();
 	seq_release_seqinfo(seqinfo);
 	return value;
 }
@@ -1156,12 +1168,14 @@ GTM_SeqReset(GTM_SequenceKey seqkey)
 
 	GTM_RWLockAcquire(&seqinfo->gs_lock, GTM_LOCKMODE_WRITE);
 #ifdef XCP
-	seqinfo->gs_value = seqinfo->gs_init_value;
+	seqinfo->gs_value = seqinfo->gs_backedUpValue = seqinfo->gs_init_value;
 #else
 	seqinfo->gs_value = seqinfo->gs_last_value = seqinfo->gs_init_value;
 #endif
-	GTM_RWLockRelease(&seqinfo->gs_lock);
 
+	GTM_RWLockRelease(&gtm_bkup_lock);
+
+	GTM_SetNeedBackup();
 	seq_release_seqinfo(seqinfo);
 	return 0;
 }
@@ -2088,6 +2102,7 @@ ProcessSequenceRenameCommand(Port *myport, StringInfo message, bool is_backup)
 }
 
 
+
 /*
  * Escape whitespace and non-printable characters in the sequence name to
  * store it to the control file.
@@ -2201,9 +2216,57 @@ decode_seq_key(char* value, GTM_SequenceKey seqkey)
 	memcpy(seqkey->gsk_key, out, len);
 }
 
+static GTM_Sequence distanceToBackedUpSeqValue(GTM_SeqInfo *seqinfo)
+{
+	if (!SEQ_IS_CALLED(seqinfo))
+		return (GTM_Sequence)0;
+	if (SEQ_IS_ASCENDING(seqinfo))
+	{
+		if ((seqinfo->gs_backedUpValue - seqinfo->gs_value) >= 0)
+			return (seqinfo->gs_backedUpValue - seqinfo->gs_value);
+		if (SEQ_IS_CYCLE(seqinfo))
+			return((seqinfo->gs_max_value - seqinfo->gs_value) + (seqinfo->gs_backedUpValue - seqinfo->gs_min_value));
+		else
+			return(seqinfo->gs_backedUpValue - seqinfo->gs_value);
+	}
+	else
+	{
+		if ((seqinfo->gs_value - seqinfo->gs_backedUpValue) >= 0)
+			return(seqinfo->gs_backedUpValue - seqinfo->gs_value);
+		if (SEQ_IS_CYCLE(seqinfo))
+			return((seqinfo->gs_max_value - seqinfo->gs_backedUpValue) + (seqinfo->gs_value - seqinfo->gs_min_value));
+		else
+			return(seqinfo->gs_backedUpValue - seqinfo->gs_value);
+	}
+	return 0;
+}
 
-void
-GTM_SaveSeqInfo(FILE *ctlf)
+bool GTM_NeedSeqRestoreUpdate(GTM_SequenceKey seqkey)
+{
+	GTM_SeqInfo *seqinfo = seq_find_seqinfo(seqkey);
+	if (!seqinfo)
+		return FALSE;
+	return GTM_NeedSeqRestoreUpdateInternal(seqinfo);
+}
+
+static bool GTM_NeedSeqRestoreUpdateInternal(GTM_SeqInfo *seqinfo)
+{
+	GTM_Sequence distance;
+
+	if (!SEQ_IS_CALLED(seqinfo))
+		/* The first call.  Must backup */
+		return TRUE;
+	distance = distanceToBackedUpSeqValue(seqinfo);
+	if (SEQ_IS_ASCENDING(seqinfo))
+		return(distance >= seqinfo->gs_increment_by);
+	else
+		return(distance <= seqinfo->gs_increment_by);
+}
+
+
+
+static void
+GTM_SaveSeqInfo2(FILE *ctlf, bool isBackup)
 {
 	GTM_SeqInfoHashBucket *bucket;
 	gtm_ListCell *elem;
@@ -2230,13 +2293,83 @@ GTM_SaveSeqInfo(FILE *ctlf)
 
 			encode_seq_key(seqinfo->gs_key, buffer);
 			fprintf(ctlf, "%s\t%ld\t%ld\t%ld\t%ld\t%ld\t%c\t%c\t%x\n",
-					buffer, seqinfo->gs_value,
+					buffer, isBackup ? seqinfo->gs_backedUpValue : seqinfo->gs_value,
 					seqinfo->gs_init_value, seqinfo->gs_increment_by,
 					seqinfo->gs_min_value, seqinfo->gs_max_value,
 					(seqinfo->gs_cycle ? 't' : 'f'),
 					(seqinfo->gs_called ? 't' : 'f'),
 					seqinfo->gs_state);
 
+				GTM_RWLockRelease(&seqinfo->gs_lock);
+		}
+		GTM_RWLockRelease(&bucket->shb_lock);
+	}
+
+}
+
+void GTM_SaveSeqInfo(FILE *ctlf)
+{
+	GTM_SaveSeqInfo2(ctlf, FALSE);
+}
+
+static void advance_gs_value(GTM_SeqInfo *seqinfo)
+{
+	
+	GTM_Sequence distance;
+
+	distance = seqinfo->gs_increment_by * RestoreDuration;
+	if (SEQ_IS_ASCENDING(seqinfo))
+	{
+		if ((seqinfo->gs_max_value - seqinfo->gs_value) >= distance)
+			seqinfo->gs_backedUpValue = seqinfo->gs_value + distance;
+		else
+		{
+			if (SEQ_IS_CYCLE(seqinfo))
+				seqinfo->gs_backedUpValue = seqinfo->gs_min_value + (distance - (seqinfo->gs_max_value - seqinfo->gs_value));
+			else
+				seqinfo->gs_backedUpValue = seqinfo->gs_max_value;
+		}
+	}
+	else
+	{
+		if ((seqinfo->gs_min_value - seqinfo->gs_value) >= distance)
+			seqinfo->gs_backedUpValue = seqinfo->gs_value + distance;
+		else
+		{
+			if (SEQ_IS_CYCLE(seqinfo))
+				seqinfo->gs_backedUpValue = seqinfo->gs_max_value + (distance - (seqinfo->gs_min_value - seqinfo->gs_value));
+			else
+				seqinfo->gs_backedUpValue = seqinfo->gs_min_value;
+		}
+	}
+}
+
+
+static void
+GTM_UpdateRestorePointSeq(void)
+{
+	GTM_SeqInfoHashBucket *bucket;
+	gtm_ListCell *elem;
+	GTM_SeqInfo *seqinfo = NULL;
+	int hash;
+
+	for (hash = 0; hash < SEQ_HASH_TABLE_SIZE; hash++)
+	{
+		bucket = &GTMSequences[hash];
+
+		GTM_RWLockAcquire(&bucket->shb_lock, GTM_LOCKMODE_READ);
+
+		gtm_foreach(elem, bucket->shb_list)
+		{
+			seqinfo = (GTM_SeqInfo *) gtm_lfirst(elem);
+			if (seqinfo == NULL)
+				break;
+
+			if (seqinfo->gs_state == SEQ_STATE_DELETED)
+				continue;
+
+			GTM_RWLockAcquire(&seqinfo->gs_lock, GTM_LOCKMODE_READ);
+			advance_gs_value(seqinfo);
 			GTM_RWLockRelease(&seqinfo->gs_lock);
 		}
 
@@ -2245,6 +2378,12 @@ GTM_SaveSeqInfo(FILE *ctlf)
 
 }
 
+
+void GTM_WriteRestorePointSeq(FILE *ctlf)
+{
+	GTM_UpdateRestorePointSeq();
+	GTM_SaveSeqInfo2(ctlf, TRUE);
+}
 
 void
 GTM_RestoreSeqInfo(FILE *ctlf)

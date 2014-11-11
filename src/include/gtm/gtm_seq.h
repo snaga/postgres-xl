@@ -40,6 +40,7 @@ typedef struct GTM_SeqInfo
 {
 	GTM_SequenceKey	gs_key;
 	GTM_Sequence	gs_value;
+	GTM_Sequence	gs_backedUpValue;
 	GTM_Sequence	gs_init_value;
 #ifdef XCP
 	int32			gs_max_lastvals;
@@ -107,7 +108,6 @@ int GTM_SeqSetVal(GTM_SequenceKey seqkey, GTM_Sequence nextval, bool iscalled);
 #endif
 int GTM_SeqReset(GTM_SequenceKey seqkey);
 
-
 void ProcessSequenceInitCommand(Port *myport, StringInfo message, bool is_backup);
 void ProcessSequenceGetCurrentCommand(Port *myport, StringInfo message);
 void ProcessSequenceGetNextCommand(Port *myport, StringInfo message, bool is_backup);
@@ -135,4 +135,6 @@ int GTM_SeqRestore(GTM_SequenceKey seqkey,
 void GTM_CleanupSeqSession(char *coord_name, int coord_procid);
 #endif
 
+bool GTM_NeedSeqRestoreUpdate(GTM_SequenceKey seqkey);
+void GTM_WriteRestorePointSeq(FILE *f);
 #endif
