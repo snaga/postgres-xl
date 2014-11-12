@@ -36,6 +36,9 @@
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
 #include "utils/typcache.h"
+#ifdef XCP
+#include "pgxc/pgxc.h"
+#endif
 
 
 static const char *const raise_skip_msg = "RAISE";
@@ -3049,13 +3052,20 @@ exec_stmt_execsql(PLpgSQL_execstate *estate,
 						q->commandType == CMD_DELETE)
 						stmt->mod_stmt = true;
 					/* PGXCTODO: Support a better parameter interface for XC with DMLs */
+#ifdef XCP
+					if (IS_PGXC_DATANODE && (q->commandType == CMD_INSERT ||
+#else
 					if (q->commandType == CMD_INSERT ||
+#endif
 						q->commandType == CMD_UPDATE ||
 						q->commandType == CMD_DELETE)
+#ifdef XCP
+				   )
+#endif
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 #ifdef XCP
-								 errmsg("Postgres-XL does not support DML queries in PL/pgSQL")));
+								 errmsg("Postgres-XL does not support DML queries in PL/pgSQL on Datanodes")));
 #else
 								 errmsg("Postgres-XC does not support DML queries in PL/pgSQL")));
 #endif
