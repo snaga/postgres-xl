@@ -8377,6 +8377,7 @@ ExecFinishInitRemoteSubplan(RemoteSubplanState *node)
 {
 	ResponseCombiner   *combiner = (ResponseCombiner *) node;
 	RemoteSubplan  	   *plan = (RemoteSubplan *) combiner->ss.ps.plan;
+	EState			   *estate = combiner->ss.ps.state;
 	Oid        		   *paramtypes = NULL;
 	GlobalTransactionId gxid = InvalidGlobalTransactionId;
 	Snapshot			snapshot;
@@ -8479,7 +8480,15 @@ ExecFinishInitRemoteSubplan(RemoteSubplanState *node)
 			pfree(combiner->connections);
 			ereport(ERROR,
 					(errcode(ERRCODE_INTERNAL_ERROR),
-					 errmsg("Failed to send command to data nodes")));
+					 errmsg("Failed to send snapshot to data nodes")));
+		}
+		if (pgxc_node_send_cmd_id(connection, estate->es_snapshot->curcid) < 0 )
+		{
+			combiner->conn_count = 0;
+			pfree(combiner->connections);
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("Failed to send command ID to data nodes")));
 		}
 		pgxc_node_send_plan(connection, cursor, "Remote Subplan",
 							node->subplanstr, node->nParamRemote, paramtypes);
@@ -8741,7 +8750,7 @@ primary_mode_phase_two:
 					pfree(combiner->connections);
 					ereport(ERROR,
 							(errcode(ERRCODE_INTERNAL_ERROR),
-							 errmsg("Failed to send command to data nodes")));
+							 errmsg("Failed to send command ID to data nodes")));
 				}
 
 				/*
