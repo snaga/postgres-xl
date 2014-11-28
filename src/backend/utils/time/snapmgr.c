@@ -474,6 +474,14 @@ UpdateActiveSnapshotCommandId(void)
 	Assert(ActiveSnapshot->as_snap->regd_count == 0);
 
 	ActiveSnapshot->as_snap->curcid = GetCurrentCommandId(false);
+#ifdef XCP	
+	/*
+	 * Set flag so that updated command ID is sent to the datanodes before the
+	 * next query. This ensures that the effects of previous statements are
+	 * visible to the subsequent statements
+	 */
+	SetSendCommandId(true);
+#endif	
 }
 
 /*

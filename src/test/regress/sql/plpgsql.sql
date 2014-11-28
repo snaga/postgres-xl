@@ -3741,3 +3741,81 @@ select testoa(1,2,1); -- fail at update
 
 drop function arrayassign1();
 drop function testoa(x1 int, x2 int, x3 int);
+
+-- Check that DMLs in a plpgsql function work OK, when subsequent queries need
+-- to open new datanode connections
+CREATE OR REPLACE FUNCTION TestJoinTempTable_CT()
+RETURNS void AS $$
+BEGIN
+        CREATE TABLE IF NOT EXISTS RealTable(ProductId int, ScenarioId int);
+        TRUNCATE TABLE RealTable;
+
+        CREATE TABLE IF NOT EXISTS TmpBar(NodeId int)
+                DISTRIBUTE BY REPLICATION;
+        CREATE TABLE IF NOT EXISTS TmpFoo(TempId int)
+                DISTRIBUTE BY REPLICATION;
+END ;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION TestJoinTempTable_INSERT()
+RETURNS void AS $$
+BEGIN
+        INSERT INTO RealTable(ProductId, ScenarioId)
+                SELECT generate_series(1,1000) as ProductId, (random() * 100)::int as ScenarioId;
+
+        INSERT INTO TmpBar(NodeId)
+                SELECT generate_series(1,1000);
+		RAISE INFO 'number of existing rows in RealTable - %', (SELECT count(*) FROM RealTable);
+		RAISE INFO 'number of existing rows in TmpBar - %', (SELECT count(*) FROM TmpBar);
+		RAISE INFO 'number of existing rows in TmpFoo - %', (SELECT count(*) FROM TmpFoo);
+        INSERT INTO TmpFoo(TempId)
+               SELECT DISTINCT(PR.ProductId)
+                 FROM RealTable AS PR
+                 JOIN TmpBar tmp1 ON PR.ProductId = tmp1.NodeId;
+
+		RAISE INFO 'number of rows produced by query - %',
+				(SELECT COUNT(DISTINCT(PR.ProductId))
+				 FROM RealTable AS PR
+                 JOIN TmpBar tmp1 ON PR.ProductId = tmp1.NodeId);
+		RAISE INFO 'number of rows in TmpFoo - %', (SELECT count(*) FROM TmpFoo);
+		RAISE INFO 'number of existing rows in TmpFoo - %', (SELECT count(*) FROM TmpFoo);
+		RAISE INFO 'number of existing rows in TmpFoo - %', (SELECT count(*) FROM TmpFoo);
+END ;
+$$ LANGUAGE plpgsql;
+
+SELECT TestJoinTempTable_CT();
+SELECT TestJoinTempTable_INSERT();
+
+DROP TABLE RealTable;
+DROP TABLE TmpBar;
+DROP TABLE TmpFoo;
+
+CREATE OR REPLACE FUNCTION TestJoinTempTable()
+RETURNS void AS $$
+BEGIN
+        CREATE TABLE IF NOT EXISTS RealTable(ProductId int, ScenarioId int);
+        TRUNCATE TABLE RealTable;
+
+        CREATE TEMPORARY TABLE IF NOT EXISTS TmpBar(NodeId int)
+                DISTRIBUTE BY REPLICATION;
+        CREATE TEMPORARY TABLE IF NOT EXISTS TmpFoo(TempId int)
+                DISTRIBUTE BY REPLICATION;
+
+        INSERT INTO RealTable(ProductId, ScenarioId)
+                SELECT generate_series(1,1000) as ProductId, (random() * 100)::int as ScenarioId;
+
+        INSERT INTO TmpBar(NodeId)
+                SELECT generate_series(1,1000);
+
+        INSERT INTO TmpFoo(TempId)
+               SELECT DISTINCT(PR.ProductId)
+                 FROM RealTable AS PR
+                 JOIN TmpBar tmp1 ON PR.ProductId = tmp1.NodeId;
+END ;
+$$ LANGUAGE plpgsql;
+
+SELECT TestJoinTempTable();
+
+DROP TABLE RealTable;
+DROP TABLE TmpBar;
+DROP TABLE TmpFoo;
