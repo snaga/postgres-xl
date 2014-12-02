@@ -55,6 +55,7 @@ pool_listen(unsigned short port, const char *unixSocketName)
 	int			fd,
 				len;
 	struct sockaddr_un unix_addr;
+	int			maxconn;
 
 #ifdef HAVE_UNIX_SOCKETS
 	if (Lock_AF_UNIX(port, unixSocketName) < 0)
@@ -75,8 +76,17 @@ pool_listen(unsigned short port, const char *unixSocketName)
 	if (bind(fd, (struct sockaddr *) & unix_addr, len) < 0)
 		return -1;
 
+	/*
+	 * Select appropriate accept-queue length limit.  PG_SOMAXCONN is only
+	 * intended to provide a clamp on the request on platforms where an
+	 * overly large request provokes a kernel error (are there any?).
+	 */
+	maxconn = MaxBackends * 2;
+	if (maxconn > PG_SOMAXCONN)
+		maxconn = PG_SOMAXCONN;
+
 	/* tell kernel we're a server */
-	if (listen(fd, 5) < 0)
+	if (listen(fd, maxconn) < 0)
 		return -1;
 
 	/* Arrange to unlink the socket file at exit */
