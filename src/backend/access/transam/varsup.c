@@ -149,17 +149,36 @@ GetNewTransactionId(bool isSubXact)
 	/* Initialize transaction ID */
 	xid = InvalidTransactionId;
 
-	if ((IS_PGXC_COORDINATOR && !IsConnFromCoord()) || IsPGXCNodeXactDatanodeDirect())
+	/*
+	 * Get XID from GTM before acquiring the lock as concurrent connections are
+	 * being handled on GTM side even if the lock is acquired in a different
+	 * order.
+	 * 
+	 * PGXC sessions should typically use gloabl XID passed down by
+	 * coordinators (or datanodes in case of datanode-datanode connections).
+	 * But we make following exceptions:
+	 *
+	 * 1. If this is a coordinator to which client has connected
+	 *	(IS_PGXC_COORDINATOR && !IsConnFromCoord())
+	 * 
+	 * 2. If we are autovacuum launcher or worker process
+	 * 3. We have been explicitly told to get an XID from the GTM, because
+	 * certain commands such as VACUUM and CLUSTER cannot be run inside a
+	 * transaction block
+	 * 4. Or we start currently starting up a new backend which requires a
+	 * valid XID/snapshot for catalog access
+	 *
+ 	 */
+	if ((IS_PGXC_COORDINATOR && !IsConnFromCoord()) ||
+		IsAutoVacuumWorkerProcess() ||
+		IsAutoVacuumLauncherProcess() ||
+		GetForceXidFromGTM() ||
+		(IsInitProcessingMode() && IsPostmasterEnvironment))
 	{
-		/*
-		 * Get XID from GTM before acquiring the lock as concurrent connections are
-		 * being handled on GTM side even if the lock is acquired in a different
-		 * order.
-		 */
-		if (IsAutoVacuumWorkerProcess() && (MyPgXact->vacuumFlags & PROC_IN_VACUUM))
-			xid = (TransactionId) BeginTranAutovacuumGTM();
+		if (MyPgXact->vacuumFlags & PROC_IN_VACUUM)
+			next_xid = xid = (TransactionId) BeginTranAutovacuumGTM();
 		else
-			xid = (TransactionId) BeginTranGTM(timestamp);
+			next_xid = xid = (TransactionId) BeginTranGTM(timestamp);
 		*timestamp_received = true;
 	}
 #endif /* PGXC */
@@ -167,98 +186,30 @@ GetNewTransactionId(bool isSubXact)
 	LWLockAcquire(XidGenLock, LW_EXCLUSIVE);
 
 #ifdef PGXC
-	/* Only remote Coordinator or a Datanode accessed directly by an application can get a GXID */
-	if ((IS_PGXC_COORDINATOR && !IsConnFromCoord()) || IsPGXCNodeXactDatanodeDirect())
+	/*
+	 * Unless we are running initdb (which sets useLocalXid to true), we must
+	 * have either got a valid global XID, either from the coordinator/datanode
+	 * or fetched directly from the GTM. Everything else warrants an error
+	 */
+	if (!useLocalXid)
 	{
-		if (TransactionIdIsValid(xid))
-		{
-			/* Log some information about the new transaction ID obtained */
-			if (IsAutoVacuumWorkerProcess() && (MyPgXact->vacuumFlags & PROC_IN_VACUUM))
-				elog(DEBUG1, "Assigned new transaction ID from GTM for autovacuum = %d", xid);
-			else
-				elog(DEBUG1, "Assigned new transaction ID from GTM = %d", xid);
-
-			if (!TransactionIdFollowsOrEquals(xid, ShmemVariableCache->nextXid))
-			{
-				increment_xid = false;
-				ereport(DEBUG1,
-				   (errmsg("xid (%d) was less than ShmemVariableCache->nextXid (%d)",
-					   xid, ShmemVariableCache->nextXid)));
-			}
-			else
-				ShmemVariableCache->nextXid = xid;
-		}
-		else
-		{
-			ereport(WARNING,
-			   (errmsg("Xid is invalid.")));
-
-			/* Problem is already reported, so just remove lock and return */
-			LWLockRelease(XidGenLock);
-			return xid;
-		}
-	}
-	else if(IS_PGXC_DATANODE || IsConnFromCoord())
- 	{
-#ifdef XCP
-		/*
- 		 * (IS_PGXC_DATANODE && IsInitProcessingMode() && IsPostmasterEnvironment)
-		 * handles new connections, ensures XID is consumed then, but not during initdb
-		 */
-		if (IsAutoVacuumWorkerProcess() || IsAutoVacuumLauncherProcess() || (IS_PGXC_DATANODE && IsInitProcessingMode() && IsPostmasterEnvironment))
-#else
-		if (IsAutoVacuumWorkerProcess())
-#endif
-		{
-			/*
-			 * For an autovacuum worker process, get transaction ID directly from GTM.
-			 * If this vacuum process is a vacuum analyze, its GXID has to be excluded
-			 * from snapshots so use a special function for this purpose.
-			 * For a simple worker get transaction ID like a normal transaction would do.
-			 */
-			if (MyPgXact->vacuumFlags & PROC_IN_VACUUM)
-				next_xid = (TransactionId) BeginTranAutovacuumGTM();
-			else
-				next_xid = (TransactionId) BeginTranGTM(timestamp);
-		}
-		else if (GetForceXidFromGTM())
- 		{
-			elog (DEBUG1, "Force get XID from GTM");
-			/* try and get gxid directly from GTM */
-			next_xid = (TransactionId) BeginTranGTM(NULL);
-		}
-
 		if (TransactionIdIsValid(next_xid))
 		{
 			xid = next_xid;
-			elog(DEBUG1, "TransactionId = %d", next_xid);
-			next_xid = InvalidTransactionId; /* reset */
-			if (!TransactionIdFollowsOrEquals(xid, ShmemVariableCache->nextXid))
-			{
-				/* This should be ok, due to concurrency from multiple coords
-				 * passing down the xids.
-				 * We later do not want to bother incrementing the value
-				 * in shared memory though.
-				 */
-				increment_xid = false;
-				elog(DEBUG1, "xid (%d) does not follow ShmemVariableCache->nextXid (%d)",
-					xid, ShmemVariableCache->nextXid);
-			}
-			else
+			next_xid = InvalidTransactionId;
+			if (TransactionIdFollowsOrEquals(xid, ShmemVariableCache->nextXid))
 				ShmemVariableCache->nextXid = xid;
- 		}
- 		else
-		{
-			if (IsConnFromCoord())
-			{
-				elog(ERROR, "Coordinator has not provided xid for the command");
-			}
-			/* Fallback to default, needed for initdb */
-			elog(LOG, "Falling back to local Xid. Was = %d, now is = %d. autovacLaunch = %d",
-				next_xid, ShmemVariableCache->nextXid, IsAutoVacuumLauncherProcess());
-			xid = ShmemVariableCache->nextXid;
 		}
+		else
+			ereport(ERROR,
+					(errcode(ERRCODE_SYSTEM_ERROR),
+			       	errmsg("GTM generated global XID not available"),
+			        errhint("Check if GTM/GTM-proxy is running @ %s:%d and "
+						"reachable from this host. Your firewall could also "
+						"block access to a host/port", GtmHost, GtmPort)));
 	}
+	else
+		xid = ShmemVariableCache->nextXid;
 #else
 	xid = ShmemVariableCache->nextXid;
 #endif /* PGXC */
