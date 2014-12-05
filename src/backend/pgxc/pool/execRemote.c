@@ -5820,6 +5820,9 @@ ExecRemoteUtility(RemoteQuery *node)
 	bool		need_tran_block;
 	ExecDirectType		exec_direct_type = node->exec_direct_type;
 	int			i;
+#ifdef XCP
+	CommandId	cid = GetCurrentCommandId(false);	
+#endif	
 
 	if (!force_autocommit)
 		RegisterTransactionLocalNode(true);
@@ -5895,8 +5898,15 @@ ExecRemoteUtility(RemoteQuery *node)
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_INTERNAL_ERROR),
-						 errmsg("Failed to send command to Datanodes")));
+						 errmsg("Failed to send snapshot to Datanodes")));
 			}
+			if (pgxc_node_send_cmd_id(conn, cid) < 0)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+						 errmsg("Failed to send command ID to Datanodes")));
+			}
+
 			if (pgxc_node_send_query(conn, node->sql_statement) != 0)
 			{
 				ereport(ERROR,
@@ -5924,6 +5934,13 @@ ExecRemoteUtility(RemoteQuery *node)
 						(errcode(ERRCODE_INTERNAL_ERROR),
 						 errmsg("Failed to send command to coordinators")));
 			}
+			if (pgxc_node_send_cmd_id(pgxc_connections->coord_handles[i], cid) < 0)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+						 errmsg("Failed to send command ID to Datanodes")));
+			}
+
 			if (pgxc_node_send_query(pgxc_connections->coord_handles[i], node->sql_statement) != 0)
 			{
 				ereport(ERROR,

@@ -4824,6 +4824,42 @@ SELECT TestJoinTempTable();
  
 (1 row)
 
+-- Multiple invokations of the function showed interesting issues with command
+-- passdown. So add that to the test case
+SELECT TestJoinTempTable();
+NOTICE:  relation "realtable" already exists, skipping
+CONTEXT:  SQL statement "CREATE TABLE IF NOT EXISTS RealTable(ProductId int, ScenarioId int)"
+PL/pgSQL function testjointemptable() line 3 at SQL statement
+NOTICE:  relation "tmpbar" already exists, skipping
+CONTEXT:  SQL statement "CREATE TEMPORARY TABLE IF NOT EXISTS TmpBar(NodeId int)
+                DISTRIBUTE BY REPLICATION"
+PL/pgSQL function testjointemptable() line 6 at SQL statement
+NOTICE:  relation "tmpfoo" already exists, skipping
+CONTEXT:  SQL statement "CREATE TEMPORARY TABLE IF NOT EXISTS TmpFoo(TempId int)
+                DISTRIBUTE BY REPLICATION"
+PL/pgSQL function testjointemptable() line 8 at SQL statement
+ testjointemptable 
+-------------------
+ 
+(1 row)
+
+SELECT TestJoinTempTable();
+NOTICE:  relation "realtable" already exists, skipping
+CONTEXT:  SQL statement "CREATE TABLE IF NOT EXISTS RealTable(ProductId int, ScenarioId int)"
+PL/pgSQL function testjointemptable() line 3 at SQL statement
+NOTICE:  relation "tmpbar" already exists, skipping
+CONTEXT:  SQL statement "CREATE TEMPORARY TABLE IF NOT EXISTS TmpBar(NodeId int)
+                DISTRIBUTE BY REPLICATION"
+PL/pgSQL function testjointemptable() line 6 at SQL statement
+NOTICE:  relation "tmpfoo" already exists, skipping
+CONTEXT:  SQL statement "CREATE TEMPORARY TABLE IF NOT EXISTS TmpFoo(TempId int)
+                DISTRIBUTE BY REPLICATION"
+PL/pgSQL function testjointemptable() line 8 at SQL statement
+ testjointemptable 
+-------------------
+ 
+(1 row)
+
 DROP TABLE RealTable;
 DROP TABLE TmpBar;
 DROP TABLE TmpFoo;

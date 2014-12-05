@@ -3816,6 +3816,11 @@ $$ LANGUAGE plpgsql;
 
 SELECT TestJoinTempTable();
 
+-- Multiple invokations of the function showed interesting issues with command
+-- passdown. So add that to the test case
+SELECT TestJoinTempTable();
+SELECT TestJoinTempTable();
+
 DROP TABLE RealTable;
 DROP TABLE TmpBar;
 DROP TABLE TmpFoo;
