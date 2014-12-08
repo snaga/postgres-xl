@@ -2736,7 +2736,8 @@ GetPGXCSnapshotData(Snapshot snapshot)
 	 * A vacuum worker starts as a normal transaction would.
 	 */
 
-	if (IsConnFromCoord() && !IsInitProcessingMode() && !GetForceXidFromGTM())
+	if ((IsConnFromCoord() || IsConnFromDatanode())
+			&& !IsInitProcessingMode() && !GetForceXidFromGTM())
 	{
 		if (globalSnapshot.snapshot_source == SNAPSHOT_COORDINATOR)
 			GetSnapshotFromGlobalSnapshot(snapshot);
