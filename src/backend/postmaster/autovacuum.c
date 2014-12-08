@@ -575,7 +575,10 @@ AutoVacLauncherMain(int argc, char *argv[])
 	 * correct because the only operation is to add autovacuum_naptime to the
 	 * entry, and time always increases).
 	 */
-	rebuild_database_list(InvalidOid);
+#ifdef XCP	
+	if (!got_SIGTERM)
+#endif		
+		rebuild_database_list(InvalidOid);
 
 	for (;;)
 	{
@@ -802,7 +805,7 @@ launcher_determine_sleep(bool canlaunch, bool recursing, struct timeval * nap)
 		nap->tv_sec = autovacuum_naptime;
 		nap->tv_usec = 0;
 	}
-	else if ((elem = DLGetTail(DatabaseList)) != NULL)
+	else if ((elem = DatabaseList ? DLGetTail(DatabaseList) : NULL) != NULL)
 	{
 		avl_dbase  *avdb = DLE_VAL(elem);
 		TimestampTz current_time = GetCurrentTimestamp();
