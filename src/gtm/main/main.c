@@ -747,6 +747,7 @@ main(int argc, char *argv[])
 	pqsignal(SIGTERM, GTM_SigleHandler);
 	pqsignal(SIGINT, GTM_SigleHandler);
 	pqsignal(SIGUSR1, GTM_SigleHandler);
+	pqsignal(SIGPIPE, SIG_IGN);
 
 	pqinitmask();
 

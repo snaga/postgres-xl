@@ -865,6 +865,7 @@ main(int argc, char *argv[])
 	pqsignal(SIGINT, GTMProxy_SigleHandler);
 	pqsignal(SIGUSR1, GTMProxy_SigleHandler);
 	pqsignal(SIGUSR2, GTMProxy_SigleHandler);
+	pqsignal(SIGPIPE, SIG_IGN);
 
 	pqinitmask();
 
@@ -3241,7 +3242,16 @@ UnregisterProxy(void)
 	return;
 
 failed:
-	return elog(ERROR, "can not Unregister Proxy on GTM");
+	/*
+	 * We don't deliberately write an ERROR here to ensure that proxy shutdown
+	 * proceeds to the end. Without that we have a danger of leaving behind a
+	 * stale PID file, thus causing gtm_ctl stop to wait forever for the proxy
+	 * to shutdown
+	 *
+	 * XXX This can happen when GTM restarts, clearing existing registration
+	 * information. See if this needs to fixed
+	 */
+	return elog(LOG, "can not Unregister Proxy on GTM");
 }
 
 /*
