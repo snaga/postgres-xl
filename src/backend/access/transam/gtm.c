@@ -68,9 +68,6 @@ InitGTM(void)
 {
 	/* 256 bytes should be enough */
 	char conn_str[256];
-#ifdef XCP
-	int retry;
-#endif	
 
 	/* If this thread is postmaster itself, it contacts gtm identifying itself */
 	if (!IsUnderPostmaster)
@@ -82,7 +79,7 @@ InitGTM(void)
 		else if (IS_PGXC_DATANODE)
 			remote_type = GTM_NODE_DATANODE;
 
-		sprintf(conn_str, "host=%s port=%d node_name=%s remote_type=%d postmaster=1 connect_timeout=5",
+		sprintf(conn_str, "host=%s port=%d node_name=%s remote_type=%d postmaster=1",
 								GtmHost, GtmPort, PGXCNodeName, remote_type);
 
 		/* Log activity of GTM connections */
@@ -90,57 +87,8 @@ InitGTM(void)
 	}
 	else
 	{
-		sprintf(conn_str, "host=%s port=%d node_name=%s connect_timeout=5", GtmHost, GtmPort, PGXCNodeName);
-	}
+		sprintf(conn_str, "host=%s port=%d node_name=%s", GtmHost, GtmPort, PGXCNodeName);
 
-#ifdef XCP	
-#define MAX_GTM_CONNECT_RETRIES 5	
-#define GTM_CONNECTION_RETRY_TIMEOUT 5	
-	for (retry = 1; retry <= MAX_GTM_CONNECT_RETRIES; retry++)
-	{
-		CHECK_FOR_INTERRUPTS();
-#endif		
-		conn = PQconnectGTM(conn_str);
-		if (GTMPQstatus(conn) != CONNECTION_OK)
-		{
-			int save_errno = errno;
-
-			/* Write a WARNING first time */
-			if (retry == 1 )
-			{
-				ereport(WARNING,
-						(errcode(ERRCODE_CONNECTION_EXCEPTION),
-						 errmsg("Failed to connect to GTM: %m (Retries %d times"
-							" at %d seconds )",
-							MAX_GTM_CONNECT_RETRIES, GTM_CONNECTION_RETRY_TIMEOUT),
-						 errhint("Check if GTM/GTM-proxy is running @ %s:%d",
-							 GtmHost, GtmPort)));
-			}
-			else
-				ereport(ERROR,
-						(errcode(ERRCODE_CONNECTION_EXCEPTION),
-						 errmsg("Failed to connect to GTM : %m (Giving up "
-							 "after %d tries)", MAX_GTM_CONNECT_RETRIES),
-						 errhint("Check if GTM/GTM-proxy is running @ %s:%d",
-							 GtmHost, GtmPort)));
-
-			errno = save_errno;
-			CloseGTM();
-
-			/* Sleep for 5 seconds and then retry */
-			pg_usleep(5*1000000L);
-		}
-#ifdef XCP
-		else if (IS_PGXC_COORDINATOR)
-		{
-			register_session(conn, PGXCNodeName, MyProcPid, MyBackendId);
-			break;
-		}
-	}
-#endif
-
-	if (GTMPQstatus(conn) == CONNECTION_OK)
-	{
 		/* Log activity of GTM connections */
 		if (IsAutoVacuumWorkerProcess())
 			elog(DEBUG1, "Autovacuum worker: connection established to GTM with string %s", conn_str);
@@ -149,6 +97,25 @@ InitGTM(void)
 		else
 			elog(DEBUG1, "Postmaster child: connection established to GTM with string %s", conn_str);
 	}
+
+	conn = PQconnectGTM(conn_str);
+	if (GTMPQstatus(conn) != CONNECTION_OK)
+	{
+		int save_errno = errno;
+
+		ereport(WARNING,
+				(errcode(ERRCODE_CONNECTION_EXCEPTION),
+				 errmsg("can not connect to GTM: %m")));
+
+		errno = save_errno;
+
+		CloseGTM();
+	}
+
+#ifdef XCP
+	else if (IS_PGXC_COORDINATOR)
+		register_session(conn, PGXCNodeName, MyProcPid, MyBackendId);
+#endif
 }
 
 void
