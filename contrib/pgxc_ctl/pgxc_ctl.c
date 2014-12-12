@@ -241,7 +241,7 @@ static void read_configuration(void)
 	FILE *conf;
 	char cmd[MAXPATH+1];
 
-	install_pgxc_ctl_bash(pgxc_ctl_bash_path, false);
+	install_pgxc_ctl_bash(pgxc_ctl_bash_path);
 	if (pgxc_ctl_config_path[0])
 		snprintf(cmd, MAXPATH, "%s --home %s --configuration %s", 
 				 pgxc_ctl_bash_path, pgxc_ctl_home, pgxc_ctl_config_path);
@@ -267,7 +267,7 @@ static void prepare_pgxc_ctl_bash(char *path)
 
 	rc = stat(path, &buf);
 	if (rc)
-		install_pgxc_ctl_bash(path, true);
+		install_pgxc_ctl_bash(path);
 	else
 		if (S_ISREG(buf.st_mode))
 			return;
