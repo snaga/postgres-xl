@@ -24,7 +24,7 @@ extern char *pgxc_ctl_conf_prototype[];
 /*
  * Install bash script.
  */
-void install_pgxc_ctl_bash(char *path)
+void install_pgxc_ctl_bash(char *path, int read_prototype)
 {
 	char cmd[1024];
 	FILE *pgxc_ctl_bash = fopen(path, "w");
@@ -35,8 +35,11 @@ void install_pgxc_ctl_bash(char *path)
 	{
 		elog(ERROR, "ERROR: Could not open pgxc_ctl bash script, %s, %s\n", path, strerror(errno));
 	}
-	for (i=0; pgxc_ctl_conf_prototype[i]; i++)
-		fprintf(pgxc_ctl_bash, "%s\n", pgxc_ctl_conf_prototype[i]);
+	if (read_prototype)
+	{
+		for (i=0; pgxc_ctl_conf_prototype[i]; i++)
+			fprintf(pgxc_ctl_bash, "%s\n", pgxc_ctl_conf_prototype[i]);
+	}
 	for (i=0; pgxc_ctl_bash_script[i]; i++)
 		fprintf(pgxc_ctl_bash, "%s\n", pgxc_ctl_bash_script[i]);
 	fclose(pgxc_ctl_bash);

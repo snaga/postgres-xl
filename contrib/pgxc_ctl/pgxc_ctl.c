@@ -209,6 +209,9 @@ static void build_configuration_path(char *path)
 			elog(ERROR, "ERROR: Default configuration file \"%s\" was not found while no configuration file was specified\n", 
 				pgxc_ctl_config_path);
 			pgxc_ctl_config_path[0] = 0;
+
+			/* Read prototype config file if no default config file found */
+			install_pgxc_ctl_bash(pgxc_ctl_bash_path, true);
 			return;
 		}
 	}
@@ -231,6 +234,16 @@ static void build_configuration_path(char *path)
 		else
 			elog(ERROR, "ERROR: File \"%s\" not found or not a regular file", 
 					 pgxc_ctl_config_path);
+		/* Read prototype config file if no config file found */
+		install_pgxc_ctl_bash(pgxc_ctl_bash_path, true);
+	}
+	else
+	{
+		/* 
+		 * Since we found a valid config file, don't read the prototype config
+		 * file as it may conflict with the user conf file
+		 */
+		install_pgxc_ctl_bash(pgxc_ctl_bash_path, false);
 	}
 	return;
 }
@@ -241,12 +254,12 @@ static void read_configuration(void)
 	FILE *conf;
 	char cmd[MAXPATH+1];
 
-	install_pgxc_ctl_bash(pgxc_ctl_bash_path);
 	if (pgxc_ctl_config_path[0])
 		snprintf(cmd, MAXPATH, "%s --home %s --configuration %s", 
 				 pgxc_ctl_bash_path, pgxc_ctl_home, pgxc_ctl_config_path);
 	else
 		snprintf(cmd, MAXPATH, "%s --home %s", pgxc_ctl_bash_path, pgxc_ctl_home);
+
 	elog(NOTICE, "Reading configuration using %s\n", cmd);
 	conf = popen(cmd, "r");
 	if (conf == NULL)
@@ -267,7 +280,7 @@ static void prepare_pgxc_ctl_bash(char *path)
 
 	rc = stat(path, &buf);
 	if (rc)
-		install_pgxc_ctl_bash(path);
+		install_pgxc_ctl_bash(path, false);
 	else
 		if (S_ISREG(buf.st_mode))
 			return;
