@@ -10,6 +10,7 @@
  */
 #include <stdlib.h>
 #include <stdio.h>
+#include <sys/types.h>
 
 extern void *Malloc(size_t size);
 extern void *Malloc0(size_t size);

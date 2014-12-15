@@ -440,6 +440,17 @@ int main(int argc, char *argv[])
 		{0, 0, 0, 0}
 	};
 
+#ifdef XCP	
+	int is_bash_exist = system("command -v bash");
+
+	if ( is_bash_exist != 0 )
+	{
+		fprintf(stderr, "Cannot find bash. Please ensure that bash is "
+				"installed and available in the PATH\n");
+		exit(2);
+	}
+#endif
+
 	strcpy(progname, argv[0]);
 	init_var_hash();
 
