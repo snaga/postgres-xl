@@ -199,7 +199,12 @@ SharedQueuesInit(void)
 
 	info.keysize = SQUEUE_KEYSIZE;
 	info.entrysize = SQUEUE_SIZE;
-	hash_flags = HASH_ELEM;
+
+	/*
+	 * Create hash table of fixed size to avoid running out of
+	 * SQueueSyncs
+	 */
+	hash_flags = HASH_ELEM | HASH_FIXED_SIZE;
 
 	SharedQueues = ShmemInitHash("Shared Queues", NUM_SQUEUES,
 								 NUM_SQUEUES, &info, hash_flags);
@@ -267,6 +272,10 @@ tryagain:
 	LWLockAcquire(SQueuesLock, LW_EXCLUSIVE);
 
 	sq = (SharedQueue) hash_search(SharedQueues, sqname, HASH_ENTER, &found);
+	if (!sq)
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+				errmsg("out of shared queue, please increase shared_queues")));
+
 	/* First process acquiring queue should format it */
 	if (!found)
 	{
@@ -298,6 +307,8 @@ tryagain:
 				break;
 			}
 		}
+
+		Assert(sq->sq_sync != NULL);
 
 		sq->sq_nconsumers = ncons;
 		/* Determine queue size for a single consumer */
@@ -1077,6 +1088,10 @@ SharedQueueCanPause(SharedQueue squeue)
 		}
 		LWLockRelease(sqsync->sqs_consumer_sync[i].cs_lwlock);
 	}
+	
+	if (!ncons)
+		return false;
+
 	/*
 	 * Pause only if average consumer queue is full more then on half.
 	 */
