@@ -132,6 +132,8 @@ static int	port_gtm = -1;
  */
 static int	co1_pooler_port = -1;
 static int	co2_pooler_port = -1;
+static int	dn1_pooler_port = -1;
+static int	dn2_pooler_port = -1;
 
 /* Data folder of each node */
 const char *data_co1 = "data_co1"; /* Coordinator 1 */
@@ -551,7 +553,9 @@ get_pooler_port(PGXCNodeTypeNum node)
 		case PGXC_COORD_2:
 			return co2_pooler_port;
 		case PGXC_DATANODE_1:
+			return dn1_pooler_port;
 		case PGXC_DATANODE_2:
+			return dn2_pooler_port;
 		default:
 			/* Should not happen */
 			return -1;
@@ -851,13 +855,8 @@ set_node_config_file(PGXCNodeTypeNum node)
 	snprintf(buf, sizeof(buf), "gtm_port = %d\n", get_port_number(PGXC_GTM));
 	fputs(buf, pg_conf);
 
-	/* Set pooler port for Coordinators */
-	if (node == PGXC_COORD_1 ||
-		node == PGXC_COORD_2)
-	{
-		snprintf(buf, sizeof(buf), "pooler_port = %d\n", get_pooler_port(node));
-		fputs(buf, pg_conf);
-	}
+	snprintf(buf, sizeof(buf), "pooler_port = %d\n", get_pooler_port(node));
+	fputs(buf, pg_conf);
 
 	if (temp_config != NULL)
 	{
@@ -932,39 +931,113 @@ static void
 setup_connection_information(void)
 {
 	header(_("setting connection information"));
-	/* Datanodes on Coordinator 1*/
-	psql_command_node("postgres", PGXC_COORD_1, "CREATE NODE %s WITH (HOST = 'localhost',"
-					  " type = 'datanode', PORT = %d);",
-					  (char *)get_node_name(PGXC_DATANODE_1),
-					  get_port_number(PGXC_DATANODE_1));
-	psql_command_node("postgres", PGXC_COORD_1, "CREATE NODE %s WITH (HOST = 'localhost',"
-					  " type = 'datanode', PORT = %d);",
-					  (char *)get_node_name(PGXC_DATANODE_2),
-					  get_port_number(PGXC_DATANODE_2));
-	/* Datanodes on Coordinator 2 */
-	psql_command_node("postgres", PGXC_COORD_2, "CREATE NODE %s WITH (HOST = 'localhost',"
-					  " type = 'datanode', PORT = %d);",
-					  (char *)get_node_name(PGXC_DATANODE_1),
-					  get_port_number(PGXC_DATANODE_1));
-	psql_command_node("postgres", PGXC_COORD_2, "CREATE NODE %s WITH (HOST = 'localhost',"
-					  " type = 'datanode', PORT = %d);",
-					  (char *)get_node_name(PGXC_DATANODE_2),
-					  get_port_number(PGXC_DATANODE_2));
 
+	/* -----coordinator 1 ------- */
+	/* node info in Coordinator 1 */
+	psql_command_node("postgres", PGXC_COORD_1, "ALTER NODE %s WITH (HOST = 'localhost',"
+					  " type = 'coordinator', PORT = %d);",
+					  (char *)get_node_name(PGXC_COORD_1),
+					  get_port_number(PGXC_COORD_1));
 	/* Remote Coordinator on Coordinator 1 */
 	psql_command_node("postgres", PGXC_COORD_1, "CREATE NODE %s WITH (HOST = 'localhost',"
 					  " type = 'coordinator', PORT = %d);",
 					  (char *)get_node_name(PGXC_COORD_2),
 					  get_port_number(PGXC_COORD_2));
+	/* Datanodes on Coordinator 1 */
+	psql_command_node("postgres", PGXC_COORD_1, "CREATE NODE %s WITH (HOST = 'localhost',"
+					  " type = 'datanode', PORT = %d, PRIMARY, PREFERRED);",
+					  (char *)get_node_name(PGXC_DATANODE_1),
+					  get_port_number(PGXC_DATANODE_1));
+	psql_command_node("postgres", PGXC_COORD_1, "CREATE NODE %s WITH (HOST = 'localhost',"
+					  " type = 'datanode', PORT = %d);",
+					  (char *)get_node_name(PGXC_DATANODE_2),
+					  get_port_number(PGXC_DATANODE_2));
+
+	/* Then reload the connection data */
+	psql_command_node("postgres", PGXC_COORD_1, "SELECT pgxc_pool_reload();");
+
+	/* -----coordinator 2 ------- */
+
 	/* Remote Coordinator on Coordinator 2 */
 	psql_command_node("postgres", PGXC_COORD_2, "CREATE NODE %s WITH (HOST = 'localhost',"
 					  " type = 'coordinator', PORT = %d);",
 					  (char *)get_node_name(PGXC_COORD_1),
 					  get_port_number(PGXC_COORD_1));
-
+	/* node info in Coordinator 2 */
+	psql_command_node("postgres", PGXC_COORD_2, "ALTER NODE %s WITH (HOST = 'localhost',"
+					  " type = 'coordinator', PORT = %d);",
+					  (char *)get_node_name(PGXC_COORD_2),
+					  get_port_number(PGXC_COORD_2));
+	/* Datanodes on Coordinator 2 */
+	psql_command_node("postgres", PGXC_COORD_2, "CREATE NODE %s WITH (HOST = 'localhost',"
+					  " type = 'datanode', PORT = %d, PRIMARY, PREFERRED);",
+					  (char *)get_node_name(PGXC_DATANODE_1),
+					  get_port_number(PGXC_DATANODE_1));
+	psql_command_node("postgres", PGXC_COORD_2, "CREATE NODE %s WITH (HOST = 'localhost',"
+					  " type = 'datanode', PORT = %d);",
+					  (char *)get_node_name(PGXC_DATANODE_2),
+					  get_port_number(PGXC_DATANODE_2));
 	/* Then reload the connection data */
-	psql_command_node("postgres", PGXC_COORD_1, "SELECT pgxc_pool_reload();");
 	psql_command_node("postgres", PGXC_COORD_2, "SELECT pgxc_pool_reload();");
+
+	/* -----datanode 1 ------- */
+
+	/* Remote Coordinator 1 on Datanode 1 */
+	psql_command_node("postgres", PGXC_COORD_1, "EXECUTE DIRECT ON ( %s ) $$CREATE NODE %s WITH (HOST = 'localhost',"
+					  " type = 'coordinator', PORT = %d)$$;",
+					  (char *)get_node_name(PGXC_DATANODE_1),
+					  (char *)get_node_name(PGXC_COORD_1),
+					  get_port_number(PGXC_COORD_1));
+	/* Remote Coordinator 2 on Datanode 1 */
+	psql_command_node("postgres", PGXC_COORD_1, "EXECUTE DIRECT ON ( %s ) $$CREATE NODE %s WITH (HOST = 'localhost',"
+					  " type = 'coordinator', PORT = %d)$$;",
+					  (char *)get_node_name(PGXC_DATANODE_1),
+					  (char *)get_node_name(PGXC_COORD_2),
+					  get_port_number(PGXC_COORD_2));
+	/* node info in Datanode 1 */
+	psql_command_node("postgres", PGXC_COORD_1, "EXECUTE DIRECT ON ( %s ) $$ ALTER NODE %s WITH (HOST = 'localhost',"
+					  " type = 'datanode', PORT = %d, PRIMARY, PREFERRED)$$;",
+					  (char *)get_node_name(PGXC_DATANODE_1),
+					  (char *)get_node_name(PGXC_DATANODE_1),
+					  get_port_number(PGXC_DATANODE_1));
+	/* Remote Datanode 2 on Datanode 1 */
+	psql_command_node("postgres", PGXC_COORD_1, "EXECUTE DIRECT ON ( %s ) $$CREATE NODE %s WITH (HOST = 'localhost',"
+					  " type = 'datanode', PORT = %d)$$;",
+					  (char *)get_node_name(PGXC_DATANODE_1),
+					  (char *)get_node_name(PGXC_DATANODE_2),
+					  get_port_number(PGXC_DATANODE_2));
+	psql_command_node("postgres", PGXC_COORD_1, "EXECUTE DIRECT ON ( %s ) $$SELECT pgxc_pool_reload()$$;",
+					  (char *)get_node_name(PGXC_DATANODE_1));
+        
+	/* -----datanode 2 ------- */
+
+	/* Remote Coordinator 1 on Datanode 2 */
+	psql_command_node("postgres", PGXC_COORD_1, "EXECUTE DIRECT ON ( %s ) $$CREATE NODE %s WITH (HOST = 'localhost',"
+					  " type = 'coordinator', PORT = %d)$$;",
+					  (char *)get_node_name(PGXC_DATANODE_2),
+					  (char *)get_node_name(PGXC_COORD_1),
+					  get_port_number(PGXC_COORD_1));
+	/* Remote Coordinator 2 on Datanode 2 */
+	psql_command_node("postgres", PGXC_COORD_1, "EXECUTE DIRECT ON ( %s ) $$CREATE NODE %s WITH (HOST = 'localhost',"
+					  " type = 'coordinator', PORT = %d)$$;",
+					  (char *)get_node_name(PGXC_DATANODE_2),
+					  (char *)get_node_name(PGXC_COORD_2),
+					  get_port_number(PGXC_COORD_2));
+	/* Remote Datanode 1 on Datanode 2 */
+	psql_command_node("postgres", PGXC_COORD_1, "EXECUTE DIRECT ON ( %s ) $$CREATE NODE %s WITH (HOST = 'localhost',"
+					  " type = 'datanode', PORT = %d, PRIMARY, PREFERRED)$$;",
+					  (char *)get_node_name(PGXC_DATANODE_2),
+					  (char *)get_node_name(PGXC_DATANODE_1),
+					  get_port_number(PGXC_DATANODE_1));
+	/* node info in Datanode 2 */
+	psql_command_node("postgres", PGXC_COORD_1, "EXECUTE DIRECT ON ( %s ) $$ ALTER NODE %s WITH (HOST = 'localhost',"
+					  " type = 'datanode', PORT = %d)$$;",
+					  (char *)get_node_name(PGXC_DATANODE_2),
+					  (char *)get_node_name(PGXC_DATANODE_2),
+					  get_port_number(PGXC_DATANODE_2));
+
+	psql_command_node("postgres", PGXC_COORD_1, "EXECUTE DIRECT ON ( %s ) $$SELECT pgxc_pool_reload()$$;",
+					  (char *)get_node_name(PGXC_DATANODE_2));
 }
 
 
@@ -2812,6 +2885,8 @@ regression_main(int argc, char *argv[], init_function ifunc, test_function tfunc
 	port_gtm = (0xC000 | (PG_VERSION_NUM & 0x3FFF)) + 4;
 	co1_pooler_port = (0xC000 | (PG_VERSION_NUM & 0x3FFF)) + 5;
 	co2_pooler_port = (0xC000 | (PG_VERSION_NUM & 0x3FFF)) + 6;
+	dn1_pooler_port = (0xC000 | (PG_VERSION_NUM & 0x3FFF)) + 7;
+	dn2_pooler_port = (0xC000 | (PG_VERSION_NUM & 0x3FFF)) + 8;
 #endif
 
 	inputdir = make_absolute_path(inputdir);
