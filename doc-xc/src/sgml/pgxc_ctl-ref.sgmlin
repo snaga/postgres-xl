@@ -261,6 +261,15 @@ or
 PGXC$ prepare config my_pgxc.conf
 PGXC$
 </programlisting>
+
+You may also generate a template configuration file suitable for testing
+<application>Postgres-XL</application> on the localhost. Use option
+<literal>minimal</literal> to generate a such a template configuration file.
+<programlisting>
+PGXC$ prepare config minimal
+PGXC$ prepare config minimal my_minimal_pgxc.conf
+</programlisting>
+
    A more detailed syntax of the command will be described in a later section.
   </para>
 
@@ -813,6 +822,16 @@ PGXC$ prepare config my_config.conf
    to define the cluster configuration.
    With template values and comments, it will be easy to understand
    what they mean.
+   </para>
+   <para>
+   You can also generate a minimal configuration file, god enough to test
+<application>Postgres-XL</application> on the localhost by specifying
+<literal>minimal</literal>. For example:
+<programlisting>
+PGXC$ prepare config minimal
+PGXC$ prepare config minimal my_minimal_config.conf
+</programlisting>
+
    The following describes each variable in the order you find in the
    configuration template. 
   </para>

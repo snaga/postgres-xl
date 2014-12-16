@@ -30,8 +30,6 @@
 #include "utils.h"
 #include "do_shell.h"
 
-extern char *pgxc_ctl_conf_prototype[];
-
 static void addServer(char **name);
 static void verifyResource(void);
 
@@ -200,27 +198,6 @@ void read_selected_vars(FILE *conf, char *selectThis[])
 
 	while (fgets(line, MAXLINE, conf))
 		parse_line_select(line, selectThis);
-}
-
-/*
- * Build the configuraiton file prototype.
- */
-void install_conf_prototype(char *path)
-{
-	char cmd[MAXPATH+1];
-	FILE *pgxc_config_proto = fopen(path, "w");
-	int i;
-
-	if (!pgxc_config_proto)
-	{
-		elog(ERROR, "ERROR Could not open configuration prototype to %s. %s\n", path, strerror(errno));
-		return;
-	}
-	for (i = 0; pgxc_ctl_conf_prototype[i]; i++)
-		fprintf(pgxc_config_proto, "%s\n", pgxc_ctl_conf_prototype[i]);
-	fclose(pgxc_config_proto);
-	snprintf(cmd, MAXPATH, "chmod +x %s", path);
-	system(cmd);
 }
 
 /*

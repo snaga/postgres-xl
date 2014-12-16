@@ -39,6 +39,7 @@
 #include "monitor.h"
 
 extern char *pgxc_ctl_conf_prototype[];
+extern char *pgxc_ctl_conf_prototype_minimal[];
 
 #define Exit(c) exit(myWEXITSTATUS(c))
 #define GetToken() (line = get_word(line, &token))
@@ -62,18 +63,24 @@ static void stop_all(char *immediate);
 static int show_Resource(char *datanodeName, char *databasename, char *username);
 static void do_show_help(char *line);
 
+typedef enum ConfigType
+{
+	CONFIG_MINIMAL,
+	CONFIG_COMPLETE
+} ConfigType;
+
 static void do_echo_command(char * line)
 {
 	printf("do_echo_command\n");
 }
 
-static void do_prepareConfFile(char *Path)
+static void do_prepareConfFile(char *Path, ConfigType config_type)
 {
 	char *path = NULL;
 	FILE *conf;
 	int ii;
+	char **my_pgxc_conf_prototype;
 
-	
 	if (Path)
 		path = Path;
 	else
@@ -92,9 +99,15 @@ static void do_prepareConfFile(char *Path)
 		elog(ERROR, "ERROR: Could not open the configuration file \"%s\", %s.\n", path, strerror(errno));
 		return;
 	}
-	for (ii = 0; pgxc_ctl_conf_prototype[ii]; ii++)
+
+	if (config_type == CONFIG_MINIMAL)
+		my_pgxc_conf_prototype = pgxc_ctl_conf_prototype_minimal;
+	else
+		my_pgxc_conf_prototype = pgxc_ctl_conf_prototype;
+
+	for (ii = 0; my_pgxc_conf_prototype[ii]; ii++)
 	{
-		fprintf(conf, "%s\n", pgxc_ctl_conf_prototype[ii]);
+		fprintf(conf, "%s\n", my_pgxc_conf_prototype[ii]);
 	}
 	fclose(conf);
 	return;
@@ -2341,14 +2354,23 @@ int do_singleLine(char *buf, char *wkline)
 	}
 	else if (TestToken("prepare"))
 	{
-		if (GetToken() == NULL)
-			do_prepareConfFile(NULL);
-		if (!TestToken("config"))
-			do_prepareConfFile(token);
-		else if (GetToken() == NULL)
-			do_prepareConfFile(NULL);
-		else
-			do_prepareConfFile(token);
+		char *config_path = NULL;
+		ConfigType	config_type = CONFIG_COMPLETE;
+
+		if (GetToken() != NULL)
+		{
+			if (TestToken("config"))
+				GetToken();
+
+			if (TestToken("minimal"))
+				config_type = CONFIG_MINIMAL;
+			else if (TestToken("complete"))
+				config_type = CONFIG_COMPLETE;
+			else if (token)
+				config_path = strdup(token);
+		}
+
+		do_prepareConfFile(config_path, config_type);
 		return 0;
 	}
 	else if (TestToken("kill"))

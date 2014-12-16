@@ -23,7 +23,6 @@ typedef enum NodeType {
 	NodeType_SERVER} NodeType;
 
 void read_vars(FILE *conf);
-void install_conf_prototype(char *path);
 void check_configuration(void);
 void read_selected_vars(FILE *conf, char *selectThis[]);
 char *get_word(char *line, char **token);
