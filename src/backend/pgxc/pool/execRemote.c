@@ -5831,7 +5831,7 @@ ExecRemoteUtility(RemoteQuery *node)
 	ExecDirectType		exec_direct_type = node->exec_direct_type;
 	int			i;
 #ifdef XCP
-	CommandId	cid = GetCurrentCommandId(false);	
+	CommandId	cid = GetCurrentCommandId(true);	
 #endif	
 
 	if (!force_autocommit)
