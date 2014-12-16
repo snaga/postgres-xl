@@ -970,7 +970,7 @@ HandleDataRow(RemoteQueryState *combiner, char *msg_body, size_t len, int nid)
  */
 static void
 #ifdef XCP
-HandleError(ResponseCombiner *combiner, char *msg_body, size_t len)
+HandleError(ResponseCombiner *combiner, char *msg_body, size_t len, PGXCNodeHandle *conn)
 #else
 HandleError(RemoteQueryState *combiner, char *msg_body, size_t len)
 #endif
@@ -1043,6 +1043,16 @@ HandleError(RemoteQueryState *combiner, char *msg_body, size_t len)
 		if (detail)
 			combiner->errorDetail = pstrdup(detail);
 	}
+
+	/*
+	 * If the PREPARE TRANSACTION command fails for whatever reason, we don't
+	 * want to send down ROLLBACK PREPARED to this node. Otherwise, it may end
+	 * up rolling back an unrelated prepared transaction with the same GID as
+	 * used by this transaction
+	 */
+	if (conn->ck_resp_rollback)
+		conn->ck_resp_rollback = false;
+
 #else
 	if (!combiner->errorMessage)
 	{
@@ -2308,7 +2318,7 @@ handle_response(PGXCNodeHandle *conn, ResponseCombiner *combiner)
 				HandleCopyDataRow(combiner, msg, msg_len);
 				break;
 			case 'E':			/* ErrorResponse */
-				HandleError(combiner, msg, msg_len);
+				HandleError(combiner, msg, msg_len, conn);
 				add_error_message(conn, combiner->errorMessage);
 				return RESPONSE_ERROR;
 			case 'A':			/* NotificationResponse */
