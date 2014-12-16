@@ -2964,6 +2964,9 @@ PrepareTransaction(void)
 #ifdef PGXC
 	/* Clean up GTM callbacks */
 	CleanGTMCallbacks();
+#ifdef XCP	
+	AtEOXact_Remote();	
+#endif	
 #endif
 
 	s->transactionId = InvalidTransactionId;
