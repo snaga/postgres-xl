@@ -2368,6 +2368,9 @@ int do_singleLine(char *buf, char *wkline)
 				config_type = CONFIG_COMPLETE;
 			else if (token)
 				config_path = strdup(token);
+
+			if (GetToken() != NULL)
+				config_path = strdup(token);
 		}
 
 		do_prepareConfFile(config_path, config_type);

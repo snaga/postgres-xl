@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Common variables ######################################################################
 xc_prompt='PGXC$ '
 interactive=n
@@ -53,6 +53,7 @@ function print_values
 
 	# GTM slave
 	echo gtmSlave $gtmSlave
+	echo gtmSlaveName $gtmSlaveName
 	echo gtmSlaveServer $gtmSlaveServer
 	echo gtmSlavePort $gtmSlavePort
 	echo gtmSlaveDir $gtmSlaveDir

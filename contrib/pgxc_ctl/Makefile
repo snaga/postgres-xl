@@ -12,7 +12,7 @@ PGFILEDESC = "pgxc_ctl - Provide XC configuration and opeation"
 PGAPPICON = win32
 
 PROGRAM= pgxc_ctl
-OBJS= bash_handler.o config.o pgxc_ctl.o pgxc_ctl_bash.o variables.o pgxc_ctl_log.o do_command.o \
+OBJS= pgxc_ctl_bash.o bash_handler.o config.o pgxc_ctl.o variables.o pgxc_ctl_log.o do_command.o \
 	 utils.o do_shell.o gtm_cmd.o coord_cmd.o datanode_cmd.o gtm_util.o mcxt.o monitor.o
 
 
@@ -36,10 +36,10 @@ include $(top_builddir)/src/Makefile.global
 include $(top_srcdir)/contrib/contrib-global.mk
 endif
 
-pgxc_ctl_bash.c: pgxc_ctl_conf_part pgxc_ctl_bash_2
+pgxc_ctl_bash.c: pgxc_ctl_conf_part_full pgxc_ctl_conf_part_minimal pgxc_ctl_bash_2
 	./make_signature
-	touch pgxc_ctl_bash.c
-	touch pgxc_ctl_bash_conf_part
 
-clean_script:
-	rm -f pgxc_ctl_bash.c
+clean: clean-script
+
+clean-script:
+	rm -f pgxc_ctl_bash.c signature.h

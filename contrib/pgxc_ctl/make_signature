@@ -108,7 +108,7 @@ EOF
 
 rm pgxc_ctl_bash.c.wk
 
-cp pgxc_ctl_conf_part pgxc_ctl_conf_part.wk
+cp pgxc_ctl_conf_part_full pgxc_ctl_conf_part.wk
 
 ex pgxc_ctl_conf_part.wk <<EOF
 %s/"/\\\"/g
@@ -128,6 +128,37 @@ cat >> pgxc_ctl_bash.c <<EOF
  */
 
 char *pgxc_ctl_conf_prototype[] = {
+EOF
+
+cat pgxc_ctl_conf_part.wk >> pgxc_ctl_bash.c
+
+cat >> pgxc_ctl_bash.c <<EOF
+NULL
+};
+EOF
+
+rm pgxc_ctl_conf_part.wk
+
+cp pgxc_ctl_conf_part_minimal pgxc_ctl_conf_part.wk
+
+ex pgxc_ctl_conf_part.wk <<EOF
+%s/"/\\\"/g
+w
+%s/^\(.*\)$/"\1",/
+%s/^"#ifdef XCP",$/#ifdef XCP/
+%s/^"#endif",$/#endif/
+wq
+EOF
+
+cat >> pgxc_ctl_bash.c <<EOF
+/*
+ * Prototype of pgxc_ctl configuration file.
+ *
+ * It should be self descripting.   Can be extracted to your pgxc_ctl
+ * work directory with 'prepare config' command.
+ */
+
+char *pgxc_ctl_conf_prototype_minimal[] = {
 EOF
 
 cat pgxc_ctl_conf_part.wk >> pgxc_ctl_bash.c

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # Postgres-XC Configuration file for pgxc_ctl utility. 
 #
@@ -51,7 +51,7 @@
 pgxcInstallDir=$HOME/pgxc
 #---- OVERALL -----------------------------------------------------------------------------
 #
-pgxcOwner=koichi		# owner of the Postgres-XC databaseo cluster.  Here, we use this
+pgxcOwner=$USER		# owner of the Postgres-XC databaseo cluster.  Here, we use this
 						# both as linus user and database user.  This must be
 						# the super user of each coordinator and datanode.
 pgxcUser=$pgxcOwner		# OS user of Postgres-XC owner
@@ -63,6 +63,8 @@ configBackup=n					# If you want config file backup, specify y to this value.
 configBackupHost=pgxc-linker	# host to backup config file
 configBackupDir=$HOME/pgxc		# Backup directory
 configBackupFile=pgxc_ctl.bak	# Backup file name --> Need to synchronize when original changed.
+
+dataDirRoot=$HOME/DATA/pgxl/nodes
 
 #---- GTM ------------------------------------------------------------------------------------
 
@@ -77,9 +79,9 @@ gtmName=gtm
 #---- GTM Master -----------------------------------------------
 
 #---- Overall ----
-gtmMasterServer=node13
+gtmMasterServer=localhost
 gtmMasterPort=20001
-gtmMasterDir=$HOME/pgxc/nodes/gtm
+gtmMasterDir=$dataDirRoot/gtm
 
 #---- Configuration ---
 gtmExtraConfig=none			# Will be added gtm.conf for both Master and Slave (done at initilization only)
@@ -91,16 +93,17 @@ gtmMasterSpecificExtraConfig=none	# Will be added to Master's gtm.conf (done at 
 # for backup.
 
 #---- Overall ------
-gtmSlave=y					# Specify y if you configure GTM Slave.   Otherwise, GTM slave will not be configured and
+gtmSlave=n					# Specify y if you configure GTM Slave.   Otherwise, GTM slave will not be configured and
 							# all the following variables will be reset.
-gtmSlaveServer=node12		# value none means GTM slave is not available.  Give none if you don't configure GTM Slave.
-gtmSlavePort=20001			# Not used if you don't configure GTM slave.
-gtmSlaveDir=$HOME/pgxc/nodes/gtm	# Not used if you don't configure GTM slave.
+gtmSlaveName=gtmSlave
+gtmSlaveServer=localhost		# value none means GTM slave is not available.  Give none if you don't configure GTM Slave.
+gtmSlavePort=20002			# Not used if you don't configure GTM slave.
+gtmSlaveDir=$dataDirRoot/gtm_slv	# Not used if you don't configure GTM slave.
 # Please note that when you have GTM failover, then there will be no slave available until you configure the slave
 # again. (pgxc_add_gtm_slave function will handle it)
 
 #---- Configuration ----
-gtmSlaveSpecificExtraConfig=none # Will be added to Slave's gtm.conf (done at initialization only)
+#gtmSlaveSpecificExtraConfig=none # Will be added to Slave's gtm.conf (done at initialization only)
 
 #---- GTM Proxy -------------------------------------------------------------------------------------------------------
 # GTM proxy will be selected based upon which server each component runs on.
@@ -113,7 +116,7 @@ gtmSlaveSpecificExtraConfig=none # Will be added to Slave's gtm.conf (done at in
 # to GTM Master directly.  If you configure GTL slave, you must configure GTM proxy too.
 
 #---- Shortcuts ------
-gtmProxyDir=$HOME/pgxc/nodes/gtm_pxy
+gtmProxyDir=$dataDirRoot/gtm_pxy
 
 #---- Overall -------
 gtmProxy=y				# Specify y if you conifugre at least one GTM proxy.   You may not configure gtm proxies
@@ -122,56 +125,53 @@ gtmProxy=y				# Specify y if you conifugre at least one GTM proxy.   You may not
 						# If we find there're no valid Proxy server names (means, every servers are specified
 						# as none), then gtmProxy value will be set to "n" and all the entries will be set to
 						# empty values.
-gtmProxyNames=(gtm_pxy1 gtm_pxy2 gtm_pxy3 gtm_pxy4)	# No used if it is not configured
-gtmProxyServers=(node06 node07 node08 node09)			# Specify none if you dont' configure it.
-gtmProxyPorts=(20001 20001 20001 20001)				# Not used if it is not configured.
-gtmProxyDirs=($gtmProxyDir $gtmProxyDir $gtmProxyDir $gtmProxyDir)	# Not used if it is not configured.
+gtmProxyNames=(gtm_pxy1)	# No used if it is not configured
+gtmProxyServers=(localhost)			# Specify none if you dont' configure it.
+gtmProxyPorts=(20101)				# Not used if it is not configured.
+gtmProxyDirs=($gtmProxyDir.1)	# Not used if it is not configured.
 
 #---- Configuration ----
-gtmPxyExtraConfig=none		# Extra configuration parameter for gtm_proxy.  Coordinator section has an example.
-gtmPxySpecificExtraConfig=(none none none none)
+gtmPxyExtraConfig=n		# Extra configuration parameter for gtm_proxy.  Coordinator section has an example.
 
 #---- Coordinators ----------------------------------------------------------------------------------------------------
 
 #---- shortcuts ----------
-coordMasterDir=$HOME/pgxc/nodes/coord
-coordSlaveDir=$HOME/pgxc/nodes/coord_slave
-coordArchLogDir=$HOME/pgxc/nodes/coord_archlog
+coordMasterDir=$dataDirRoot/coord_master
+coordSlaveDir=$HOME/coord_slave
+coordArchLogDir=$HOME/coord_archlog
 
 #---- Overall ------------
-coordNames=(coord1 coord2 coord3 coord4)		# Master and slave use the same name
-coordPorts=(20004 20005 20004 20005)			# Master ports
-poolerPorts=(20010 20011 20010 20011)			# Master pooler ports
-coordPgHbaEntries=(192.168.1.0/24)				# Assumes that all the coordinator (master/slave) accepts
+coordNames=(coord1 coord2)		# Master and slave use the same name
+coordPorts=(30001 30002)			# Master server listening ports
+poolerPorts=(30011 30012)			# Master pooler ports
+coordPgHbaEntries=(::1/128)	# Assumes that all the coordinator (master/slave) accepts
 												# the same connection
 												# This entry allows only $pgxcOwner to connect.
 												# If you'd like to setup another connection, you should
 												# supply these entries through files specified below.
-# Note: The above parameter is extracted as "host all all 0.0.0.0/0 trust".   If you don't want
-# such setups, specify the value () to this variable and suplly what you want using coordExtraPgHba
-# and/or coordSpecificExtraPgHba variables.
+#coordPgHbaEntries=(127.0.0.1/32)	# Same as above but for IPv4 connections
 
 #---- Master -------------
-coordMasterServers=(node06 node07 node08 node09)		# none means this master is not available
-coordMasterDirs=($coordMasterDir $coordMasterDir $coordMasterDir $coordMasterDir)
-coordMaxWALsernder=5	# max_wal_senders: needed to configure slave. If zero value is specified,
+coordMasterServers=(localhost localhost)		# none means this master is not available
+coordMasterDirs=($coordMasterDir.1 $coordMasterDir.2)
+coordMaxWALsender=5	# max_wal_senders: needed to configure slave. If zero value is specified,
 						# it is expected to supply this parameter explicitly by external files
 						# specified in the following.	If you don't configure slaves, leave this value to zero.
-coordMaxWALSenders=($coordMaxWALsernder $coordMaxWALsernder $coordMaxWALsernder $coordMaxWALsernder)
+coordMaxWALSenders=($coordMaxWALsender $coordMaxWALsender)
 						# max_wal_senders configuration for each coordinator.
 
 #---- Slave -------------
-coordSlave=y			# Specify y if you configure at least one coordiantor slave.  Otherwise, the following
+coordSlave=n			# Specify y if you configure at least one coordiantor slave.  Otherwise, the following
 						# configuration parameters will be set to empty values.
 						# If no effective server names are found (that is, every servers are specified as none),
 						# then coordSlave value will be set to n and all the following values will be set to
 						# empty values.
 coordSlaveSync=y		# Specify to connect with synchronized mode.
-coordSlaveServers=(node07 node08 node09 node06)			# none means this slave is not available
-coordSlavePorts=(20004 20005 20004 20005)			# Master ports
-coordSlavePoolerPorts=(20010 20011 20010 20011)			# Master pooler ports
-coordSlaveDirs=($coordSlaveDir $coordSlaveDir $coordSlaveDir $coordSlaveDir)
-coordArchLogDirs=($coordArchLogDir $coordArchLogDir $coordArchLogDir $coordArchLogDir)
+coordSlaveServers=(localhost localhost)			# none means this slave is not available
+coordSlavePorts=(30101 30102)			# coordinator slave listening ports
+coordSlavePoolerPorts=(30111 30112)			# coordinator slave pooler ports
+coordSlaveDirs=($coordSlaveDir.1 $coordSlaveDir.2)
+coordArchLogDirs=($coordArchLogDir.1 $coordArchLogDir.2)
 
 #---- Configuration files---
 # Need these when you'd like setup specific non-default configuration 
@@ -192,133 +192,76 @@ logging_collector = on
 log_directory = 'pg_log'
 listen_addresses = '*'
 max_connections = 100
+hot_standby = off
 EOF
 
 # Additional Configuration file for specific coordinator master.
 # You can define each setting by similar means as above.
-coordSpecificExtraConfig=(none none none none)
-coordExtraPgHba=none	# Extra entry for pg_hba.conf.  This file will be added to all the coordinators' pg_hba.conf
-coordSpecificExtraPgHba=(none none none none)
-
-#----- Additional Slaves -----
-#
-# Please note that this section is just a suggestion how we extend the configuration for
-# multiple and cascaded replication.   They're not used in the current version.
-#
-coordAdditionalSlaves=n		# Additional slave can be specified as follows: where you
-coordAdditionalSlaveSet=(cad1)		# Each specifies set of slaves.   This case, two set of slaves are
-											# configured
-cad1_Sync=n		  		# All the slaves at "cad1" are connected with asynchronous mode.
-							# If not, specify "y"
-							# The following lines specifies detailed configuration for each
-							# slave tag, cad1.  You can define cad2 similarly.
-cad1_Servers=(node08 node09 node06 node07)	# Hosts
-cad1_dir=$HOME/pgxc/nodes/coord_slave_cad1
-cad1_Dirs=($cad1_dir $cad1_dir $cad1_dir $cad1_dir)
-cad1_ArchLogDir=$HOME/pgxc/nodes/coord_archlog_cad1
-cad1_ArchLogDirs=($cad1_ArchLogDir $cad1_ArchLogDir $cad1_ArchLogDir $cad1_ArchLogDir)
-
+coordSpecificExtraConfig=(none none)
+coordSpecificExtraPgHba=(none none)
 
 #---- Datanodes -------------------------------------------------------------------------------------------------------
 
 #---- Shortcuts --------------
-datanodeMasterDir=$HOME/pgxc/nodes/dn_master
-datanodeSlaveDir=$HOME/pgxc/nodes/dn_slave
-datanodeArchLogDir=$HOME/pgxc/nodes/datanode_archlog
+datanodeMasterDir=$dataDirRoot/dn_master
+datanodeSlaveDir=$dataDirRoot/dn_slave
+datanodeArchLogDir=$dataDirRoot/datanode_archlog
 
 #---- Overall ---------------
-#primaryDatanode=datanode1				# Primary Node.
-# At present, xc has a priblem to issue ALTER NODE against the primay node.  Until it is fixed, the test will be done
-# without this feature.
-primaryDatanode=datanode1				# Primary Node.
-datanodeNames=(datanode1 datanode2 datanode3 datanode4)
-datanodePorts=(20008 20009 20008 20009)	# Master ports
-#ifdef XCP
-datanodePoolerPorts=(20012 20013 20012 20013)	# Master pooler ports
-#endif
-datanodePgHbaEntries=(192.168.1.0/24)	# Assumes that all the coordinator (master/slave) accepts
+primaryDatanode=datanode_1				# Primary Node.
+datanodeNames=(datanode_1 datanode_2)
+datanodePorts=(40001 40002)	# Master and slave use the same port!
+datanodePoolerPorts=(40011 40012)	# Master and slave use the same port!
+datanodePgHbaEntries=(::1/128)	# Assumes that all the coordinator (master/slave) accepts
 										# the same connection
 										# This list sets up pg_hba.conf for $pgxcOwner user.
 										# If you'd like to setup other entries, supply them
 										# through extra configuration files specified below.
-# Note: The above parameter is extracted as "host all all 0.0.0.0/0 trust".   If you don't want
-# such setups, specify the value () to this variable and suplly what you want using datanodeExtraPgHba
-# and/or datanodeSpecificExtraPgHba variables.
+#datanodePgHbaEntries=(127.0.0.1/32)	# Same as above but for IPv4 connections
 
 #---- Master ----------------
-datanodeMasterServers=(node06 node07 node08 node09)	# none means this master is not available.
+datanodeMasterServers=(localhost localhost)	# none means this master is not available.
 													# This means that there should be the master but is down.
 													# The cluster is not operational until the master is
 													# recovered and ready to run.	
-datanodeMasterDirs=($datanodeMasterDir $datanodeMasterDir $datanodeMasterDir $datanodeMasterDir)
+datanodeMasterDirs=($datanodeMasterDir.1 $datanodeMasterDir.2)
 datanodeMaxWalSender=5								# max_wal_senders: needed to configure slave. If zero value is 
 													# specified, it is expected this parameter is explicitly supplied
 													# by external configuration files.
 													# If you don't configure slaves, leave this value zero.
-datanodeMaxWALSenders=($datanodeMaxWalSender $datanodeMaxWalSender $datanodeMaxWalSender $datanodeMaxWalSender)
+datanodeMaxWALSenders=($datanodeMaxWalSender $datanodeMaxWalSender)
 						# max_wal_senders configuration for each datanode
 
 #---- Slave -----------------
-datanodeSlave=y			# Specify y if you configure at least one coordiantor slave.  Otherwise, the following
+#datanodeSlave=n			# Specify y if you configure at least one coordiantor slave.  Otherwise, the following
 						# configuration parameters will be set to empty values.
 						# If no effective server names are found (that is, every servers are specified as none),
 						# then datanodeSlave value will be set to n and all the following values will be set to
 						# empty values.
-datanodeSlaveServers=(node07 node08 node09 node06)	# value none means this slave is not available
-datanodeSlavePorts=(20008 20009 20008 20009)	# value none means this slave is not available
-datanodeSlavePoolerPorts=(20012 20013 20012 20013)	# value none means this slave is not available
-datanodeSlaveSync=y		# If datanode slave is connected in synchronized mode
-datanodeSlaveDirs=($datanodeSlaveDir $datanodeSlaveDir $datanodeSlaveDir $datanodeSlaveDir)
-datanodeArchLogDirs=( $datanodeArchLogDir $datanodeArchLogDir $datanodeArchLogDir $datanodeArchLogDir )
+#datanodeSlaveServers=(localhost localhost)	# value none means this slave is not available
+#datanodeSlavePorts=(40101 40102)	# Master and slave use the same port!
+#datanodeSlavePoolerPorts=(40111 40112)	# Master and slave use the same port!
+#datanodeSlaveSync=y		# If datanode slave is connected in synchronized mode
+#datanodeSlaveDirs=($datanodeSlaveDir.1 $datanodeSlaveDir.2)
+#datanodeArchLogDirs=( $datanodeArchLogDir.1 $datanodeArchLogDir.2)
 
 # ---- Configuration files ---
 # You may supply your bash script to setup extra config lines and extra pg_hba.conf entries here.
 # These files will go to corresponding files for the master.
 # Or you may supply these files manually.
-datanodeExtraConfig=none	# Extra configuration file for datanodes.  This file will be added to all the 
-							# datanodes' postgresql.conf
-datanodeSpecificExtraConfig=(none none none none)
-datanodeExtraPgHba=none		# Extra entry for pg_hba.conf.  This file will be added to all the datanodes' postgresql.conf
-datanodeSpecificExtraPgHba=(none none none none)
-
-#----- Additional Slaves -----
-datanodeAdditionalSlaves=n	# Additional slave can be specified as follows: where you
-# datanodeAdditionalSlaveSet=(dad1 dad2)		# Each specifies set of slaves.   This case, two set of slaves are
-											# configured
-# dad1_Sync=n		  		# All the slaves at "cad1" are connected with asynchronous mode.
-							# If not, specify "y"
-							# The following lines specifies detailed configuration for each
-							# slave tag, cad1.  You can define cad2 similarly.
-# dad1_Servers=(node08 node09 node06 node07)	# Hosts
-# dad1_dir=$HOME/pgxc/nodes/coord_slave_cad1
-# dad1_Dirs=($cad1_dir $cad1_dir $cad1_dir $cad1_dir)
-# dad1_ArchLogDir=$HOME/pgxc/nodes/coord_archlog_cad1
-# dad1_ArchLogDirs=($cad1_ArchLogDir $cad1_ArchLogDir $cad1_ArchLogDir $cad1_ArchLogDir)
-
-#---- WAL archives -------------------------------------------------------------------------------------------------
-walArchive=n	# If you'd like to configure WAL archive, edit this section.
-				# Pgxc_ctl assumes that if you configure WAL archive, you configure it
-				# for all the coordinators and datanodes.
-				# Default is "no".   Please specify "y" here to turn it on.
-#
-#		End of Configuration Section
-#
-#==========================================================================================================================
-
-#========================================================================================================================
-# The following is for extension.  Just demonstrate how to write such extension.  There's no code
-# which takes care of them so please ignore the following lines.  They are simply ignored by pgxc_ctl.
-# No side effects.
-#=============<< Beginning of future extension demonistration >> ========================================================
-# You can setup more than one backup set for various purposes, such as disaster recovery.
-walArchiveSet=(war1 war2)
-war1_source=(master)	# you can specify master, slave or ano other additional slaves as a source of WAL archive.
-					# Default is the master
-wal1_source=(slave)
-wal1_source=(additiona_coordinator_slave_set additional_datanode_slave_set)
-war1_host=node10	# All the nodes are backed up at the same host for a given archive set
-war1_backupdir=$HOME/pgxc/backup_war1
-wal2_source=(master)
-war2_host=node11
-war2_backupdir=$HOME/pgxc/backup_war2
-#=============<< End of future extension demonistration >> ========================================================
+datanodeExtraConfig=datanodeExtraConfig	
+cat > $datanodeExtraConfig <<EOF
+#================================================
+# Added to all the datanode postgresql.conf
+# Original: $datanodeExtraConfig
+log_destination = 'stderr'
+logging_collector = on
+log_directory = 'pg_log'
+listen_addresses = '*'
+max_connections = 100
+hot_standby = off
+EOF
+# Additional Configuration file for specific datanode master.
+# You can define each setting by similar means as above.
+datanodeSpecificExtraConfig=(none none)
+datanodeSpecificExtraPgHba=(none none)
