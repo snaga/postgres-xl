@@ -503,7 +503,7 @@ pool_sendfds(PoolPort *port, int *fds, int count)
 	struct msghdr msg;
 	char		buf[SEND_MSG_BUFFER_SIZE];
 	uint		n32;
-	int			controllen = sizeof(struct cmsghdr) + count * sizeof(int);
+	int                     controllen =  CMSG_LEN(count * sizeof(int));
 	struct cmsghdr *cmptr = NULL;
 
 	buf[0] = 'f';
@@ -525,7 +525,7 @@ pool_sendfds(PoolPort *port, int *fds, int count)
 	}
 	else
 	{
-		if ((cmptr = malloc(controllen)) == NULL)
+		if ((cmptr = malloc(CMSG_SPACE(count * sizeof(int)))) == NULL)
 			return EOF;
 		cmptr->cmsg_level = SOL_SOCKET;
 		cmptr->cmsg_type = SCM_RIGHTS;
@@ -533,7 +533,7 @@ pool_sendfds(PoolPort *port, int *fds, int count)
 		msg.msg_control = (caddr_t) cmptr;
 		msg.msg_controllen = controllen;
 		/* the fd to pass */
-		memcpy(CMSG_DATA(cmptr), fds, count * sizeof(int));
+		memcpy(CMSG_DATA(CMSG_FIRSTHDR(&msg)), fds, count * sizeof(int));
 	}
 
 	if (sendmsg(Socket(*port), &msg, 0) != SEND_MSG_BUFFER_SIZE)
@@ -561,8 +561,8 @@ pool_recvfds(PoolPort *port, int *fds, int count)
 	char		buf[SEND_MSG_BUFFER_SIZE];
 	struct iovec iov[1];
 	struct msghdr msg;
-	int			controllen = sizeof(struct cmsghdr) + count * sizeof(int);
-	struct cmsghdr *cmptr = malloc(controllen);
+	int                     controllen = CMSG_LEN(count * sizeof(int));
+	struct cmsghdr *cmptr = malloc(CMSG_SPACE(count * sizeof(int)));
 
 	if (cmptr == NULL)
 		return EOF;
@@ -642,7 +642,7 @@ pool_recvfds(PoolPort *port, int *fds, int count)
 		goto failure;
 	}
 
-	memcpy(fds, CMSG_DATA(cmptr), count * sizeof(int));
+	memcpy(fds, CMSG_DATA(CMSG_FIRSTHDR(&msg)), count * sizeof(int));
 	free(cmptr);
 	return 0;
 failure:
