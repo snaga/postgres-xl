@@ -211,7 +211,9 @@ datanodeArchLogDir=$dataDirRoot/datanode_archlog
 primaryDatanode=datanode_1				# Primary Node.
 datanodeNames=(datanode_1 datanode_2)
 datanodePorts=(40001 40002)	# Master and slave use the same port!
+#ifdef XCP
 datanodePoolerPorts=(40011 40012)	# Master and slave use the same port!
+#endif
 datanodePgHbaEntries=(::1/128)	# Assumes that all the coordinator (master/slave) accepts
 										# the same connection
 										# This list sets up pg_hba.conf for $pgxcOwner user.
