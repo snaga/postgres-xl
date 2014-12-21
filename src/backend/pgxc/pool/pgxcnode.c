@@ -2449,9 +2449,9 @@ pfree_pgxc_all_handles(PGXCNodeAllHandles *pgxc_handles)
 
 	if (pgxc_handles->primary_handle)
 		pfree(pgxc_handles->primary_handle);
-	if (pgxc_handles->datanode_handles && pgxc_handles->dn_conn_count != 0)
+	if (pgxc_handles->datanode_handles)
 		pfree(pgxc_handles->datanode_handles);
-	if (pgxc_handles->coord_handles && pgxc_handles->co_conn_count != 0)
+	if (pgxc_handles->coord_handles)
 		pfree(pgxc_handles->coord_handles);
 
 	pfree(pgxc_handles);
