@@ -6559,8 +6559,22 @@ make_limit(Plan *lefttree, Node *limitOffset, Node *limitCount,
 	node->limitCount = limitCount;
 
 #ifdef XCP
-	if ((limitOffset == NULL || offset_est > 0) &&
-			(limitCount == NULL || count_est > 0))
+	/*
+	 * We want to push down LIMTI clause to the remote side in order to limit
+	 * the number of rows that get shipped from the remote side. This can be
+	 * done even if there is an ORDER BY clause, as long as we fetch minimum
+	 * number of rows from all the nodes and then do a local sort and apply the
+	 * final limit.
+	 *
+	 * We can't push down limit clause unless its a constant. Similarly, if the
+	 * OFFSET is specified then it must be a constant too.
+	 *
+	 * Simple expressions get folded into constants by the time we come here.
+	 * So this works well in case of constant expressions such as
+	 * 	SELECT .. LIMIT (1024 * 1024);
+	 */
+	if (limitCount && IsA(limitCount, Const) &&
+		((limitOffset == NULL) || IsA(limitOffset, Const)))
 	{
 		/*
 		 * We may reduce amount of rows sent over the network and do not send more
