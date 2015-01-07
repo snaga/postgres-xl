@@ -419,6 +419,7 @@ parseCheckAggregates(ParseState *pstate, Query *qry)
 		root->parse = qry;
 		root->planner_cxt = CurrentMemoryContext;
 		root->hasJoinRTEs = true;
+		root->recursiveOk = true;
 
 		groupClauses = (List *) flatten_join_alias_vars(root,
 													  (Node *) groupClauses);

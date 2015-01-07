@@ -32,6 +32,7 @@
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
 #include "optimizer/paths.h"
+#include "optimizer/pathnode.h"
 #include "optimizer/placeholder.h"
 #include "optimizer/plancat.h"
 #include "optimizer/planmain.h"
@@ -1919,19 +1920,63 @@ create_remotescan_plan(PlannerInfo *root,
 }
 
 
-RemoteSubplan *
-find_push_down_plan(Plan *plan, bool force)
+static RemoteSubplan *
+find_push_down_plan_int(PlannerInfo *root, Plan *plan, bool force, Plan **parent)
 {
 	if (IsA(plan, RemoteSubplan) &&
 			(force || (list_length(((RemoteSubplan *) plan)->nodeList) > 1 &&
 					   ((RemoteSubplan *) plan)->execOnAll)))
+	{
+		if (parent)
+			*parent = plan->lefttree;
 		return (RemoteSubplan *) plan;
+	}
+
 	if (IsA(plan, Hash) ||
 			IsA(plan, Material) ||
 			IsA(plan, Unique) ||
 			IsA(plan, Limit))
-		return find_push_down_plan(plan->lefttree, force);
+		return find_push_down_plan_int(root, plan->lefttree, force, &plan->lefttree);
+
+	/*
+	 * If its a subquery scan then walk down the subplan to find a
+	 * RemoteSubplan
+	 */
+	if (IsA(plan, SubqueryScan))
+	{
+		Plan *subplan = ((SubqueryScan *)plan)->subplan;
+		Plan *remote_plan = find_push_down_plan_int(root, ((SubqueryScan *)plan)->subplan, force,
+				&((SubqueryScan *)plan)->subplan);
+
+		/*
+		 * If caller has asked for removing the RemoteSubplan and if its a
+		 * subquery plan, then we must also update the link stored in the
+		 * RelOptInfo corresponding to this subquery
+		 */
+		if ((remote_plan == subplan) && parent)
+		{
+			Assert(root);
+			RelOptInfo *rel = find_base_rel(root, ((SubqueryScan *)plan)->scan.scanrelid);
+			rel->subplan = ((SubqueryScan *)plan)->subplan;
+		}
+		return remote_plan;
+	}
 	return NULL;
+}
+
+RemoteSubplan *
+find_push_down_plan(Plan *plan, bool force)
+{
+	return find_push_down_plan_int(NULL, plan, force, NULL);
+}
+
+RemoteSubplan *
+find_delete_push_down_plan(PlannerInfo *root,
+		Plan *plan,
+		bool force,
+		Plan **parent)
+{
+	return find_push_down_plan_int(root, plan, force, parent);
 }
 #endif
 
@@ -4998,7 +5043,11 @@ make_append(List *appendplans, List *tlist)
 }
 
 RecursiveUnion *
-make_recursive_union(List *tlist,
+make_recursive_union(
+#ifdef XCP
+					 PlannerInfo *root,
+#endif					 
+					 List *tlist,
 					 Plan *lefttree,
 					 Plan *righttree,
 					 int wtParam,
@@ -5008,6 +5057,9 @@ make_recursive_union(List *tlist,
 	RecursiveUnion *node = makeNode(RecursiveUnion);
 	Plan	   *plan = &node->plan;
 	int			numCols = list_length(distinctList);
+#ifdef XCP	
+	RemoteSubplan *left_pushdown, *right_pushdown;
+#endif	
 
 	cost_recursive_union(plan, lefttree, righttree);
 
@@ -5048,6 +5100,44 @@ make_recursive_union(List *tlist,
 	}
 	node->numGroups = numGroups;
 
+#ifdef XCP	
+	/*
+	 * For recursive CTE, we have already checked that all tables involved in
+	 * the query are replicated tables (or coordinator local tables such as
+	 * catalog tables). So drill down the left and right plan trees and find
+	 * the corresponding remote subplan(s). If both sides contain a
+	 * RemoteSubplan then its possible that they are marked for execution on
+	 * different nodes, but that does not matter since tables are replicated
+	 * and nodes are picked randomly for replicated tables. So just reuse
+	 * either of the RemoteSubplan and pin the RecursiveUnion plan generated
+	 * above to the RemoteSubplan. They must have been already removed from the
+	 * subtree by find_delete_push_down_plan function
+	 *
+	 * XXX For tables replicated on different subsets of nodes, this may not
+	 * work. In fact, we probably can't support recursive queries for such
+	 * tables.
+	 */
+	left_pushdown = find_delete_push_down_plan(root, lefttree, true, &plan->lefttree);
+	right_pushdown = find_delete_push_down_plan(root, righttree, true, &plan->righttree);
+	if (left_pushdown || right_pushdown)
+	{
+		/* Pick either one */
+		if (!left_pushdown)
+			left_pushdown = right_pushdown;
+
+		/*
+		 * Push the RecursiveUnion to the remote node
+		 */
+		left_pushdown->scan.plan.lefttree = plan;
+
+		/*
+		 * The only caller for this function does not really care if the
+		 * returned node is RecursiveUnion or not. So we just return the
+		 * RemoteSubplan as it
+		 */
+		return (RecursiveUnion *) left_pushdown;
+	}
+#endif	
 	return node;
 }
 

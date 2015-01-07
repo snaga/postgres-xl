@@ -7807,7 +7807,6 @@ RemoteSubplanMakeUnique(Node *plan, int unique)
 		((RemoteSubplan *)plan)->unique = unique;
 	}
 	/* Otherwise it is a Plan descendant */
-	RemoteSubplanMakeUnique((Node *) ((Plan *) plan)->initPlan, unique);
 	RemoteSubplanMakeUnique((Node *) ((Plan *) plan)->lefttree, unique);
 	RemoteSubplanMakeUnique((Node *) ((Plan *) plan)->righttree, unique);
 	/* Tranform special cases */

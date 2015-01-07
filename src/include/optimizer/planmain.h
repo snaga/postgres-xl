@@ -53,7 +53,7 @@ extern SubqueryScan *make_subqueryscan(List *qptlist, List *qpqual,
 extern ForeignScan *make_foreignscan(List *qptlist, List *qpqual,
 				 Index scanrelid, List *fdw_exprs, List *fdw_private);
 extern Append *make_append(List *appendplans, List *tlist);
-extern RecursiveUnion *make_recursive_union(List *tlist,
+extern RecursiveUnion *make_recursive_union(PlannerInfo *root, List *tlist,
 					 Plan *lefttree, Plan *righttree, int wtParam,
 					 List *distinctList, long numGroups);
 extern Sort *make_sort_from_pathkeys(PlannerInfo *root, Plan *lefttree,
@@ -141,6 +141,8 @@ extern void extract_query_dependencies(Node *query,
 #ifdef PGXC
 #ifdef XCP
 extern RemoteSubplan *find_push_down_plan(Plan *plan, bool force);
+extern RemoteSubplan *find_delete_push_down_plan(PlannerInfo *root, Plan *plan,
+		bool force, Plan **parent);
 extern RemoteSubplan *make_remotesubplan(PlannerInfo *root,
 				   Plan *lefttree,
 				   Distribution *resultDistribution,

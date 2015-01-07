@@ -292,6 +292,7 @@ typedef struct PlannerInfo
 	 * to the target table distribution.
 	 */
 	Distribution *distribution; /* Query result distribution */
+	bool		recursiveOk;
 #endif
 
 	/* Added post-release, will be in a saner place in 9.3: */
