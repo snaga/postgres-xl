@@ -8439,6 +8439,14 @@ ExecFinishInitRemoteSubplan(RemoteSubplanState *node)
 	if (node->subplanstr == NULL)
 		return;
 
+	/* 
+	 * Check if any results are planned to be received here.
+	 * Otherwise it does not make sense to send out the subplan.
+	 */
+	if (IS_PGXC_DATANODE && plan->distributionRestrict && 
+			!list_member_int(plan->distributionRestrict, PGXCNodeId - 1))
+		return;
+
 	/*
 	 * Acquire connections and send down subplan where it will be stored
 	 * as a prepared statement.
@@ -8646,6 +8654,18 @@ ExecRemoteSubplan(RemoteSubplanState *node)
 	RemoteSubplan  *plan = (RemoteSubplan *) combiner->ss.ps.plan;
 	EState		   *estate = combiner->ss.ps.state;
 	TupleTableSlot *resultslot = combiner->ss.ps.ps_ResultTupleSlot;
+
+	/* 
+	 * We allow combiner->conn_count == 0 after node initialization
+	 * if we figured out that current node won't receive any result
+	 * because of distributionRestrict is set by planner.
+	 * But we should distinguish this case from others where result is
+	 * received not through a connection. These cases are: local execution
+	 * and buffered rows. 
+	 */
+	if (!node->local_exec && combiner->conn_count == 0 && 
+			list_length(combiner->rowBuffer) == 0)
+		return NULL;
 
 primary_mode_phase_two:
 	if (!node->bound)
