@@ -77,6 +77,14 @@ cmd_t *prepare_initCoordinatorMaster(char *nodeName)
 			 nodeName);
 		return(NULL);
 	}
+
+	if (pgxc_check_dir(aval(VAR_coordMasterDirs)[jj]) == 2)
+	{
+		elog(ERROR, "ERROR: target coordinator directory %s exists and is not empty. Skip initilialization.\n",
+				aval(VAR_coordMasterDirs)[jj]); 
+		return NULL;
+	}
+
 	cmd = cmdInitdb = initCmd(aval(VAR_coordMasterServers)[jj]);
 	snprintf(newCommand(cmdInitdb), MAXLINE, 
 			 "rm -rf %s;"

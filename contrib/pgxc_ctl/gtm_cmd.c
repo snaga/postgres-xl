@@ -53,6 +53,16 @@ cmd_t *prepare_initGtmMaster(void)
 	char date[MAXTOKEN+1];
 	FILE *f;
 	char **fileList = NULL;
+	int result;
+
+	result = pgxc_check_dir(sval(VAR_gtmMasterDir));
+   
+	if (result == 2)
+	{
+		elog(ERROR, "ERROR: target GTM directory %s exists and is not empty. Skip initilialization.\n",
+				sval(VAR_gtmMasterDir)); 
+		return NULL;
+	}
 
 	/* Kill current gtm, bild work directory and run initgtm */
 	cmdInitGtmMaster = initCmd(sval(VAR_gtmMasterServer));
@@ -106,13 +116,16 @@ int init_gtm_master(void)
 {
 	int rc;
 	cmdList_t *cmdList;
+	cmd_t *cmd;
 
 	elog(INFO, "Initialize GTM master\n");
 	cmdList = initCmdList();
 
 	/* Kill current gtm, build work directory and run initgtm */
 
-	addCmd(cmdList, prepare_initGtmMaster());
+	if ((cmd = prepare_initGtmMaster()))
+		addCmd(cmdList, cmd);
+
 	rc = doCmdList(cmdList);
 	cleanCmdList(cmdList);
 	elog(INFO, "Done.\n");
