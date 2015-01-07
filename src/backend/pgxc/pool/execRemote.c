@@ -8659,12 +8659,14 @@ ExecRemoteSubplan(RemoteSubplanState *node)
 	 * We allow combiner->conn_count == 0 after node initialization
 	 * if we figured out that current node won't receive any result
 	 * because of distributionRestrict is set by planner.
-	 * But we should distinguish this case from others where result is
-	 * received not through a connection. These cases are: local execution
-	 * and buffered rows. 
+	 * But we should distinguish this case from others, when conn_count is 0.
+	 * That is possible if local execution is chosen or data are buffered 
+	 * at the coordinator or data are exhausted and node was reset.
+	 * in last two cases connections are saved to cursor_connections and we
+	 * can check their presence.  
 	 */
 	if (!node->local_exec && combiner->conn_count == 0 && 
-			list_length(combiner->rowBuffer) == 0)
+			combiner->cursor_count == 0)
 		return NULL;
 
 primary_mode_phase_two:
