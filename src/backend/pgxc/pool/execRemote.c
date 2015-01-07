@@ -166,9 +166,17 @@ static abort_callback_type dbcleanup_info = { NULL, NULL };
 static int	pgxc_node_begin(int conn_count, PGXCNodeHandle ** connections,
 				GlobalTransactionId gxid, bool need_tran_block,
 				bool readOnly, char node_type);
+
+#ifdef XCP
+static PGXCNodeAllHandles *get_exec_connections(RemoteQueryState *planstate,
+					 ExecNodes *exec_nodes,
+					 RemoteQueryExecType exec_type,
+					 bool is_global_session);
+#else
 static PGXCNodeAllHandles * get_exec_connections(RemoteQueryState *planstate,
 					 ExecNodes *exec_nodes,
 					 RemoteQueryExecType exec_type);
+#endif
 
 #ifndef XCP
 static void close_node_cursors(PGXCNodeHandle **connections, int conn_count, char *cursor);
@@ -4008,7 +4016,7 @@ DataNodeCopyBegin(RemoteCopyData *rcstate)
 	else
 	{
 		PGXCNodeAllHandles *pgxc_handles;
-		pgxc_handles = get_handles(nodelist, NULL, false);
+		pgxc_handles = get_handles(nodelist, NULL, false, true);
 		connections = pgxc_handles->datanode_handles;
 		Assert(pgxc_handles->dn_conn_count == conn_count);
 		pfree(pgxc_handles);
@@ -4803,15 +4811,21 @@ ExecInitRemoteQuery(RemoteQuery *node, EState *estate, int eflags)
 }
 #endif
 
-
 /*
  * Get Node connections depending on the connection type:
  * Datanodes Only, Coordinators only or both types
  */
 static PGXCNodeAllHandles *
+#ifdef XCP
+get_exec_connections(RemoteQueryState *planstate,
+					 ExecNodes *exec_nodes,
+					 RemoteQueryExecType exec_type,
+					 bool is_global_session)
+#else
 get_exec_connections(RemoteQueryState *planstate,
 					 ExecNodes *exec_nodes,
 					 RemoteQueryExecType exec_type)
+#endif
 {
 	List 	   *nodelist = NIL;
 	List 	   *primarynode = NIL;
@@ -4938,7 +4952,11 @@ get_exec_connections(RemoteQueryState *planstate,
 	}
 
 	/* Get other connections (non-primary) */
+#ifdef XCP
+	pgxc_handles = get_handles(nodelist, coordlist, is_query_coord_only, is_global_session);
+#else
 	pgxc_handles = get_handles(nodelist, coordlist, is_query_coord_only);
+#endif
 	if (!pgxc_handles)
 		ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
@@ -4949,7 +4967,11 @@ get_exec_connections(RemoteQueryState *planstate,
 	{
 		/* Let's assume primary connection is always a Datanode connection for the moment */
 		PGXCNodeAllHandles *pgxc_conn_res;
+#ifdef XCP
+		pgxc_conn_res = get_handles(primarynode, NULL, false, is_global_session);
+#else
 		pgxc_conn_res = get_handles(primarynode, NULL, false);
+#endif
 
 		/* primary connection is unique */
 		primaryconnection = pgxc_conn_res->datanode_handles[0];
@@ -5850,6 +5872,13 @@ ExecRemoteUtility(RemoteQuery *node)
 	remotestate = makeNode(RemoteQueryState);
 	combiner = (ResponseCombiner *)remotestate;
 	InitResponseCombiner(combiner, 0, node->combine_type);
+
+	/*
+	 * Do not set global_session if it is a utility statement. 
+ 	 * Avoids CREATE NODE error on cluster configuration.
+ 	 */
+	pgxc_connections = get_exec_connections(NULL, node->exec_nodes, exec_type, 
+											exec_direct_type != EXEC_DIRECT_UTILITY);
 #else
 	/*
 	 * It is possible to invoke create table with inheritance on
@@ -5859,9 +5888,9 @@ ExecRemoteUtility(RemoteQuery *node)
 		ExecSetTempObjectIncluded();
 
 	remotestate = CreateResponseCombiner(0, node->combine_type);
-#endif
 
 	pgxc_connections = get_exec_connections(NULL, node->exec_nodes, exec_type);
+#endif
 
 	dn_conn_count = pgxc_connections->dn_conn_count;
 	co_conn_count = pgxc_connections->co_conn_count;
@@ -6178,7 +6207,11 @@ ExecCloseRemoteStatement(const char *stmt_name, List *nodelist)
 		return;
 
 	/* get needed Datanode connections */
+#ifdef XCP
+	all_handles = get_handles(nodelist, NIL, false, true);
+#else
 	all_handles = get_handles(nodelist, NIL, false);
+#endif
 	conn_count = all_handles->dn_conn_count;
 	connections = all_handles->datanode_handles;
 
@@ -7181,7 +7214,7 @@ pgxc_node_remote_finish(char *prepareGID, bool commit,
 	if (nodelist == NIL && coordlist == NIL)
 		return prepared_local;
 
-	pgxc_handles = get_handles(nodelist, coordlist, false);
+	pgxc_handles = get_handles(nodelist, coordlist, false, true);
 
 	if (commit)
 		sprintf(finish_cmd, "COMMIT PREPARED '%s'", prepareGID);
@@ -7435,8 +7468,14 @@ ExecRemoteQuery(RemoteQueryState *node)
 		 * Get connections for Datanodes only, utilities and DDLs
 		 * are launched in ExecRemoteUtility
 		 */
+#ifdef XCP
+		pgxc_connections = get_exec_connections(node, step->exec_nodes,
+												step->exec_type,
+												true);
+#else
 		pgxc_connections = get_exec_connections(node, step->exec_nodes,
 												step->exec_type);
+#endif
 
 		if (step->exec_type == EXEC_ON_DATANODES)
 		{
@@ -8455,7 +8494,11 @@ ExecFinishInitRemoteSubplan(RemoteSubplanState *node)
 	if (node->execOnAll)
 	{
 		PGXCNodeAllHandles *pgxc_connections;
+#ifdef XCP
+		pgxc_connections = get_handles(node->execNodes, NIL, false, true);
+#else
 		pgxc_connections = get_handles(node->execNodes, NIL, false);
+#endif
 		combiner->conn_count = pgxc_connections->dn_conn_count;
 		combiner->connections = pgxc_connections->datanode_handles;
 		combiner->current_conn = 0;
@@ -9230,7 +9273,11 @@ get_success_nodes(int node_count, PGXCNodeHandle **handles, char node_type, Stri
 void
 pgxc_all_success_nodes(ExecNodes **d_nodes, ExecNodes **c_nodes, char **failednodes_msg)
 {
+#ifdef XCP
+	PGXCNodeAllHandles *connections = get_exec_connections(NULL, NULL, EXEC_ON_ALL_NODES, true);
+#else
 	PGXCNodeAllHandles *connections = get_exec_connections(NULL, NULL, EXEC_ON_ALL_NODES);
+#endif
 	StringInfoData failednodes;
 	initStringInfo(&failednodes);
 
