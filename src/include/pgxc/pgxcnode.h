@@ -165,7 +165,12 @@ extern int PGXCNodeGetNodeIdFromName(char *node_name, char node_type);
 #endif
 extern Oid PGXCNodeGetNodeOid(int nodeid, char node_type);
 
+#ifdef XCP
+extern PGXCNodeAllHandles *get_handles(List *datanodelist, List *coordlist, bool is_query_coord_only, bool is_global_session);
+#else
 extern PGXCNodeAllHandles *get_handles(List *datanodelist, List *coordlist, bool is_query_coord_only);
+#endif
+
 #ifdef XCP
 extern PGXCNodeAllHandles *get_current_handles(void);
 #endif

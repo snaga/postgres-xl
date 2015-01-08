@@ -109,8 +109,11 @@ typedef struct
 static bool DoInvalidateRemoteHandles(void);
 #endif
 
-
+#ifdef XCP
+static void pgxc_node_init(PGXCNodeHandle *handle, int sock, bool global_session);
+#else
 static void pgxc_node_init(PGXCNodeHandle *handle, int sock);
+#endif
 static void pgxc_node_free(PGXCNodeHandle *handle);
 static void pgxc_node_all_free(void);
 
@@ -434,7 +437,11 @@ pgxc_node_all_free(void)
  * Structure stores state info and I/O buffers
  */
 static void
+#ifdef XCP
+pgxc_node_init(PGXCNodeHandle *handle, int sock, bool global_session)
+#else
 pgxc_node_init(PGXCNodeHandle *handle, int sock)
+#endif
 {
 #ifdef XCP
 	char *init_str;
@@ -461,10 +468,13 @@ pgxc_node_init(PGXCNodeHandle *handle, int sock)
 	 * We got a new connection, set on the remote node the session parameters
 	 * if defined. The transaction parameter should be sent after BEGIN
 	 */
-	init_str = PGXCNodeGetSessionParamStr();
-	if (init_str)
+	if (global_session)
 	{
-		pgxc_node_set_query(handle, init_str);
+		init_str = PGXCNodeGetSessionParamStr();
+		if (init_str)
+		{
+			pgxc_node_set_query(handle, init_str);
+		}
 	}
 #endif
 }
@@ -2103,8 +2113,11 @@ get_any_handle(List *datanodelist)
 								(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
 								 errmsg("Failed to get pooled connections")));
 					}
-
+#ifdef XCP
+					pgxc_node_init(&dn_handles[node], fds[0], true);
+#else
 					pgxc_node_init(&dn_handles[node], fds[0]);
+#endif
 					datanode_count++;
 
 					/*
@@ -2135,7 +2148,11 @@ get_any_handle(List *datanodelist)
  * Coordinator fds is returned only if transaction uses a DDL
  */
 PGXCNodeAllHandles *
+#ifdef XCP
+get_handles(List *datanodelist, List *coordlist, bool is_coord_only_query, bool is_global_session)
+#else
 get_handles(List *datanodelist, List *coordlist, bool is_coord_only_query)
+#endif
 {
 	PGXCNodeAllHandles	*result;
 	ListCell		*node_list_item;
@@ -2344,7 +2361,11 @@ get_handles(List *datanodelist, List *coordlist, bool is_coord_only_query)
 				}
 
 				node_handle = &dn_handles[node];
+#ifdef XCP
+				pgxc_node_init(node_handle, fdsock, is_global_session);
+#else
 				pgxc_node_init(node_handle, fdsock);
+#endif
 				dn_handles[node] = *node_handle;
 				datanode_count++;
 			}
@@ -2365,7 +2386,11 @@ get_handles(List *datanodelist, List *coordlist, bool is_coord_only_query)
 				}
 
 				node_handle = &co_handles[node];
+#ifdef XCP
+				pgxc_node_init(node_handle, fdsock, is_global_session);
+#else
 				pgxc_node_init(node_handle, fdsock);
+#endif
 				co_handles[node] = *node_handle;
 				coord_count++;
 			}

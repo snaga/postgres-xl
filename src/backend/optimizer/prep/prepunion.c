@@ -266,6 +266,9 @@ recurse_set_operations(Node *setOp, PlannerInfo *root,
 		rel->subplan = subplan;
 		rel->subroot = subroot;
 
+		if (root->recursiveOk)	
+			root->recursiveOk = subroot->recursiveOk;
+
 		/*
 		 * It should not be possible for the primitive query to contain any
 		 * cross-references to other primitive queries in the setop tree.
@@ -444,7 +447,7 @@ generate_recursion_plan(SetOperationStmt *setOp, PlannerInfo *root,
 	/*
 	 * And make the plan node.
 	 */
-	plan = (Plan *) make_recursive_union(tlist, lplan, rplan,
+	plan = (Plan *) make_recursive_union(root, tlist, lplan, rplan,
 										 root->wt_param_id,
 										 groupList, numGroups);
 

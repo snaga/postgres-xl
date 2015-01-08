@@ -33,6 +33,7 @@ extern int pingNode(char *host, char *port);
 extern void trimNl(char *s);
 extern char *getChPidList(char *host, pid_t ppid);
 extern char *getIpAddress(char *hostName);
+extern int pgxc_check_dir(const char *dir);
 
 #define get_postmaster_pid(host, dir) get_prog_pid(host, "postmaster", dir)
 #define get_gtm_pid(host, dir) get_prog_pid(host, "gtm", dir)

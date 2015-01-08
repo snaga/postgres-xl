@@ -54,11 +54,11 @@ EOF
 
 cp pgxc_ctl_bash_2  pgxc_ctl_bash.c.wk
 ex pgxc_ctl_bash.c.wk <<EOF
-%s/"/\\\"/g
+%s/"/\\\"/ge
 w
-%s/^\(.*\)$/"\1",/
-%s/^"#ifdef XCP",$/#ifdef XCP/
-%s/^"#endif",$/#endif/
+%s/^\(.*\)$/"\1",/e
+%s/^"#ifdef XCP",$/#ifdef XCP/e
+%s/^"#endif",$/#endif/e
 wq
 EOF
 
@@ -111,11 +111,11 @@ rm pgxc_ctl_bash.c.wk
 cp pgxc_ctl_conf_part_full pgxc_ctl_conf_part.wk
 
 ex pgxc_ctl_conf_part.wk <<EOF
-%s/"/\\\"/g
+%s/"/\\\"/ge
 w
-%s/^\(.*\)$/"\1",/
-%s/^"#ifdef XCP",$/#ifdef XCP/
-%s/^"#endif",$/#endif/
+%s/^\(.*\)$/"\1",/e
+%s/^"#ifdef XCP",$/#ifdef XCP/e
+%s/^"#endif",$/#endif/e
 wq
 EOF
 
@@ -142,11 +142,11 @@ rm pgxc_ctl_conf_part.wk
 cp pgxc_ctl_conf_part_minimal pgxc_ctl_conf_part.wk
 
 ex pgxc_ctl_conf_part.wk <<EOF
-%s/"/\\\"/g
+%s/"/\\\"/ge
 w
-%s/^\(.*\)$/"\1",/
-%s/^"#ifdef XCP",$/#ifdef XCP/
-%s/^"#endif",$/#endif/
+%s/^\(.*\)$/"\1",/e
+%s/^"#ifdef XCP",$/#ifdef XCP/e
+%s/^"#endif",$/#endif/e
 wq
 EOF
 

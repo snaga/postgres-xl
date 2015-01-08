@@ -765,6 +765,7 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 	subroot->hasRecursion = false;
 	subroot->wt_param_id = -1;
 	subroot->non_recursive_plan = NULL;
+	subroot->recursiveOk = true;
 
 	/* No CTEs to worry about */
 	Assert(subquery->cteList == NIL);

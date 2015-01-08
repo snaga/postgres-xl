@@ -364,6 +364,7 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 	List	   *newHaving;
 	bool		hasOuterJoins;
 	ListCell   *l;
+	bool recursiveOk = true;
 
 	/* Create a PlannerInfo data structure for this subquery */
 	root = makeNode(PlannerInfo);
@@ -379,6 +380,7 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 	root->append_rel_list = NIL;
 	root->rowMarks = NIL;
 	root->hasInheritedTarget = false;
+	root->recursiveOk = true;
 
 #ifdef PGXC
 #ifndef XCP
@@ -688,52 +690,63 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 	 * Temporarily block WITH RECURSIVE for most cases 
 	 * until we can fix. Allow for pg_catalog tables and replicated tables.
 	 */
-	if (root->hasRecursion)
 	{
 		int idx;
-		bool recursiveOk = true;
+		recursiveOk = true;
 
 		/* seems to start at 1... */
-		for (idx = 1; idx < root->simple_rel_array_size - 1; idx++)
+		for (idx = 1; idx < root->simple_rel_array_size - 1 && recursiveOk; idx++)
 		{
 			RangeTblEntry *rte;
 
-			rte = root->simple_rte_array[idx];
-
-			if (!rte || rte->rtekind == RTE_JOIN)
+			rte = planner_rt_fetch(idx, root);
+			if (!rte)
+			   continue;
+		
+			switch (rte->rtekind)
 			{
-				continue;
-			}
-			else if (rte->rtekind == RTE_RELATION)
-			{
-				char loc_type;
-
-				loc_type = GetRelationLocType(rte->relid);
-
-				/* skip pg_catalog */
-				if (loc_type == LOCATOR_TYPE_NONE)
+				case RTE_JOIN:
+				case RTE_VALUES:
+				case RTE_CTE:
 					continue;
+				case RTE_RELATION:
+					{
+						char loc_type;
 
-				/* If replicated, allow */
-				if (IsLocatorReplicated(loc_type))
-				{
-					continue;
-				}
-				else
-				{
+						loc_type = GetRelationLocType(rte->relid);
+
+						/* skip pg_catalog */
+						if (loc_type == LOCATOR_TYPE_NONE)
+							continue;
+
+						/* If replicated, allow */
+						if (IsLocatorReplicated(loc_type))
+							continue;
+						else
+							recursiveOk = false;
+						break;
+					} 
+				case RTE_SUBQUERY:
+					{
+						RelOptInfo *relOptInfo = root->simple_rel_array[idx];
+						if (relOptInfo && relOptInfo->subroot &&
+								!relOptInfo->subroot->recursiveOk)
+							recursiveOk = false;
+						break;
+					}
+				default:	
 					recursiveOk = false;
 					break;
-				}
-			} 
-			else  
-			{
-				recursiveOk = false;
-				break;
 			}
 		}
-		if (!recursiveOk)
-			elog(ERROR, "WITH RECURSIVE currently not supported on distributed tables.");
 	}
+
+	if (root->recursiveOk)
+		root->recursiveOk = recursiveOk;
+
+	if (root->hasRecursion && !root->recursiveOk)
+			elog(ERROR, "WITH RECURSIVE currently not supported on distributed tables.");
+
 	return plan;
 }
 
@@ -3838,6 +3851,7 @@ plan_cluster_use_sort(Oid tableOid, Oid indexOid)
 	root->query_level = 1;
 	root->planner_cxt = CurrentMemoryContext;
 	root->wt_param_id = -1;
+	root->recursiveOk = true;
 
 	/* Build a minimal RTE for the rel */
 	rte = makeNode(RangeTblEntry);

@@ -473,6 +473,7 @@ pgxc_handle_exec_direct(Query *query, int cursorOptions,
 			root->glob = glob;
 			root->query_level = 1;
 			root->planner_cxt = CurrentMemoryContext;
+			root->recursiveOk = true;
 			/* build the PlannedStmt result */
 			result = makeNode(PlannedStmt);
 			/* Try and set what we can, rest must have been zeroed out by makeNode() */
@@ -580,6 +581,7 @@ pgxc_FQS_planner(Query *query, int cursorOptions, ParamListInfo boundParams)
 	root->glob = glob;
 	root->query_level = 1;
 	root->planner_cxt = CurrentMemoryContext;
+	root->recursiveOk = true;
 
 	/*
 	 * We decided to ship the query to the Datanode/s, create a RemoteQuery node
