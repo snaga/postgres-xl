@@ -1939,10 +1939,10 @@ find_push_down_plan_int(PlannerInfo *root, Plan *plan, bool force, Plan **parent
 		return find_push_down_plan_int(root, plan->lefttree, force, &plan->lefttree);
 
 	/*
-	 * If its a subquery scan then walk down the subplan to find a
-	 * RemoteSubplan
+	 * If its a subquery scan and we are looking to replace RemoteSubplan then
+	 * walk down the subplan to find a RemoteSubplan
 	 */
-	if (IsA(plan, SubqueryScan))
+	if (parent && IsA(plan, SubqueryScan))
 	{
 		Plan *subplan = ((SubqueryScan *)plan)->subplan;
 		Plan *remote_plan = find_push_down_plan_int(root, ((SubqueryScan *)plan)->subplan, force,
