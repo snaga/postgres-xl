@@ -121,7 +121,7 @@ HandleClusterPause(bool pause, bool initiator)
 	 * coordinators to respond back
 	 */
 
-	coord_handles = get_handles(NIL, GetAllCoordNodes(), true);
+	coord_handles = get_handles(NIL, GetAllCoordNodes(), true, true);
 
 	for (conn = 0; conn < coord_handles->co_conn_count; conn++)
 	{
@@ -308,7 +308,7 @@ PGXCCleanClusterLock(int code, Datum arg)
 	if (IsConnFromCoord())
 		return;
 
-	coord_handles = get_handles(NIL, GetAllCoordNodes(), true);
+	coord_handles = get_handles(NIL, GetAllCoordNodes(), true, true);
 	/* Try best-effort to UNPAUSE other coordinators now */
 	for (conn = 0; conn < coord_handles->co_conn_count; conn++)
 	{
