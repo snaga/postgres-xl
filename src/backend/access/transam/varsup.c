@@ -169,11 +169,12 @@ GetNewTransactionId(bool isSubXact)
 	 * valid XID/snapshot for catalog access
 	 *
  	 */
-	if ((IS_PGXC_COORDINATOR && !IsConnFromCoord()) ||
+	if (!useLocalXid &&
+		(!IsConnFromCoord() ||
 		IsAutoVacuumWorkerProcess() ||
 		IsAutoVacuumLauncherProcess() ||
 		GetForceXidFromGTM() ||
-		(IsInitProcessingMode() && IsPostmasterEnvironment))
+		(IsInitProcessingMode() && IsPostmasterEnvironment)))
 	{
 		if (MyPgXact->vacuumFlags & PROC_IN_VACUUM)
 			next_xid = xid = (TransactionId) BeginTranAutovacuumGTM();
