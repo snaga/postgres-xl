@@ -1735,22 +1735,25 @@ PGXC$ prepare config minimal my_minimal_config.conf
    </varlistentry>
 
    <varlistentry>
-    <term><literal>init all</literal></term>
-    <term><literal>init <replaceable class="parameter">nodename ...</replaceable></literal></term>
-    <term><literal>init gtm [ master | slave | all ]</literal></term>
-    <term><literal>init gtm_proxy [ all | <replaceable class="parameter">nodename ...</replaceable> ]</literal></term>
-    <term><literal>init coordinator <replaceable class="parameter">nodename ...</replaceable></literal></term>
-    <term><literal>init coordinator [ master | slave ] [ all | <replaceable class="parameter">nodename ...</replaceable> ]</literal></term>
-    <term><literal>init datanode <replaceable class="parameter">nodename ...</replaceable></literal></term>
-    <term><literal>init datanode [ master | slave ] [ all | <replaceable class="parameter">nodename ...</replaceable> ]</literal></term>
+    <term><literal>init [force] all</literal></term>
+    <term><literal>init [force] <replaceable class="parameter">nodename ...</replaceable></literal></term>
+    <term><literal>init [force] gtm [ master | slave | all ]</literal></term>
+    <term><literal>init [force] gtm_proxy [ all | <replaceable class="parameter">nodename ...</replaceable> ]</literal></term>
+    <term><literal>init [force] coordinator <replaceable class="parameter">nodename ...</replaceable></literal></term>
+    <term><literal>init [force] coordinator [ master | slave ] [ all | <replaceable class="parameter">nodename ...</replaceable> ]</literal></term>
+    <term><literal>init [force] datanode <replaceable class="parameter">nodename ...</replaceable></literal></term>
+    <term><literal>init [force] datanode [ master | slave ] [ all | <replaceable class="parameter">nodename ...</replaceable> ]</literal></term>
     <listitem>
      <para>
    Initializes specified nodes.
      </para>
      <para>
    At initialization, all the working directories of each component
-   will be created if it does not exist.  If it does, then all the
-   contents under the working directory will be removed.
+   will be created if it does not exist.  If it does and
+<literal>force</literal> is specified, then all the
+   contents under the working directory will be removed. Without
+<literal>force</literal> option, existing non-empty directories will not be
+cleaned and the server will start with the existing data.
      </para>
      <para>
    When "all" option is specified, then node information at each

@@ -57,7 +57,7 @@ cmd_t *prepare_initGtmMaster(void)
 
 	result = pgxc_check_dir(sval(VAR_gtmMasterDir));
    
-	if (result == 2)
+	if ((result == 2) && !forceInit)
 	{
 		elog(ERROR, "ERROR: target GTM directory %s exists and is not empty. Skip initilialization.\n",
 				sval(VAR_gtmMasterDir)); 

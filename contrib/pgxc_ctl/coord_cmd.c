@@ -78,7 +78,7 @@ cmd_t *prepare_initCoordinatorMaster(char *nodeName)
 		return(NULL);
 	}
 
-	if (pgxc_check_dir(aval(VAR_coordMasterDirs)[jj]) == 2)
+	if ((pgxc_check_dir(aval(VAR_coordMasterDirs)[jj]) == 2) && !forceInit)
 	{
 		elog(ERROR, "ERROR: target coordinator directory %s exists and is not empty. Skip initilialization.\n",
 				aval(VAR_coordMasterDirs)[jj]); 

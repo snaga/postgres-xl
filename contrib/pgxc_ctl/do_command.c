@@ -41,6 +41,8 @@
 extern char *pgxc_ctl_conf_prototype[];
 extern char *pgxc_ctl_conf_prototype_minimal[];
 
+int forceInit = false;
+
 #define Exit(c) exit(myWEXITSTATUS(c))
 #define GetToken() (line = get_word(line, &token))
 #define TestToken(word) ((token != NULL) && (strcasecmp(token, word) == 0))
@@ -566,7 +568,15 @@ static void do_init_command(char *line)
 
 	if (GetToken() == NULL)
 		elog(ERROR, "ERROR: Please specify option to init command.\n");
-	else if (TestToken("all"))
+	
+	if (TestToken("force"))
+	{
+		forceInit = true;
+		if (GetToken() == NULL)
+			elog(ERROR, "ERROR: Please specify option to init command.\n");
+	}
+
+	if (TestToken("all"))
 		init_all();
 	else if (TestToken("gtm"))
 	{
@@ -2786,16 +2796,17 @@ do_show_help(char *line)
 	{
 		printf(
 				"\n"
-				"init all\n"
-				"init nodename ...\n"
-				"init gtm [ master | slave | all ]\n"
-				"init gtm_proxy [ all | nodename ... ]\n"
-				"init coordinator nodename ...\n"
-				"init coordinator [ master | slave ] [ all | nodename ... ]\n"
-				"init datanode nodename ...\n"
-				"init datanode [ master | slave ] [ all | nodename ... ]\n"
+				"init [force] all\n"
+				"init [force] nodename ...\n"
+				"init [force] gtm [ master | slave | all ]\n"
+				"init [force] gtm_proxy [ all | nodename ... ]\n"
+				"init [force] coordinator nodename ...\n"
+				"init [force] coordinator [ master | slave ] [ all | nodename ... ]\n"
+				"init [force] datanode nodename ...\n"
+				"init [force] datanode [ master | slave ] [ all | nodename ... ]\n"
 				"\n"
-				"Initializes specified nodes\n"
+				"Initializes specified nodes.\n"
+			    "	[force] option removes existing data directories even if they are not empty\n"
 				"For more details, please see the pgxc_ctl documentation\n"
 				"\n"
 			  );

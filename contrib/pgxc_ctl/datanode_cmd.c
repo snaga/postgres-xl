@@ -68,7 +68,7 @@ cmd_t *prepare_initDatanodeMaster(char *nodeName)
 	if ((idx = datanodeIdx(nodeName)) < 0)
 		return(NULL);
 
-	if (pgxc_check_dir(aval(VAR_datanodeMasterDirs)[idx]) == 2)
+	if ((pgxc_check_dir(aval(VAR_datanodeMasterDirs)[idx]) == 2) && !forceInit)
 	{
 		elog(ERROR, "ERROR: target datanode directory %s exists and is not empty. Skip initilialization.\n",
 				aval(VAR_datanodeMasterDirs)[idx]); 
