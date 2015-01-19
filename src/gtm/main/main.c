@@ -958,7 +958,7 @@ ServerLoop(void)
 			{
 				ereport(LOG,
 						(EACCES,
-						 errmsg("select() failed in postmaster: %m")));
+						 errmsg("select() failed in main thread: %m")));
 				return STATUS_ERROR;
 			}
 		}
@@ -989,8 +989,6 @@ ServerLoop(void)
 
 						if (GTMAddConnection(port, standby) != STATUS_OK)
 						{
-							elog(ERROR, "Too many connections");
-
 							gtm_standby_disconnect_from_standby(standby);
 
 							StreamClose(port->sock);
@@ -1439,16 +1437,7 @@ GTMAddConnection(Port *port, GTM_Conn *standby)
 {
 	GTM_ConnectionInfo *conninfo = NULL;
 
-	conninfo = (GTM_ConnectionInfo *)palloc(sizeof (GTM_ConnectionInfo));
-	memset(conninfo, 0, sizeof(GTM_ConnectionInfo));
-
-	if (conninfo == NULL)
-	{
-		ereport(ERROR,
-				(ENOMEM,
-				 	errmsg("Out of memory")));
-		return STATUS_ERROR;
-	}
+	conninfo = (GTM_ConnectionInfo *)palloc0(sizeof (GTM_ConnectionInfo));
 
 	elog(DEBUG3, "Started new connection");
 	conninfo->con_port = port;
@@ -1463,10 +1452,7 @@ GTMAddConnection(Port *port, GTM_Conn *standby)
 	 * XXX Start the thread
 	 */
 	if (GTM_ThreadCreate(conninfo, GTM_ThreadMain) == NULL)
-	{
-		elog(ERROR, "failed to create a new thread");
 		return STATUS_ERROR;
-	}
 
 	return STATUS_OK;
 }

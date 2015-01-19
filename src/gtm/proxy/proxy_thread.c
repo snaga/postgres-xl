@@ -374,7 +374,8 @@ GTMProxy_ThreadAddConnection(GTMProxy_ConnectionInfo *conninfo)
 	if (thrinfo->thr_conn_count >= GTM_PROXY_MAX_CONNECTIONS)
 	{
 		GTM_MutexLockRelease(&thrinfo->thr_lock);
-		elog(ERROR, "Too many connections");
+		elog(LOG, "Too many connections");
+		return NULL;
 	}
 
 	connIndx = -1;
@@ -393,7 +394,8 @@ GTMProxy_ThreadAddConnection(GTMProxy_ConnectionInfo *conninfo)
 	if (connIndx == -1)
 	{
 		GTM_MutexLockRelease(&thrinfo->thr_lock);
-		elog(ERROR, "Too many connections - could not find a free slot");
+		elog(LOG, "Too many connections - could not find a free slot");
+		return NULL;
 	}
 
 	/*

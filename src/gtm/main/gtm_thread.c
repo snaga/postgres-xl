@@ -49,7 +49,11 @@ GTM_ThreadAdd(GTM_ThreadInfo *thrinfo)
 		 * allocation.
 		 */
 		if (GTMThreads->gt_array_size == GTM_MAX_THREADS)
-			elog(ERROR, "Too many threads active");
+		{
+			elog(LOG, "Too many threads active");
+			GTM_RWLockRelease(&GTMThreads->gt_lock);
+			return -1;
+		}
 
 		if (GTMThreads->gt_array_size == 0)
 			newsize = GTM_MIN_THREADS;
@@ -159,7 +163,11 @@ GTM_ThreadRemove(GTM_ThreadInfo *thrinfo)
 	}
 
 	if (ii == GTMThreads->gt_array_size)
-		elog(ERROR, "Thread (%p) not found ", thrinfo);
+	{
+		elog(LOG, "Thread (%p) not found ", thrinfo);
+		GTM_RWLockRelease(&GTMThreads->gt_lock);
+		return -1;
+	}
 
 	GTMThreads->gt_threads[ii] = NULL;
 	GTMThreads->gt_thread_count--;
@@ -207,7 +215,11 @@ GTM_ThreadCreate(GTM_ConnectionInfo *conninfo,
 	 * starting the thread
 	 */
 	if (GTM_ThreadAdd(thrinfo) == -1)
-		elog(ERROR, "Error starting a new thread");
+	{
+		GTM_RWLockDestroy(&thrinfo->thr_lock);
+		pfree(thrinfo);
+		return NULL;
+	}
 
 	/*
 	 * Set up memory contextes before actually starting the threads
@@ -254,10 +266,21 @@ GTM_ThreadCreate(GTM_ConnectionInfo *conninfo,
 	 * Return the thrinfo structure to the caller
 	 */
 	if ((err = pthread_create(&thrinfo->thr_id, NULL, GTM_ThreadMainWrapper,
-							 thrinfo)))
-		ereport(ERROR,
+							  thrinfo)))
+	{
+		ereport(LOG,
 				(err,
-				 errmsg("Failed to create a new thread: error %d", err)));
+				 errmsg("Failed to create a new thread: error %s", strerror(err))));
+
+		MemoryContextDelete(thrinfo->thr_error_context);
+		MemoryContextDelete(thrinfo->thr_thread_context);
+
+		GTM_RWLockDestroy(&thrinfo->thr_lock);
+
+		GTM_ThreadRemove(thrinfo);
+
+		return NULL;
+	}
 
 	/*
 	 * Ensure that the resources are released when the thread exits. (We used
@@ -371,6 +394,8 @@ GTM_ThreadCleanup(void *argp)
 
 	MemoryContextDelete(thrinfo->thr_thread_context);
 	thrinfo->thr_thread_context = NULL;
+
+	GTM_RWLockDestroy(&thrinfo->thr_lock);
 
 	/*
 	 * TODO Now cleanup the thrinfo structure itself and remove it from the global

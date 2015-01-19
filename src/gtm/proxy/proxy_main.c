@@ -916,7 +916,7 @@ ConnCreate(int serverFd)
 		ereport(LOG,
 				(ENOMEM,
 				 errmsg("out of memory")));
-		exit(1);
+		return NULL;
 	}
 
 	if (StreamConnection(serverFd, port) != STATUS_OK)
@@ -924,7 +924,8 @@ ConnCreate(int serverFd)
 		if (port->sock >= 0)
 			StreamClose(port->sock);
 		ConnFree(port);
-		port = NULL;
+
+		return NULL;
 	}
 
 	port->conn_id = InvalidGTMProxyConnID;
@@ -1027,7 +1028,7 @@ ServerLoop(void)
 			{
 				ereport(DEBUG1,
 						(EACCES,
-						 errmsg("select() failed in postmaster: %m")));
+						 errmsg("select() failed in main thread: %m")));
 				return STATUS_ERROR;
 			}
 		}
@@ -1053,7 +1054,6 @@ ServerLoop(void)
 					{
 						if (GTMProxyAddConnection(port) != STATUS_OK)
 						{
-							elog(ERROR, "Too many connections");
 							StreamClose(port->sock);
 							ConnFree(port);
 						}
@@ -1553,7 +1553,7 @@ GTMProxyAddConnection(Port *port)
 
 	if (conninfo == NULL)
 	{
-		ereport(ERROR,
+		ereport(LOG,
 				(ENOMEM,
 					errmsg("Out of memory")));
 		return STATUS_ERROR;
@@ -1565,7 +1565,8 @@ GTMProxyAddConnection(Port *port)
 	/*
 	 * Add the conninfo struct to the next worker thread in round-robin manner
 	 */
-	GTMProxy_ThreadAddConnection(conninfo);
+	if (!GTMProxy_ThreadAddConnection(conninfo))
+		return STATUS_ERROR;
 
 	return STATUS_OK;
 }
