@@ -1693,7 +1693,7 @@ PGXC$ prepare config minimal my_minimal_config.conf
     <term><literal>Createdb [ - <replaceable class="parameter">coordinator</replaceable> ] <replaceable class="parameter"> createdb_option ... </replaceable></literal></term>
     <listitem>
      <para>
-   Invokes createdb utility to create a new datanode using specified
+   Invokes createdb utility to create a new database using specified
    coordinator.  If no coordinator is specified, pgxc_ctl chooses one
    of the available ones.
      </para>

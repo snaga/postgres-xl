@@ -95,7 +95,7 @@
 git clone git://postgres-xc.git.sourceforge.net/gitroot/postgres-xc/postgres-xc
 <!## end>
 <!## XL>
-git clone git://postgres-xl.git.sourceforge.net/gitroot/postgres-xl/postgres-xl
+git clone git://git.code.sf.net/p/postgres-xl/postgres-xl 
 <!## end>
 </programlisting>
 
@@ -115,7 +115,7 @@ git clone git://postgres-xl.git.sourceforge.net/gitroot/postgres-xl/postgres-xl
 git clone http://postgres-xc.git.sourceforge.net/gitroot/postgres-xc/postgres-xc
 <!## end>
 <!## XL>
-git clone http://postgres-xl.git.sourceforge.net/gitroot/postgres-xl/postgres-xl
+git clone git://git.code.sf.net/p/postgres-xl/postgres-xl 
 <!## end>
 </programlisting>
 
@@ -172,7 +172,7 @@ git fetch
 git clone git://postgres-xc.git.sourceforge.net/gitroot/postgres-xc/postgres-xc
 <!## end>
 <!## XL>
-git clone git://postgres-xl.git.sourceforge.net/gitroot/postgres-xl/postgres-xl
+git clone git://git.code.sf.net/p/postgres-xl/postgres-xl
 <!## end>
 </programlisting>
 
@@ -232,7 +232,7 @@ git fetch
 git clone git://postgres-xc.git.sourceforge.net/gitroot/postgres-xc/postgres-xc
 <!## end>
 <!## XL>
-git clone git://postgres-xl.git.sourceforge.net/gitroot/postgres-xl/postgres-xl
+git clone git://git.code.sf.net/p/postgres-xl/postgres-xl
 <!## end>
 </programlisting>
 

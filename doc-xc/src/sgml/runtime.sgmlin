@@ -444,21 +444,6 @@ postgres$ <userinput>initdb -D /usr/local/pgsql/data --nodename foo</userinput>
    </listitem>
    </varlistentry>
 
-   <varlistentry>
-    <term>GTM id</term>
-    <listitem>
-     <para>
-      You have a chance to run more than one GTM in
-      one <productname>Postgres-XC</> cluster.  
-      For example, if you need a backup of GTM in
-      high-availability environment, you need to run
-      two GTMs.
-      You should give unique GTM id to each of such GTMs.
-      GTM id value begins with one.
-     </para>
-    </listitem>
-   </varlistentry>
-
   </variablelist>
 
    <para>
@@ -631,6 +616,16 @@ postgres$ <userinput>initdb -D /usr/local/pgsql/data --nodename foo</userinput>
      Specify the host name or IP address of GTM-Proxy, as specified
      in <option>-h</> option in <command>gtm_proxy</>
      or <command>gtm_ctl</>.
+    </para>
+   </listitem>
+  </varlistentry>
+
+  <varlistentry>
+   <term>pooler_port</term>
+   <listitem>
+    <para>
+		Specify the port number that the pooler should use. This must not
+conflict with any other server ports used on this host.
     </para>
    </listitem>
   </varlistentry>
@@ -1205,6 +1200,16 @@ postgres$ <userinput>initdb -D /usr/local/pgsql/data --nodename foo</userinput>
      Specify the host name or IP address of GTM-Proxy, as specified
      in <option>-h</> option in <command>gtm_proxy</>
      or <command>gtm_ctl</>.
+    </para>
+   </listitem>
+  </varlistentry>
+
+  <varlistentry>
+   <term>pooler_port</term>
+   <listitem>
+    <para>
+		Specify the port number that the pooler should use. This must not
+conflict with any other server ports used on this host.
     </para>
    </listitem>
   </varlistentry>
@@ -3250,6 +3255,16 @@ pg_dumpall -p 5432 | psql -d postgres -p 5433
     installation to be migrated in-place from one major
     <productname>PostgreSQL</> version to the next.  Upgrades can be
     performed in minutes.
+<!## XL>
+	<note>
+	 <para>
+		Support for <link linkend="pgupgrade">pg_upgrade</link> is not tested
+in <productname>Postgres-XL</productname>. Users are advised to use other
+methods for upgrading to next major version of
+<productname>Postgres-XL</productname>.
+	 </para>
+	</note>
+<!## end>
    </para>
 
    <para>

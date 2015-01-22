@@ -38,9 +38,8 @@
 <!## end>
 <!## XL>
       The <productname>Postgres-XL</productname> <ulink
-      url="https://sourceforge.net/apps/mediawiki/postgres-xl/">wiki</ulink> contains the project's 
-	  information, links to related pages and <ulink
-      url="https://sourceforge.net/apps/mediawiki/postgres-xl/index.php?title=Developers"> various development information</>.
+      url="http://sourceforge.net/p/postgres-xl/wiki/Home/">wiki</ulink> contains the project's 
+	  information, links to related pages and various development information.
 <!## end>
      </para>
     </listitem>

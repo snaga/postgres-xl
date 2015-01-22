@@ -144,7 +144,6 @@ CREATE TABLE products (
 <!## XC>
   <indexterm>
    <primary>table</primary>
-   <secondary>distribution</secondary>
   </indexterm>
   <indexterm>
    <primary>table</primary>
@@ -218,7 +217,6 @@ CREATE TABLE products (
 <!## XL>
   <indexterm>
    <primary>table</primary>
-   <secondary>distribution</secondary>
   </indexterm>
   <indexterm>
    <primary>table</primary>
@@ -1654,6 +1652,21 @@ $xc-constraint;
 <!## XL>
 &xlonly;
   <para>
+	In addition to these actions, in <productname>Postgres-XL</productname> you
+can also use <command>ALTER TABLE</> command to:
+   <itemizedlist spacing="compact">
+    <listitem>
+     <para>Change distribution strategy</para>
+    </listitem>
+    <listitem>
+     <para>Add a node to existing distribution target</para>
+    </listitem>
+    <listitem>
+     <para>Remove a node from existing distribution target</para>
+    </listitem>
+   </itemizedlist>
+  </para>
+  <para>
    In <productname>Postgres-XL</> the following are not allowed:
    <itemizedlist spacing="compact">
     <listitem>
@@ -1945,6 +1958,81 @@ ALTER TABLE products RENAME TO items;
 </programlisting>
    </para>
   </sect2>
+
+<!## XL>
+  <sect2>
+   <title>Adding a Node to Distribution Target</title>
+
+   <indexterm>
+    <primary>table</primary>
+    <secondary>distribution</secondary>
+   </indexterm>
+   <para>
+    To add a new node to existing distribution:
+<programlisting>
+ALTER TABLE products ADD NODE (datanode_3);
+</programlisting>
+	The datanode must be a valid datanode name. If its a new datanode, then it
+must have been added to the cluster by appropriate mechanism. To learn how to
+add a node to the cluster, please see <xref linkend="add-node">.
+   </para>
+   <para>
+	This command will redistribute the existing table data so as to include the
+new node. For example, in case of <type>DISTRIBUTE BY HASH</> strategy, hash
+value for each row must be recomputed and the row must be moved to the selected
+node based on the new count of datanodes in the distribution list. This
+operation requires an exclusive lock on the table and hence all read and write
+access to the table is temporarily blocked. This can be important especially if
+the table is large and requires considerable time for
+redistribution.
+   </para>
+  </sect2>
+  <sect2>
+   <title>Removing a Node from Distribution Target</title>
+
+   <indexterm>
+    <primary>table</primary>
+    <secondary>distribution</secondary>
+   </indexterm>
+&common;
+   <para>
+    To remove a node from existing distribution:
+<programlisting>
+ALTER TABLE products DELETE NODE (datanode_3);
+</programlisting>
+	It must be noted that if you want to remove a node from the cluster, its
+important that you first remove such node from all existing tables using that
+node and then only remove the node from the cluster.
+   </para>
+   <para>
+	Like the previous command, this also takes an exclusive lock on the table,
+blocking all read and write access to the table.
+   </para>
+  </sect2>
+  <sect2>
+   <title>Changing Distribution Strategy</title>
+
+   <indexterm>
+    <primary>table</primary>
+    <secondary>distribution</secondary>
+   </indexterm>
+&common;
+   <para>
+    To change distribution strategy for a table:
+<programlisting>
+ALTER TABLE products DISSTRIBUTE BY REPLICATION;
+</programlisting>
+You can change distribution strategy for a table with this command. For
+example, a table which was previously distributed by <type>HASH</> can now be
+distributed by <type>REPLICATION</type>.
+   </para>
+   <para>
+	Like the previous command, this also takes an exclusive lock on the table,
+blocking all read and write access to the table.
+   </para>
+  </sect2>
+<!## end>
+
  </sect1>
 
  <sect1 id="ddl-priv">

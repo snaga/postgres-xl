@@ -239,13 +239,29 @@
 
       <listitem>
         <para>
+          Create the new datanode on all the other datanodes too and reload configuration.
+          The following example creates data_node_3, with host localhost and port 35432.
+        </para>
+        <programlisting>
+          EXECUTE DIRECT ON (DATA_NODE_1) 'CREATE NODE DATA_NODE_3 WITH (HOST = ''localhost'', type = ''datanode'', PORT = 35432)';
+          EXECUTE DIRECT ON (DATA_NODE_2) 'CREATE NODE DATA_NODE_3 WITH (HOST = ''localhost'', type = ''datanode'', PORT = 35432)';
+          EXECUTE DIRECT ON (DATA_NODE_3) 'ALTER NODE DATA_NODE_3 WITH (HOST = ''localhost'', type = ''datanode'', PORT = 35432)';
+          EXECUTE DIRECT ON (DATA_NODE_1) 'SELECT pgxc_pool_reload()';
+          EXECUTE DIRECT ON (DATA_NODE_2) 'SELECT pgxc_pool_reload()';
+          EXECUTE DIRECT ON (DATA_NODE_3) 'SELECT pgxc_pool_reload()';
+        </programlisting>
+      </listitem>
+
+      <listitem>
+        <para>
           Quit the session of step 3, this will unlock the cluster.
         </para>
       </listitem>
 
       <listitem>
-        <para>
-          Redistribute existing data by using <command>ALTER TABLE REDISTRIBUTE</>. The new datanode is now ready.
+        <para> The new datanode is now ready.
+          Redistribute existing data by using <command>ALTER TABLE
+<replaceable>my_table</replaceable> ADD NODE (DATA_NODE_3)</>.
         </para>
       </listitem>
 

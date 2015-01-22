@@ -60,7 +60,7 @@
 <!## end>
 
 <screen>
-<prompt>$</prompt> <userinput>cd <replaceable>....</replaceable>/src/tutorial</userinput>
+<prompt>$</prompt> <userinput>cd <replaceable>../..</replaceable>/src/tutorial</userinput>
 <prompt>$</prompt> <userinput>make</userinput>
 </screen>
 
@@ -274,13 +274,28 @@ CREATE TABLE cities (
 <!## PG>
     <productname>PostgreSQL</productname>-specific data type.
 <!## end>
-<!## XC>
-    <productname>Postgres-XC</productname>-specific data type.
-<!## end>
-<!## XL>
-    <productname>Postgres-XL</productname>-specific data type.
-<!## end>
    </para>
+<!## XL>
+	<para>
+ 	<productname>Postgres-XL</productname> distributes every table by one of
+the supported distribution mechanisms such as <type>HASH</type>,
+<type>ROUNDROBIN</type>,<type>MODULO</type> and <type>REPLICATION</type>. By
+default <productname>Postgres-XL</productname> will choose a distribution
+strategy based on the column definition, but most often user will specify a
+specific distribution strategy using the <type>DISTRIBUTE BY</type> option. The
+following example shows that.
+
+<programlisting>
+CREATE TABLE my_distributed_table (
+	tab_key		integer,
+	tab_value	text
+) DISTRIBUTE BY HASH(tab_key);
+</programlisting>
+	In this case the table will be distributed to all nodes in the cluster
+based on the hash computed value of the column <type>tab_key</type>.
+
+	</para>
+<!## end>
 
    <para>
     <indexterm>

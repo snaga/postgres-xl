@@ -120,8 +120,13 @@ su - postgres
 /usr/local/pgsql/bin/postgres --datanode -p 15432 -D /usr/local/pgsql/data_datanode1 &gt;logfile 2&gt;&amp;1 &amp;
 /usr/local/pgsql/bin/postgres --datanode -p 15433 -D /usr/local/pgsql/data_datanode2 &gt;logfile 2&gt;&amp;1 &amp;
 /usr/local/pgsql/bin/postgres --coordinator -D /usr/local/pgsql/data_coord1 &gt;logfile 2&gt;&amp;1 &amp;
+/usr/local/pgsql/bin/psql -c "ALTER NODE coord1 WITH (TYPE = 'coordinator', PORT = 5432)" postgres
 /usr/local/pgsql/bin/psql -c "CREATE NODE datanode1 WITH (TYPE = 'datanode', PORT = 15432)" postgres
 /usr/local/pgsql/bin/psql -c "CREATE NODE datanode2 WITH (TYPE = 'datanode', PORT = 15433)" postgres
+/usr/local/pgsql/bin/psql -c "EXECUTE DIRECT ON (datanode1) 'ALTER NODE datanode1 WITH (TYPE = ''datanode'', PORT = 15432)'" postgres
+/usr/local/pgsql/bin/psql -c "EXECUTE DIRECT ON (datanode1) 'CREATE NODE datanode2 WITH (TYPE = ''datanode'', PORT = 15433)'" postgres
+/usr/local/pgsql/bin/psql -c "EXECUTE DIRECT ON (datanode2) 'ALTER NODE datanode2 WITH (TYPE = ''datanode'', PORT = 15433)'" postgres
+/usr/local/pgsql/bin/psql -c "EXECUTE DIRECT ON (datanode2) 'CREATE NODE datanode1 WITH (TYPE = ''datanode'', PORT = 15432)'" postgres
 /usr/local/pgsql/bin/psql -c "SELECT pgxc_pool_reload()" postgres
 /usr/local/pgsql/bin/createdb test
 /usr/local/pgsql/bin/psql test
@@ -175,8 +180,13 @@ su - postgres
 /usr/local/pgsql/bin/postgres --datanode -p 15432 -D /usr/local/pgsql/data_datanode1 &gt;logfile 2&gt;&amp;1 &amp;
 /usr/local/pgsql/bin/postgres --datanode -p 15433 -D /usr/local/pgsql/data_datanode2 &gt;logfile 2&gt;&amp;1 &amp;
 /usr/local/pgsql/bin/postgres --coordinator -D /usr/local/pgsql/data_coord1 &gt;logfile 2&gt;&amp;1 &amp;
+/usr/local/pgsql/bin/psql -c "ALTER NODE coord1 WITH (TYPE = 'coordinator', PORT = 5432)" postgres
 /usr/local/pgsql/bin/psql -c "CREATE NODE datanode1 WITH (TYPE = 'datanode', PORT = 15432)" postgres
 /usr/local/pgsql/bin/psql -c "CREATE NODE datanode2 WITH (TYPE = 'datanode', PORT = 15433)" postgres
+/usr/local/pgsql/bin/psql -c "EXECUTE DIRECT ON (datanode1) 'ALTER NODE datanode1 WITH (TYPE = ''datanode'', PORT = 15432)'" postgres
+/usr/local/pgsql/bin/psql -c "EXECUTE DIRECT ON (datanode1) 'CREATE NODE datanode2 WITH (TYPE = ''datanode'', PORT = 15433)'" postgres
+/usr/local/pgsql/bin/psql -c "EXECUTE DIRECT ON (datanode2) 'ALTER NODE datanode2 WITH (TYPE = ''datanode'', PORT = 15433)'" postgres
+/usr/local/pgsql/bin/psql -c "EXECUTE DIRECT ON (datanode2) 'CREATE NODE datanode1 WITH (TYPE = ''datanode'', PORT = 15432)'" postgres
 /usr/local/pgsql/bin/psql -c "SELECT pgxc_pool_reload()" postgres
 /usr/local/pgsql/bin/createdb test
 /usr/local/pgsql/bin/psql test
@@ -212,7 +222,6 @@ su - postgres
   </para>
 <!## end>
 <!## XL>
-&xlonly;
   <para>
    In general, a Linux-Unix platform should be able to run <productname>Postgres-XL</>.
   </para>
