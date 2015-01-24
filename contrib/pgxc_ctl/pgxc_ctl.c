@@ -76,6 +76,8 @@ char *defaultDatabase;
 FILE *inF;
 FILE *outF;
 
+static char *verbose = NULL;
+
 static void build_pgxc_ctl_home(char *home);
 static void trim_trailing_slash(char *path);
 static void startLog(char *path, char *logFileNam);
@@ -415,8 +417,8 @@ static void setup_my_env(void)
 	setDefaultIfNeeded(VAR_configFile, "pgxc_ctl.conf");
 	setDefaultIfNeeded(VAR_echoAll, "n");
 	setDefaultIfNeeded(VAR_debug, "n");
-	setDefaultIfNeeded(VAR_printMessage, "info");
-	setDefaultIfNeeded(VAR_logMessage, "info");
+	setDefaultIfNeeded(VAR_printMessage, (verbose == NULL ? "info" : "debug3"));
+	setDefaultIfNeeded(VAR_logMessage, (verbose == NULL ? "info" : "debug3"));
 	setDefaultIfNeeded(VAR_pgxcCtlName, DefaultName);
 	myName = Strdup(sval(VAR_pgxcCtlName));
 	setDefaultIfNeeded(VAR_defaultDatabase, DefaultDatabase);
@@ -430,7 +432,6 @@ int main(int argc, char *argv[])
 	char *configuration = NULL;
 	char *infile = NULL;
 	char *outfile = NULL;
-	char *verbose = NULL;
 	int version_opt = 0;
 	char *logdir = NULL;
 	char *logfile = NULL;

@@ -232,9 +232,13 @@ int doImmediate(char *host, char *stdIn, const char *cmd_fmt, ...)
 					   sval(VAR_pgxcUser), host, remoteStdout);
 	}
 	elogFile(INFO, localStdout);
+	elog(DEBUG1, "doImmediate: unlink %s\n", localStdout);
 	unlink(localStdout);
 	if (stdIn && stdIn[0])
+	{
+		elog(DEBUG1, "doImmediate: unlink %s\n", stdIn);
 		unlink(stdIn);
+	}
 	return((rc));
 }
 
@@ -263,6 +267,7 @@ cmd_t *initCmd(char *host)
 
 static void clearStdin(cmd_t *cmd)
 {
+	elog(DEBUG1, "clearStdin: unlink %s\n", cmd->localStdin);
 	unlink(cmd->localStdin);
 	freeAndReset(cmd->localStdin);
 }
@@ -534,11 +539,17 @@ void do_cleanCmdEl(cmd_t *cmd)
 	if (cmd)
 	{
 		if (cmd->localStdout)
+		{
+			elog(DEBUG1, "do_cleanCmdEl: unlink %s\n", cmd->localStdout);
 			unlink(cmd->localStdout);
+		}
 		Free(cmd->localStdout);
 		Free(cmd->msg);
 		if (cmd->localStdin)
+		{
+			elog(DEBUG1, "do_cleanCmdEl: unlink %s\n", cmd->localStdin);
 			unlink(cmd->localStdin);
+		}
 		Free(cmd->localStdin);
 		if (cmd->remoteStdout)
 			doImmediateRaw("ssh %s@%s \"rm -f %s > /dev/null 2>&1\"", sval(VAR_pgxcUser), cmd->host, cmd->remoteStdout);

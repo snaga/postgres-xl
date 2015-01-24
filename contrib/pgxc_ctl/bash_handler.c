@@ -53,7 +53,10 @@ void install_pgxc_ctl_bash(char *path, int read_prototype)
 void uninstall_pgxc_ctl_bash(char *path)
 {
 	if (path)
+	{
+		elog(DEBUG1, "uninstall_pgxc_ctl_bash: unlink %s\n", path);
 		unlink(path);
+	}
 }
 
 /*
