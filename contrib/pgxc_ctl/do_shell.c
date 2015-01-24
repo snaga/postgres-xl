@@ -182,7 +182,7 @@ FILE *pgxc_popen_w(char *host, const char *cmd_fmt, ...)
 	va_start(arg, cmd_fmt);
 	vsnprintf(actualCmd, MAXLINE, cmd_fmt, arg);
 	va_end(arg);
-	snprintf(sshCmd, MAXLINE, "ssh %s@%s \" %s \"", sval(VAR_pgxcUser), host, actualCmd);
+	snprintf(sshCmd, MAXLINE, "ssh %s@%s \"( source .bash_profile; %s )\"", sval(VAR_pgxcUser), host, actualCmd);
 	if ((f = popen(sshCmd, "w")) == NULL)
 		elog(ERROR, "ERROR: could not open the command \"%s\" to write, %s\n", sshCmd, strerror(errno));
 	return f;
@@ -214,7 +214,7 @@ int doImmediate(char *host, char *stdIn, const char *cmd_fmt, ...)
 	{
 		int rc1;
 		/* Remote case */
-		snprintf(actualCmd, MAXLINE, "ssh %s@%s \"( %s ) > %s 2>&1\" < %s > /dev/null 2>&1",
+		snprintf(actualCmd, MAXLINE, "ssh %s@%s \"( source .bash_profile; %s ) > %s 2>&1\" < %s > /dev/null 2>&1",
 				 sval(VAR_pgxcUser), host, cmd_wk, 
 				 createRemoteFileName(STDOUT, remoteStdout, MAXPATH),
 				 ((stdIn == NULL) || (stdIn[0] == 0)) ? "/dev/null" : stdIn);
@@ -333,7 +333,7 @@ int doCmdEl(cmd_t *cmd)
 	{
 		/* Build actual command */
 		snprintf(allocActualCmd(cmd), MAXLINE,
-				 "ssh %s@%s \"( %s ) > %s 2>&1\" < %s > /dev/null 2>&1",
+				 "ssh %s@%s \"( source .bash_profile; %s ) > %s 2>&1\" < %s > /dev/null 2>&1",
 				 sval(VAR_pgxcUser),
 				 cmd->host,
 				 cmd->command,
