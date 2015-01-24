@@ -78,7 +78,7 @@ cmd_t *prepare_initDatanodeMaster(char *nodeName)
 	/* Build each datanode's initialize command */
 	cmd = cmdInitdb = initCmd(aval(VAR_datanodeMasterServers)[idx]);
 	snprintf(newCommand(cmdInitdb), MAXLINE,
-			 "rm -rf %s; mkdir -p %s; initdb --nodename %s -D %s",
+			 "rm -rf %s; mkdir -p %s; initdb --no-locale --encoding UTF-8 --nodename %s -D %s",
 			 aval(VAR_datanodeMasterDirs)[idx], aval(VAR_datanodeMasterDirs)[idx],
 			 aval(VAR_datanodeNames)[idx], aval(VAR_datanodeMasterDirs)[idx]);
 		

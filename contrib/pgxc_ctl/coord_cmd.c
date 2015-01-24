@@ -89,7 +89,7 @@ cmd_t *prepare_initCoordinatorMaster(char *nodeName)
 	snprintf(newCommand(cmdInitdb), MAXLINE, 
 			 "rm -rf %s;"
 			 "mkdir -p %s;"
-			 "initdb --nodename %s -D %s",
+			 "initdb --no-locale --encoding UTF-8 --nodename %s -D %s",
 			 aval(VAR_coordMasterDirs)[jj],
 			 aval(VAR_coordMasterDirs)[jj],
 			 nodeName,
