@@ -76,9 +76,9 @@ configBackupFile=pgxc_ctl.bak	# Backup file name --> Need to synchronize when or
 
 #---- Overall ----
 gtmName=gtm
-gtmMasterServer=localhost
+gtmMasterServer=127.0.0.1
 gtmMasterPort=20001
-gtmMasterDir=/tmp/pgxl/nodes/gtm
+gtmMasterDir=__gtmMasterDir__
 
 #---- Configuration ---
 gtmExtraConfig=none			# Will be added gtm.conf for both Master and Slave (done at initilization only)
@@ -113,7 +113,7 @@ gtmSlaveSpecificExtraConfig=none # Will be added to Slave's gtm.conf (done at in
 # to GTM Master directly.  If you configure GTL slave, you must configure GTM proxy too.
 
 #---- Shortcuts ------
-gtmProxyDir=/tmp/pgxl/nodes/gtm_pxy
+gtmProxyDir=/var/lib/pgxl/nodes/gtm_pxy
 
 #---- Overall -------
 gtmProxy=n				# Specify y if you conifugre at least one GTM proxy.   You may not configure gtm proxies
@@ -134,14 +134,14 @@ gtmPxySpecificExtraConfig=(none none none none)
 #---- Coordinators ----------------------------------------------------------------------------------------------------
 
 #---- shortcuts ----------
-coordMasterDir=/tmp/pgxl/nodes/coord
-coordSlaveDir=/tmp/pgxl/nodes/coord_slave
-coordArchLogDir=/tmp/pgxl/nodes/coord_archlog
+coordMasterDir=__coordMasterDir__
+coordSlaveDir=/var/lib/pgxl/nodes/coord_slave
+coordArchLogDir=/var/lib/pgxl/nodes/coord_archlog
 
 #---- Overall ------------
 coordNames=(coord1)		# Master and slave use the same name
-coordPorts=(20004)			# Master ports
-poolerPorts=(20010)			# Master pooler ports
+coordPorts=(15432)			# Master ports
+poolerPorts=(21001)			# Master pooler ports
 coordPgHbaEntries=(0.0.0.0/0)				# Assumes that all the coordinator (master/slave) accepts
 												# the same connection
 												# This entry allows only $pgxcOwner to connect.
@@ -153,7 +153,7 @@ coordPgHbaEntries=(0.0.0.0/0)				# Assumes that all the coordinator (master/slav
 #coordPgHbaEntries=(::1/128)	# Same as above but for IPv6 addresses
 
 #---- Master -------------
-coordMasterServers=(localhost)		# none means this master is not available
+coordMasterServers=(127.0.0.1)		# none means this master is not available
 coordMasterDirs=($coordMasterDir)
 coordMaxWALsernder=5	# max_wal_senders: needed to configure slave. If zero value is specified,
 						# it is expected to supply this parameter explicitly by external files
@@ -223,18 +223,18 @@ cad1_ArchLogDirs=($cad1_ArchLogDir $cad1_ArchLogDir $cad1_ArchLogDir $cad1_ArchL
 #---- Datanodes -------------------------------------------------------------------------------------------------------
 
 #---- Shortcuts --------------
-datanodeMasterDir=/tmp/pgxl/nodes/dn_master
-datanodeSlaveDir=/tmp/pgxl/nodes/dn_slave
-datanodeArchLogDir=/tmp/pgxl/nodes/dn_archlog
+datanodeMasterDir=/var/lib/pgxl/nodes/dn_master
+datanodeSlaveDir=/var/lib/pgxl/nodes/dn_slave
+datanodeArchLogDir=/var/lib/pgxl/nodes/dn_archlog
 
 #---- Overall ---------------
 #primaryDatanode=datanode1				# Primary Node.
 # At present, xc has a priblem to issue ALTER NODE against the primay node.  Until it is fixed, the test will be done
 # without this feature.
-primaryDatanode=localhost				# Primary Node.
-datanodeNames=(data1)
-datanodePorts=(20008)	# Master ports
-datanodePoolerPorts=(20012)	# Master pooler ports
+primaryDatanode=data1				# Primary Node.
+datanodeNames=(__datanodeNames__)
+datanodePorts=(__datanodePorts__)	# Master ports
+datanodePoolerPorts=(__datanodePoolerPorts__)	# Master pooler ports
 datanodePgHbaEntries=(0.0.0.0/0)	# Assumes that all the coordinator (master/slave) accepts
 										# the same connection
 										# This list sets up pg_hba.conf for $pgxcOwner user.
@@ -246,16 +246,16 @@ datanodePgHbaEntries=(0.0.0.0/0)	# Assumes that all the coordinator (master/slav
 #datanodePgHbaEntries=(::1/128)	# Same as above but for IPv6 addresses
 
 #---- Master ----------------
-datanodeMasterServers=(localhost)	# none means this master is not available.
+datanodeMasterServers=(__datanodeMasterServers__)	# none means this master is not available.
 													# This means that there should be the master but is down.
 													# The cluster is not operational until the master is
 													# recovered and ready to run.	
-datanodeMasterDirs=($datanodeMasterDir)
+datanodeMasterDirs=(__datanodeMasterDirs__)
 datanodeMaxWalSender=5								# max_wal_senders: needed to configure slave. If zero value is 
 													# specified, it is expected this parameter is explicitly supplied
 													# by external configuration files.
 													# If you don't configure slaves, leave this value zero.
-datanodeMaxWALSenders=($datanodeMaxWalSender)
+datanodeMaxWALSenders=(__datanodeMaxWALSenders__)
 						# max_wal_senders configuration for each datanode
 
 #---- Slave -----------------
